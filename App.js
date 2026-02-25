@@ -14,58 +14,85 @@ import {
   Text,
   TextInput,
   useColorScheme,
-  Vibration,
   View,
+  Vibration,
 } from 'react-native';
 
-const STORAGE_KEY = '@tasbeeh_count';
 const STORAGE_KEYS = {
+  count: '@tasbeeh_count',
   goal: '@tasbeeh_goal',
   darkMode: '@tasbeeh_darkmode',
-  schedule: '@tasbeeh_schedule',
+  scheduleCache: '@tasbeeh_schedule',
   adminPin: '@tasbeeh_admin_pin',
 };
 
-const DEFAULT_ADMIN_PIN = '7860';
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
+const DEFAULT_ADMIN_PIN = '7860';
+const FIRESTORE_COLLECTION = 'config';
+const FIRESTORE_DOC = 'prayerSchedule';
+
+// Set true only if you explicitly want first-time clients to write seed data when document is missing.
+const ALLOW_INITIAL_SEED_WRITE = false;
+
+// Firebase config placeholder (replace with your real values).
+const firebaseConfig = {
+  apiKey: 'YOUR_API_KEY',
+  authDomain: 'YOUR_AUTH_DOMAIN',
+  projectId: 'YOUR_PROJECT_ID',
+  storageBucket: 'YOUR_STORAGE_BUCKET',
+  messagingSenderId: 'YOUR_SENDER_ID',
+  appId: 'YOUR_APP_ID',
+};
+
+/*
+Suggested Firestore Security Rules (set in Firebase console, not here):
+match /databases/{database}/documents {
+  match /config/prayerSchedule {
+    allow read: if true;
+    allow write: if request.auth != null; // Prefer Firebase Auth for production admin security
+  }
+}
+Note: This app currently uses client-side Admin PIN (Option A), which is NOT secure alone.
+*/
 
 const DAYS_DE = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 
 const THEME = {
   light: {
-    bg: '#F1F5F9',
-    card: 'rgba(255,255,255,0.78)',
-    cardBorder: 'rgba(148,163,184,0.35)',
-    text: '#0F172A',
-    muted: '#64748B',
-    accent: '#0F172A',
+    bg: '#F5F0E7',
+    paper: '#E7D7C0',
+    card: 'rgba(255,255,255,0.68)',
+    border: 'rgba(68,54,42,0.22)',
+    text: '#1E1B18',
+    muted: '#5F5247',
+    accent: '#1F1A16',
     accentText: '#FFFFFF',
-    inputBg: '#F8FAFC',
-    inputBorder: '#CBD5E1',
+    inputBg: '#FCFAF6',
     danger: '#B91C1C',
-    progressTrack: '#E2E8F0',
-    progressFill: '#334155',
+    progressTrack: '#D4C6B3',
+    progressFill: '#5D4B3A',
+    rose: '#D7BABA',
   },
   dark: {
-    bg: '#020617',
-    card: 'rgba(15,23,42,0.78)',
-    cardBorder: 'rgba(148,163,184,0.35)',
-    text: '#E2E8F0',
-    muted: '#94A3B8',
+    bg: '#090B10',
+    paper: '#1D1612',
+    card: 'rgba(17,24,39,0.75)',
+    border: 'rgba(148,163,184,0.3)',
+    text: '#ECEFF4',
+    muted: '#B4BDC9',
     accent: '#F8FAFC',
     accentText: '#0F172A',
     inputBg: '#0F172A',
-    inputBorder: '#334155',
-    danger: '#FCA5A5',
-    progressTrack: '#1E293B',
-    progressFill: '#60A5FA',
+    danger: '#FDA4AF',
+    progressTrack: '#1F2937',
+    progressFill: '#93C5FD',
+    rose: '#452E33',
   },
 };
 
 const pad = (n) => String(n).padStart(2, '0');
-
-const toISO = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
 const parseISO = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
@@ -80,32 +107,40 @@ const addDaysISO = (iso, offset) => {
   return toISO(d);
 };
 
-const formatDay = (iso) => {
-  const d = parseISO(iso);
-  if (!d) return iso;
-  return `${DAYS_DE[d.getDay()]}, ${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`;
-};
-
 const formatWeekRange = (startISO) => {
   const start = parseISO(startISO);
-  if (!start) return '--.-- – --.--';
-  const endISO = addDaysISO(startISO, 6);
-  const end = parseISO(endISO);
-  return `${pad(start.getDate())}.${pad(start.getMonth() + 1)} – ${pad(end.getDate())}.${pad(end.getMonth() + 1)}`;
+  const end = parseISO(addDaysISO(startISO, 6));
+  if (!start || !end) return '--.-- - --.--';
+  return `${pad(start.getDate())}.${pad(start.getMonth() + 1)} - ${pad(end.getDate())}.${pad(end.getMonth() + 1)}`;
+};
+
+const formatDayHeader = (iso) => {
+  const d = parseISO(iso);
+  if (!d) return { date: '--.--', day: '--' };
+  return { date: `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.`, day: DAYS_DE[d.getDay()] };
 };
 
 const isValidTime = (value) => {
-  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  if (!/^\d{2}:\d{2}$/.test(value || '')) return false;
   const [h, m] = value.split(':').map(Number);
   return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 };
 
-const addMinutesToTime = (time, mins) => {
+const addMinutes = (time, min) => {
   if (!isValidTime(time)) return '--:--';
   const [h, m] = time.split(':').map(Number);
-  const total = h * 60 + m + mins;
-  const wrapped = ((total % 1440) + 1440) % 1440;
-  return `${pad(Math.floor(wrapped / 60))}:${pad(wrapped % 60)}`;
+  const t = (((h * 60 + m + min) % 1440) + 1440) % 1440;
+  return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+};
+
+const isCurrentWeek = (weekStartISO) => {
+  const start = parseISO(weekStartISO);
+  if (!start) return false;
+  const end = new Date(start);
+  end.setDate(end.getDate() + 6);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return today >= start && today <= end;
 };
 
 const getCurrentWeekStartISO = () => {
@@ -116,426 +151,528 @@ const getCurrentWeekStartISO = () => {
   return toISO(d);
 };
 
-const createSchedule = (weekStartISO = '2026-02-19') => ({
-  weekStartISO,
+const createSeedSchedule = () => ({
+  weekStartISO: '2026-02-19',
   city: 'Frankfurt am Main',
   globalTimes: {
-    dhuhr: '13:30',
+    sohar: '13:30',
     asr: '16:00',
-    ishaTaraweeh: '20:00',
+    ishaTara: '20:00',
     jumma: '13:15',
   },
-  days: Array.from({ length: 7 }, (_, idx) => ({
-    dateISO: addDaysISO(weekStartISO, idx),
-    sehriEndTahajjud: '',
-    iftar: '',
-  })),
+  days: [
+    { dateISO: '2026-02-19', sehriEnd: '05:58', iftar: '17:49' },
+    { dateISO: '2026-02-20', sehriEnd: '05:56', iftar: '17:51' },
+    { dateISO: '2026-02-21', sehriEnd: '05:54', iftar: '17:53' },
+    { dateISO: '2026-02-22', sehriEnd: '05:52', iftar: '17:55' },
+    { dateISO: '2026-02-23', sehriEnd: '05:50', iftar: '17:56' },
+    { dateISO: '2026-02-24', sehriEnd: '05:48', iftar: '17:58' },
+    { dateISO: '2026-02-25', sehriEnd: '05:46', iftar: '18:00' },
+  ],
 });
 
 const normalizeSchedule = (raw) => {
-  const fallback = createSchedule();
-  if (!raw || typeof raw !== 'object') return fallback;
-
-  const weekStartISO = parseISO(raw.weekStartISO) ? raw.weekStartISO : fallback.weekStartISO;
-  const city = typeof raw.city === 'string' && raw.city.trim() ? raw.city.trim() : fallback.city;
+  const seed = createSeedSchedule();
+  if (!raw || typeof raw !== 'object') return seed;
+  const weekStartISO = parseISO(raw.weekStartISO) ? raw.weekStartISO : seed.weekStartISO;
+  const city = typeof raw.city === 'string' && raw.city.trim() ? raw.city.trim() : seed.city;
 
   const globalTimes = {
-    dhuhr: typeof raw.globalTimes?.dhuhr === 'string' ? raw.globalTimes.dhuhr : fallback.globalTimes.dhuhr,
-    asr: typeof raw.globalTimes?.asr === 'string' ? raw.globalTimes.asr : fallback.globalTimes.asr,
-    ishaTaraweeh:
-      typeof raw.globalTimes?.ishaTaraweeh === 'string' ? raw.globalTimes.ishaTaraweeh : fallback.globalTimes.ishaTaraweeh,
-    jumma: typeof raw.globalTimes?.jumma === 'string' ? raw.globalTimes.jumma : fallback.globalTimes.jumma,
+    sohar: typeof raw.globalTimes?.sohar === 'string' ? raw.globalTimes.sohar : seed.globalTimes.sohar,
+    asr: typeof raw.globalTimes?.asr === 'string' ? raw.globalTimes.asr : seed.globalTimes.asr,
+    ishaTara: typeof raw.globalTimes?.ishaTara === 'string' ? raw.globalTimes.ishaTara : seed.globalTimes.ishaTara,
+    jumma: typeof raw.globalTimes?.jumma === 'string' ? raw.globalTimes.jumma : seed.globalTimes.jumma,
   };
 
-  const days = Array.from({ length: 7 }, (_, idx) => {
-    const day = Array.isArray(raw.days) ? raw.days[idx] : null;
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const existing = Array.isArray(raw.days) ? raw.days[i] : null;
     return {
-      dateISO: parseISO(day?.dateISO) ? day.dateISO : addDaysISO(weekStartISO, idx),
-      sehriEndTahajjud: typeof day?.sehriEndTahajjud === 'string' ? day.sehriEndTahajjud : '',
-      iftar: typeof day?.iftar === 'string' ? day.iftar : '',
+      dateISO: parseISO(existing?.dateISO) ? existing.dateISO : addDaysISO(weekStartISO, i),
+      sehriEnd: typeof existing?.sehriEnd === 'string' ? existing.sehriEnd : '',
+      iftar: typeof existing?.iftar === 'string' ? existing.iftar : '',
     };
   });
 
   return { weekStartISO, city, globalTimes, days };
 };
 
-const isCurrentWeek = (startISO) => {
-  const start = parseISO(startISO);
-  if (!start) return false;
-  const end = new Date(start);
-  end.setDate(end.getDate() + 6);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return today >= start && today <= end;
+const dynamicImport = (moduleName) => new Function('m', 'return import(m)')(moduleName);
+
+let firebaseAppCache;
+let firestoreCache;
+let firestoreHelpers;
+
+const initFirestore = async () => {
+  if (firestoreCache && firestoreHelpers) return { db: firestoreCache, ...firestoreHelpers };
+  const [{ initializeApp, getApps, getApp }, firestoreModule] = await Promise.all([
+    dynamicImport(['firebase', 'app'].join('/')),
+    dynamicImport(['firebase', 'firestore'].join('/')),
+  ]);
+
+  firebaseAppCache = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  firestoreCache = firestoreModule.getFirestore(firebaseAppCache);
+  firestoreHelpers = {
+    doc: firestoreModule.doc,
+    getDoc: firestoreModule.getDoc,
+    setDoc: firestoreModule.setDoc,
+    onSnapshot: firestoreModule.onSnapshot,
+  };
+  return { db: firestoreCache, ...firestoreHelpers };
+};
+
+let hapticsModule;
+const getHaptics = async () => {
+  if (hapticsModule) return hapticsModule;
+  try {
+    hapticsModule = await dynamicImport('expo-haptics');
+    return hapticsModule;
+  } catch {
+    return null;
+  }
 };
 
 export default function App() {
   const systemScheme = useColorScheme();
   const [count, setCount] = useState(0);
-  const [isLoadingCount, setIsLoadingCount] = useState(true);
+  const [countReady, setCountReady] = useState(false);
 
   const [goal, setGoal] = useState(DEFAULT_GOAL);
   const [goalInput, setGoalInput] = useState(String(DEFAULT_GOAL));
 
-  const [isDarkMode, setIsDarkMode] = useState(systemScheme === 'dark');
-
-  const [schedule, setSchedule] = useState(createSchedule);
-  const [scheduleLoaded, setScheduleLoaded] = useState(false);
-
+  const [isDark, setIsDark] = useState(systemScheme === 'dark');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [prayerOpen, setPrayerOpen] = useState(false);
+
   const [adminPin, setAdminPin] = useState(DEFAULT_ADMIN_PIN);
   const [pinInput, setPinInput] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLoggedIn, setAdminLoggedIn] = useState(false);
 
-  const [weekStartInput, setWeekStartInput] = useState('');
-  const [cityInput, setCityInput] = useState('');
-  const [globalInputs, setGlobalInputs] = useState({ dhuhr: '', asr: '', ishaTaraweeh: '', jumma: '' });
-  const [dayInputs, setDayInputs] = useState([]);
-  const [errors, setErrors] = useState({});
+  const [schedule, setSchedule] = useState(createSeedSchedule);
+  const [scheduleForm, setScheduleForm] = useState(createSeedSchedule);
+  const [scheduleStatus, setScheduleStatus] = useState('idle');
+  const [inlineErrors, setInlineErrors] = useState({});
+
+  const [snackbar, setSnackbar] = useState({ visible: false, text: '', type: 'ok' });
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  const theme = isDarkMode ? THEME.dark : THEME.light;
+  const theme = isDark ? THEME.dark : THEME.light;
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
-  const weekCurrent = useMemo(() => isCurrentWeek(schedule.weekStartISO), [schedule.weekStartISO]);
+
+  const derivedDays = useMemo(
+    () => schedule.days.map((d) => ({ ...d, fajr: addMinutes(d.sehriEnd, 20), maghrib: addMinutes(d.iftar, 10) })),
+    [schedule.days],
+  );
 
   useEffect(() => {
-    const loadCounter = async () => {
+    const t = setTimeout(() => {
+      if (snackbar.visible) setSnackbar((p) => ({ ...p, visible: false }));
+    }, 2200);
+    return () => clearTimeout(t);
+  }, [snackbar.visible]);
+
+  const showSnack = (text, type = 'ok') => setSnackbar({ visible: true, text, type });
+
+  useEffect(() => {
+    const load = async () => {
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored !== null) {
-          const n = Number.parseInt(stored, 10);
-          if (!Number.isNaN(n)) setCount(n);
-        }
-      } catch (e) {
-        console.warn('Failed to load count:', e);
-      } finally {
-        setIsLoadingCount(false);
-      }
-    };
-    loadCounter();
-  }, []);
-
-  useEffect(() => {
-    if (isLoadingCount) return;
-    AsyncStorage.setItem(STORAGE_KEY, String(count)).catch((e) => console.warn('Failed to save count:', e));
-  }, [count, isLoadingCount]);
-
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const [storedDark, storedGoal, storedSchedule, storedPin] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.darkMode),
+        const [countRaw, goalRaw, darkRaw, pinRaw, cacheRaw] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.count),
           AsyncStorage.getItem(STORAGE_KEYS.goal),
-          AsyncStorage.getItem(STORAGE_KEYS.schedule),
+          AsyncStorage.getItem(STORAGE_KEYS.darkMode),
           AsyncStorage.getItem(STORAGE_KEYS.adminPin),
+          AsyncStorage.getItem(STORAGE_KEYS.scheduleCache),
         ]);
 
-        if (storedDark === '1' || storedDark === '0') setIsDarkMode(storedDark === '1');
+        if (countRaw !== null) {
+          const n = Number.parseInt(countRaw, 10);
+          if (!Number.isNaN(n)) setCount(n);
+        }
 
-        if (storedGoal) {
-          const n = Number.parseInt(storedGoal, 10);
+        if (goalRaw) {
+          const n = Number.parseInt(goalRaw, 10);
           if (!Number.isNaN(n) && n >= 1 && n <= 100000) {
             setGoal(n);
             setGoalInput(String(n));
           }
         }
 
-        const normalized = storedSchedule ? normalizeSchedule(JSON.parse(storedSchedule)) : createSchedule();
-        setSchedule(normalized);
-        setWeekStartInput(normalized.weekStartISO);
-        setCityInput(normalized.city);
-        setGlobalInputs(normalized.globalTimes);
-        setDayInputs(normalized.days.map((d) => ({ ...d })));
+        if (darkRaw === '1' || darkRaw === '0') setIsDark(darkRaw === '1');
+        if (pinRaw) setAdminPin(pinRaw);
 
-        if (storedPin && typeof storedPin === 'string') setAdminPin(storedPin);
+        if (cacheRaw) {
+          const parsed = normalizeSchedule(JSON.parse(cacheRaw));
+          setSchedule(parsed);
+          setScheduleForm(parsed);
+        }
       } catch (e) {
-        console.warn('Failed to load app settings:', e);
-        const fallback = createSchedule();
-        setSchedule(fallback);
-        setWeekStartInput(fallback.weekStartISO);
-        setCityInput(fallback.city);
-        setGlobalInputs(fallback.globalTimes);
-        setDayInputs(fallback.days.map((d) => ({ ...d })));
+        console.warn('Failed loading local settings:', e);
       } finally {
-        setScheduleLoaded(true);
+        setCountReady(true);
+      }
+    };
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (!countReady) return;
+    AsyncStorage.setItem(STORAGE_KEYS.count, String(count)).catch(() => {});
+  }, [count, countReady]);
+
+  const refreshScheduleFromCloud = async () => {
+    setScheduleStatus('loading');
+    try {
+      const { db, doc, getDoc, setDoc } = await initFirestore();
+      const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC);
+      const snap = await getDoc(ref);
+
+      if (!snap.exists()) {
+        const seed = createSeedSchedule();
+        if (ALLOW_INITIAL_SEED_WRITE) {
+          await setDoc(ref, seed);
+        }
+        setSchedule(seed);
+        setScheduleForm(seed);
+        await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(seed));
+        setScheduleStatus('ready');
+        return;
+      }
+
+      const cloud = normalizeSchedule(snap.data());
+      setSchedule(cloud);
+      setScheduleForm(cloud);
+      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloud));
+      setScheduleStatus('ready');
+    } catch (e) {
+      console.warn('Firestore unavailable, using cache fallback:', e);
+      setScheduleStatus('offline');
+      showSnack('Offline cache active', 'error');
+    }
+  };
+
+  useEffect(() => {
+    refreshScheduleFromCloud();
+  }, []);
+
+  useEffect(() => {
+    let unsub;
+    let mounted = true;
+
+    const setupRealtime = async () => {
+      try {
+        const { db, doc, onSnapshot } = await initFirestore();
+        const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC);
+        unsub = onSnapshot(
+          ref,
+          async (snap) => {
+            if (!mounted || !snap.exists()) return;
+            const cloud = normalizeSchedule(snap.data());
+            setSchedule(cloud);
+            setScheduleForm(cloud);
+            await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloud));
+          },
+          () => {},
+        );
+      } catch {
+        // Firestore SDK absent/offline: fallback already handled.
       }
     };
 
-    loadSettings();
+    setupRealtime();
+    return () => {
+      mounted = false;
+      if (typeof unsub === 'function') unsub();
+    };
   }, []);
 
-  const animatePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.975,
-      useNativeDriver: true,
-      speed: 18,
-      bounciness: 5,
-    }).start();
+  const animateIn = () => {
+    Animated.spring(scaleAnim, { toValue: 0.975, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
   };
 
-  const animatePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      useNativeDriver: true,
-      speed: 18,
-      bounciness: 5,
-    }).start();
+  const animateOut = () => {
+    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
   };
 
-  const increment = () => {
+  const incrementCount = () => {
     setCount((prev) => prev + 1);
-    if (typeof Vibration?.vibrate === 'function') Vibration.vibrate(8);
-  };
-
-  const toggleDarkMode = async (nextValue) => {
-    setIsDarkMode(nextValue);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.darkMode, nextValue ? '1' : '0');
-    } catch (e) {
-      console.warn('Failed to save dark mode:', e);
-    }
-  };
-
-  const selectGoalPreset = (value) => {
-    setGoalInput(String(value));
+    Vibration.vibrate(8);
   };
 
   const saveGoal = async () => {
-    const parsed = Number.parseInt(goalInput.trim(), 10);
-    if (Number.isNaN(parsed) || parsed < 1 || parsed > 100000) {
-      Alert.alert('Ungültiges Ziel', 'Bitte eine Zahl zwischen 1 und 100000 eingeben.');
+    const n = Number.parseInt(goalInput.trim(), 10);
+    if (Number.isNaN(n) || n < 1 || n > 100000) {
+      Alert.alert('Ungültiges Ziel', 'Bitte 1 bis 100000 eingeben.');
       return;
     }
-    setGoal(parsed);
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.goal, String(parsed));
-    } catch (e) {
-      console.warn('Failed to save goal:', e);
-    }
+    setGoal(n);
+    await AsyncStorage.setItem(STORAGE_KEYS.goal, String(n));
+    showSnack('Saved ✓');
+  };
+
+  const toggleDark = async (value) => {
+    setIsDark(value);
+    await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
 
   const loginAdmin = () => {
-    if (pinInput.trim() === adminPin) {
-      setIsAdmin(true);
-      setPinInput('');
+    if (pinInput.trim() !== adminPin) {
+      Alert.alert('Fehler', 'PIN ist nicht korrekt.');
       return;
     }
-    Alert.alert('Fehler', 'PIN ist nicht korrekt.');
+    setAdminLoggedIn(true);
+    setPinInput('');
   };
 
-  const persistSchedule = async (next) => {
-    const normalized = normalizeSchedule(next);
-    setSchedule(normalized);
-    setWeekStartInput(normalized.weekStartISO);
-    setCityInput(normalized.city);
-    setGlobalInputs(normalized.globalTimes);
-    setDayInputs(normalized.days.map((d) => ({ ...d })));
+  const validateScheduleForm = () => {
+    const errs = {};
+    if (!parseISO(scheduleForm.weekStartISO)) errs.weekStartISO = 'YYYY-MM-DD nötig';
+    if (!scheduleForm.city.trim()) errs.city = 'Stadt erforderlich';
+
+    ['sohar', 'asr', 'ishaTara', 'jumma'].forEach((key) => {
+      if (!isValidTime(scheduleForm.globalTimes[key])) errs[`g_${key}`] = 'HH:MM';
+    });
+
+    scheduleForm.days.forEach((d, i) => {
+      if (!isValidTime(d.sehriEnd)) errs[`d_${i}_sehri`] = 'HH:MM';
+      if (!isValidTime(d.iftar)) errs[`d_${i}_iftar`] = 'HH:MM';
+    });
+
+    setInlineErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const triggerSaveHaptic = async () => {
+    const h = await getHaptics();
+    if (h?.notificationAsync && h?.NotificationFeedbackType?.Success) {
+      try {
+        await h.notificationAsync(h.NotificationFeedbackType.Success);
+        return;
+      } catch {}
+    }
+    Vibration.vibrate(20);
+  };
+
+  const saveScheduleToCloud = async () => {
+    if (!adminLoggedIn) return;
+    if (!validateScheduleForm()) {
+      showSnack('Save failed', 'error');
+      return;
+    }
+
+    const normalized = normalizeSchedule({
+      ...scheduleForm,
+      days: scheduleForm.days.map((d, i) => ({
+        ...d,
+        dateISO: addDaysISO(scheduleForm.weekStartISO, i),
+      })),
+    });
+
     try {
-      await AsyncStorage.setItem(STORAGE_KEYS.schedule, JSON.stringify(normalized));
+      const { db, doc, setDoc } = await initFirestore();
+      await setDoc(doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC), normalized);
+      setSchedule(normalized);
+      setScheduleForm(normalized);
+      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(normalized));
+      await triggerSaveHaptic();
+      showSnack('Saved ✓');
     } catch (e) {
-      console.warn('Failed to save schedule:', e);
+      console.warn('Save failed:', e);
+      showSnack('Save failed', 'error');
     }
   };
 
   const setWeekToCurrent = async () => {
-    const currentStart = getCurrentWeekStartISO();
-    await persistSchedule({
+    const ws = getCurrentWeekStartISO();
+    const next = normalizeSchedule({
       ...schedule,
-      weekStartISO: currentStart,
-      days: Array.from({ length: 7 }, (_, idx) => ({
-        dateISO: addDaysISO(currentStart, idx),
-        sehriEndTahajjud: '',
+      weekStartISO: ws,
+      days: Array.from({ length: 7 }, (_, i) => ({
+        dateISO: addDaysISO(ws, i),
+        sehriEnd: '',
         iftar: '',
       })),
     });
+    setSchedule(next);
+    setScheduleForm(next);
+    await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(next));
+    showSnack('Saved ✓');
   };
 
-  const updateDayInput = (idx, field, value) => {
-    setDayInputs((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value.trim() } : d)));
-    setErrors((prev) => ({ ...prev, [`${idx}_${field}`]: undefined }));
-  };
-
-  const validateAndSaveSchedule = async () => {
-    if (!isAdmin) return;
-
-    const nextErrors = {};
-    if (!parseISO(weekStartInput.trim())) nextErrors.weekStart = 'Format YYYY-MM-DD erforderlich';
-    if (!cityInput.trim()) nextErrors.city = 'Stadt darf nicht leer sein';
-
-    ['dhuhr', 'asr', 'ishaTaraweeh', 'jumma'].forEach((k) => {
-      if (!isValidTime(globalInputs[k])) nextErrors[`global_${k}`] = 'HH:MM erforderlich';
-    });
-
-    dayInputs.forEach((d, idx) => {
-      if (!isValidTime(d.sehriEndTahajjud)) nextErrors[`${idx}_sehriEndTahajjud`] = 'HH:MM erforderlich';
-      if (!isValidTime(d.iftar)) nextErrors[`${idx}_iftar`] = 'HH:MM erforderlich';
-    });
-
-    setErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) {
-      Alert.alert('Ungültige Eingaben', 'Bitte alle Felder korrekt im Format HH:MM ausfüllen.');
-      return;
-    }
-
-    const ws = weekStartInput.trim();
-    const next = {
-      weekStartISO: ws,
-      city: cityInput.trim(),
-      globalTimes: { ...globalInputs },
-      days: dayInputs.map((d, idx) => ({
-        dateISO: addDaysISO(ws, idx),
-        sehriEndTahajjud: d.sehriEndTahajjud,
-        iftar: d.iftar,
-      })),
-    };
-
-    await persistSchedule(next);
-    Alert.alert('Gespeichert', 'Prayer Times wurden aktualisiert.');
-  };
-
-  const derivedDays = useMemo(
-    () =>
-      schedule.days.map((d) => ({
-        ...d,
-        fajr: addMinutesToTime(d.sehriEndTahajjud, 20),
-        maghrib: addMinutesToTime(d.iftar, 10),
-      })),
-    [schedule.days],
-  );
+  const prayerRows = [
+    { label: 'Fajr', value: '20 Min. nach Sehri' },
+    { label: 'Sohar', value: `${schedule.globalTimes.sohar} Uhr` },
+    { label: 'Assr', value: `${schedule.globalTimes.asr} Uhr` },
+    { label: 'Maghrib', value: '10 Min. nach Iftar' },
+    { label: 'Ishaa & Taravih', value: `${schedule.globalTimes.ishaTara} Uhr` },
+    { label: 'Jumma', value: `${schedule.globalTimes.jumma} Uhr` },
+  ];
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
-      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: theme.text }]}>Tasbeeh Zähler</Text>
           <Pressable
             onPress={() => setSettingsOpen(true)}
-            style={({ pressed }) => [
-              styles.settingsButton,
-              { backgroundColor: theme.card, borderColor: theme.cardBorder, opacity: pressed ? 0.82 : 1 },
-            ]}
+            style={[styles.settingsBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
           >
-            <Text style={[styles.settingsIcon, { color: theme.text }]}>⚙️</Text>
-            <Text style={[styles.settingsText, { color: theme.text }]}>Settings</Text>
+            <Text style={[styles.settingsTxt, { color: theme.text }]}>⚙️ Settings</Text>
           </Pressable>
         </View>
 
         <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
 
-        <Pressable onPress={increment} onPressIn={animatePressIn} onPressOut={animatePressOut}>
-          {({ pressed }) => (
-            <Animated.View
-              style={[
-                styles.counterArea,
-                {
-                  backgroundColor: pressed ? theme.inputBg : theme.card,
-                  borderColor: theme.cardBorder,
-                  transform: [{ scale: scaleAnim }],
-                },
-              ]}
-            >
-              {isLoadingCount ? (
-                <ActivityIndicator size="large" color={theme.text} />
-              ) : (
-                <Text style={[styles.countText, { color: theme.text }]}>{count}</Text>
-              )}
-            </Animated.View>
-          )}
+        <Pressable onPress={incrementCount} onPressIn={animateIn} onPressOut={animateOut}>
+          <Animated.View
+            style={[
+              styles.counter,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                transform: [{ scale: scaleAnim }],
+              },
+            ]}
+          >
+            {!countReady ? <ActivityIndicator color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
+          </Animated.View>
         </Pressable>
 
         <View style={styles.progressWrap}>
           <View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}>
             <View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} />
           </View>
-          <Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text>
+          <Text style={[styles.progressLabel, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text>
         </View>
 
-        <Pressable
-          onPress={() => setCount(0)}
-          style={({ pressed }) => [
-            styles.resetButton,
-            { backgroundColor: pressed ? theme.muted : theme.accent, borderColor: theme.cardBorder },
-          ]}
-        >
-          <Text style={[styles.resetText, { color: theme.accentText }]}>Reset</Text>
-        </Pressable>
-
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-          <View style={styles.prayerHeaderRow}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Prayer Times</Text>
-            <Text style={[styles.arabic, { color: theme.muted }]}>مواقيت الصلاة</Text>
-          </View>
-          <Text style={[styles.meta, { color: theme.muted }]}>Week: {formatWeekRange(schedule.weekStartISO)}</Text>
-          <Text style={[styles.meta, { color: theme.muted }]}>City: {schedule.city}</Text>
-
-          {!weekCurrent ? (
-            <View style={[styles.warningBox, { borderColor: theme.inputBorder }]}>
-              <Text style={[styles.warningText, { color: theme.danger }]}>Schedule week is not current.</Text>
-              <Pressable
-                onPress={setWeekToCurrent}
-                style={({ pressed }) => [styles.smallBtn, { backgroundColor: pressed ? theme.muted : theme.accent }]}
-              >
-                <Text style={[styles.smallBtnText, { color: theme.accentText }]}>Set week to current</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {derivedDays.map((d) => {
-            const date = parseISO(d.dateISO);
-            const isFriday = date?.getDay() === 5;
-            return (
-              <View key={d.dateISO} style={[styles.dayCard, { borderColor: theme.inputBorder }]}>
-                <Text style={[styles.dayTitle, { color: theme.text }]}>{formatDay(d.dateISO)}</Text>
-
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Sehri/Tahajjud</Text><Text style={[styles.v, { color: theme.text }]}>{d.sehriEndTahajjud || '--:--'}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Iftar</Text><Text style={[styles.v, { color: theme.text }]}>{d.iftar || '--:--'}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Fajr (auto)</Text><Text style={[styles.v, { color: theme.text }]}>{d.fajr}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Dhuhr</Text><Text style={[styles.v, { color: theme.text }]}>{schedule.globalTimes.dhuhr}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Asr</Text><Text style={[styles.v, { color: theme.text }]}>{schedule.globalTimes.asr}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Maghrib (auto)</Text><Text style={[styles.v, { color: theme.text }]}>{d.maghrib}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: theme.muted }]}>Isha/Taraweeh</Text><Text style={[styles.v, { color: theme.text }]}>{schedule.globalTimes.ishaTaraweeh}</Text></View>
-                <View style={styles.row}><Text style={[styles.k, { color: isFriday ? theme.danger : theme.muted }]}>Jumma</Text><Text style={[styles.v, { color: theme.text }]}>{schedule.globalTimes.jumma}</Text></View>
-              </View>
-            );
-          })}
-
-          {!scheduleLoaded ? <ActivityIndicator size="small" color={theme.muted} /> : null}
+        <View style={styles.buttonRow}>
+          <Pressable onPress={() => setCount(0)} style={[styles.mainBtn, { backgroundColor: theme.accent }]}>
+            <Text style={[styles.mainBtnTxt, { color: theme.accentText }]}>Reset</Text>
+          </Pressable>
+          <Pressable onPress={() => setPrayerOpen(true)} style={[styles.mainBtn, { backgroundColor: theme.accent }]}>
+            <Text style={[styles.mainBtnTxt, { color: theme.accentText }]}>Gebetszeiten</Text>
+          </Pressable>
         </View>
 
         <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
       </ScrollView>
 
-      <Modal animationType="slide" transparent visible={settingsOpen} onRequestClose={() => setSettingsOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.bg, borderColor: theme.cardBorder }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Settings</Text>
-              <Pressable onPress={() => setSettingsOpen(false)}>
-                <Text style={[styles.closeText, { color: theme.text }]}>Schließen</Text>
-              </Pressable>
+      <Modal visible={prayerOpen} animationType="slide" transparent onRequestClose={() => setPrayerOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { backgroundColor: theme.paper, borderColor: theme.border }]}>
+            <View style={styles.modalTopRow}>
+              <Text style={[styles.arabicLine, { color: theme.muted }]}>بسم الله الرحمن الرحيم</Text>
+              <Pressable onPress={() => setPrayerOpen(false)}><Text style={[styles.closeTxt, { color: theme.text }]}>Schließen</Text></Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
+            <Text style={[styles.prayerTitle, { color: theme.text }]}>GEBETSZEITEN</Text>
+            <Text style={[styles.prayerRange, { color: theme.muted }]}>{formatWeekRange(schedule.weekStartISO)}</Text>
+            <Text style={[styles.prayerRange, { color: theme.muted }]}>{schedule.city}</Text>
+
+            {!isCurrentWeek(schedule.weekStartISO) ? (
+              <View style={styles.currentHint}>
+                <Text style={[styles.hintText, { color: theme.danger }]}>Schedule week is not current</Text>
+                <Pressable onPress={setWeekToCurrent} style={[styles.smallAction, { backgroundColor: theme.accent }]}>
+                  <Text style={[styles.smallActionTxt, { color: theme.accentText }]}>Set week to current</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Pressable onPress={refreshScheduleFromCloud} style={[styles.refreshBtn, { borderColor: theme.border }]}>
+              <Text style={[styles.refreshTxt, { color: theme.text }]}>↻ Refresh Cloud</Text>
+            </Pressable>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View>
+                <View style={styles.tableRow}>
+                  <View style={[styles.leftHeaderCell, { borderColor: '#2D2119', backgroundColor: theme.rose }]}>
+                    <Text style={styles.tableHeaderSmall}>Datum</Text>
+                  </View>
+                  {schedule.days.map((d) => {
+                    const h = formatDayHeader(d.dateISO);
+                    return (
+                      <View key={`h_${d.dateISO}`} style={[styles.dayHeaderCell, { borderColor: '#2D2119', backgroundColor: theme.rose }]}>
+                        <Text style={styles.tableHeaderDate}>{h.date}</Text>
+                        <Text style={styles.tableHeaderSmall}>{h.day}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.tableRow}>
+                  <View style={[styles.leftCell, { borderColor: '#2D2119', backgroundColor: theme.rose }]}>
+                    <Text style={styles.rowLabel}>Tahajjud & Sehri-Ende</Text>
+                  </View>
+                  {schedule.days.map((d) => (
+                    <View key={`s_${d.dateISO}`} style={[styles.dayCell, { borderColor: '#2D2119' }]}>
+                      <Text style={styles.rowValue}>{d.sehriEnd || '--:--'}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.tableRow}>
+                  <View style={[styles.leftCell, { borderColor: '#2D2119', backgroundColor: theme.rose }]}>
+                    <Text style={styles.rowLabel}>Iftari</Text>
+                  </View>
+                  {schedule.days.map((d) => (
+                    <View key={`i_${d.dateISO}`} style={[styles.dayCell, { borderColor: '#2D2119' }]}>
+                      <Text style={styles.rowValue}>{d.iftar || '--:--'}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.lowerTable}>
+              {prayerRows.map((r) => (
+                <View key={r.label} style={styles.lowerRow}>
+                  <View style={[styles.lowerLeft, { borderColor: '#2D2119', backgroundColor: theme.rose }]}>
+                    <Text style={styles.lowerLeftTxt}>{r.label}</Text>
+                  </View>
+                  <View style={[styles.lowerRight, { borderColor: '#2D2119' }]}>
+                    {r.label === 'Fajr' || r.label === 'Maghrib' ? (
+                      <View>
+                        <Text style={styles.lowerRightTxt}>{r.value}</Text>
+                        <Text style={styles.computedMini}>
+                          {r.label === 'Fajr'
+                            ? derivedDays.map((d) => d.fajr).join(' | ')
+                            : derivedDays.map((d) => d.maghrib).join(' | ')}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.lowerRightTxt}>{r.value}</Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {scheduleStatus === 'loading' ? <ActivityIndicator color={theme.text} /> : null}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={settingsOpen} animationType="slide" transparent onRequestClose={() => setSettingsOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.settingsSheet, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+            <View style={styles.modalTopRow}>
+              <Text style={[styles.settingsHeader, { color: theme.text }]}>Settings</Text>
+              <Pressable onPress={() => setSettingsOpen(false)}><Text style={[styles.closeTxt, { color: theme.text }]}>Schließen</Text></Pressable>
+            </View>
+
+            <ScrollView>
+              <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <View style={styles.switchRow}>
-                  <Text style={[styles.cardTitle, { color: theme.text }]}>Dark Mode</Text>
-                  <Switch value={isDarkMode} onValueChange={toggleDarkMode} />
+                  <Text style={[styles.label, { color: theme.text }]}>Dark Mode</Text>
+                  <Switch value={isDark} onValueChange={toggleDark} />
                 </View>
               </View>
 
-              <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Tasbeeh Goal</Text>
-                <View style={styles.presetsRow}>
-                  {GOAL_PRESETS.map((preset) => (
-                    <Pressable
-                      key={preset}
-                      onPress={() => selectGoalPreset(preset)}
-                      style={({ pressed }) => [styles.presetBtn, { backgroundColor: pressed ? theme.muted : theme.accent }]}
-                    >
-                      <Text style={[styles.presetText, { color: theme.accentText }]}>{preset}</Text>
+              <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.label, { color: theme.text }]}>Tasbeeh Goal</Text>
+                <View style={styles.presetRow}>
+                  {GOAL_PRESETS.map((g) => (
+                    <Pressable key={g} onPress={() => setGoalInput(String(g))} style={[styles.presetBtn, { backgroundColor: theme.accent }]}>
+                      <Text style={[styles.presetTxt, { color: theme.accentText }]}>{g}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -543,128 +680,108 @@ export default function App() {
                   value={goalInput}
                   onChangeText={setGoalInput}
                   keyboardType="number-pad"
-                  style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
+                  style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
                   placeholder="1 bis 100000"
                   placeholderTextColor={theme.muted}
                 />
-                <Pressable
-                  onPress={saveGoal}
-                  style={({ pressed }) => [styles.saveBtn, { backgroundColor: pressed ? theme.muted : theme.accent }]}
-                >
-                  <Text style={[styles.saveBtnText, { color: theme.accentText }]}>Goal speichern</Text>
+                <Pressable onPress={saveGoal} style={[styles.saveBtn, { backgroundColor: theme.accent }]}>
+                  <Text style={[styles.saveTxt, { color: theme.accentText }]}>Goal speichern</Text>
                 </Pressable>
               </View>
 
-              <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.cardBorder }]}>
-                <Text style={[styles.cardTitle, { color: theme.text }]}>Admin Mode</Text>
-                {!isAdmin ? (
+              <View style={[styles.settingsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.label, { color: theme.text }]}>Admin Mode</Text>
+                {!adminLoggedIn ? (
                   <>
                     <TextInput
                       value={pinInput}
                       onChangeText={setPinInput}
                       secureTextEntry
-                      style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
+                      style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
                       placeholder="PIN"
                       placeholderTextColor={theme.muted}
                     />
-                    <Pressable
-                      onPress={loginAdmin}
-                      style={({ pressed }) => [styles.saveBtn, { backgroundColor: pressed ? theme.muted : theme.accent }]}
-                    >
-                      <Text style={[styles.saveBtnText, { color: theme.accentText }]}>Login</Text>
+                    <Pressable onPress={loginAdmin} style={[styles.saveBtn, { backgroundColor: theme.accent }]}>
+                      <Text style={[styles.saveTxt, { color: theme.accentText }]}>Login</Text>
                     </Pressable>
                   </>
                 ) : (
                   <>
-                    <Text style={[styles.meta, { color: theme.muted }]}>Admin aktiv</Text>
-                    <Text style={[styles.label, { color: theme.muted }]}>Week Start (YYYY-MM-DD)</Text>
-                    <TextInput
-                      value={weekStartInput}
-                      onChangeText={setWeekStartInput}
-                      autoCapitalize="none"
-                      style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
-                    />
-                    {errors.weekStart ? <Text style={[styles.error, { color: theme.danger }]}>{errors.weekStart}</Text> : null}
+                    <Text style={[styles.note, { color: theme.muted }]}>Admin aktiv • Änderungen werden in Firestore gespeichert.</Text>
 
-                    <Text style={[styles.label, { color: theme.muted }]}>City</Text>
+                    <Text style={[styles.subLabel, { color: theme.muted }]}>Week Start (YYYY-MM-DD)</Text>
                     <TextInput
-                      value={cityInput}
-                      onChangeText={setCityInput}
-                      style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
+                      value={scheduleForm.weekStartISO}
+                      onChangeText={(v) => setScheduleForm((p) => ({ ...p, weekStartISO: v.trim() }))}
+                      style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
                     />
-                    {errors.city ? <Text style={[styles.error, { color: theme.danger }]}>{errors.city}</Text> : null}
+                    {inlineErrors.weekStartISO ? <Text style={[styles.err, { color: theme.danger }]}>{inlineErrors.weekStartISO}</Text> : null}
 
-                    <Text style={[styles.cardTitle, { color: theme.text, marginTop: 6 }]}>Globale Wochenzeiten</Text>
+                    <Text style={[styles.subLabel, { color: theme.muted }]}>City</Text>
+                    <TextInput
+                      value={scheduleForm.city}
+                      onChangeText={(v) => setScheduleForm((p) => ({ ...p, city: v }))}
+                      style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+                    />
+                    {inlineErrors.city ? <Text style={[styles.err, { color: theme.danger }]}>{inlineErrors.city}</Text> : null}
+
                     {[
-                      ['dhuhr', 'Dhuhr (Sohar)'],
-                      ['asr', 'Asr'],
-                      ['ishaTaraweeh', 'Isha/Taraweeh'],
+                      ['sohar', 'Sohar'],
+                      ['asr', 'Assr'],
+                      ['ishaTara', 'Ishaa & Taravih'],
                       ['jumma', 'Jumma'],
                     ].map(([key, label]) => (
-                      <View key={key} style={styles.fieldBlock}>
-                        <Text style={[styles.label, { color: theme.muted }]}>{label}</Text>
+                      <View key={key}>
+                        <Text style={[styles.subLabel, { color: theme.muted }]}>{label} (HH:MM)</Text>
                         <TextInput
-                          value={globalInputs[key]}
-                          onChangeText={(v) => {
-                            setGlobalInputs((prev) => ({ ...prev, [key]: v.trim() }));
-                            setErrors((prev) => ({ ...prev, [`global_${key}`]: undefined }));
-                          }}
-                          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
-                          placeholder="HH:MM"
-                          placeholderTextColor={theme.muted}
+                          value={scheduleForm.globalTimes[key]}
+                          onChangeText={(v) =>
+                            setScheduleForm((p) => ({ ...p, globalTimes: { ...p.globalTimes, [key]: v.trim() } }))
+                          }
+                          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
                           maxLength={5}
                         />
-                        {errors[`global_${key}`] ? (
-                          <Text style={[styles.error, { color: theme.danger }]}>{errors[`global_${key}`]}</Text>
-                        ) : null}
+                        {inlineErrors[`g_${key}`] ? <Text style={[styles.err, { color: theme.danger }]}>{inlineErrors[`g_${key}`]}</Text> : null}
                       </View>
                     ))}
 
-                    <Text style={[styles.cardTitle, { color: theme.text, marginTop: 6 }]}>Tageswerte (Ramadan)</Text>
-                    {dayInputs.map((d, idx) => (
-                      <View key={d.dateISO || String(idx)} style={[styles.dayEditCard, { borderColor: theme.inputBorder }]}>
-                        <Text style={[styles.dayTitle, { color: theme.text }]}>{formatDay(addDaysISO(weekStartInput || schedule.weekStartISO, idx))}</Text>
-
-                        <Text style={[styles.label, { color: theme.muted }]}>Sehri-Ende/Tahajjud</Text>
+                    {scheduleForm.days.map((d, i) => (
+                      <View key={`${d.dateISO}_${i}`} style={[styles.dayEditWrap, { borderColor: theme.border }]}>
+                        <Text style={[styles.dayEditTitle, { color: theme.text }]}>{formatDayHeader(addDaysISO(scheduleForm.weekStartISO, i)).date}</Text>
                         <TextInput
-                          value={d.sehriEndTahajjud}
-                          onChangeText={(v) => updateDayInput(idx, 'sehriEndTahajjud', v)}
-                          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
-                          placeholder="HH:MM"
+                          value={d.sehriEnd}
+                          onChangeText={(v) =>
+                            setScheduleForm((p) => ({
+                              ...p,
+                              days: p.days.map((x, idx) => (idx === i ? { ...x, sehriEnd: v.trim() } : x)),
+                            }))
+                          }
+                          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+                          placeholder="Sehri-Ende HH:MM"
                           placeholderTextColor={theme.muted}
                           maxLength={5}
                         />
-                        {errors[`${idx}_sehriEndTahajjud`] ? (
-                          <Text style={[styles.error, { color: theme.danger }]}>{errors[`${idx}_sehriEndTahajjud`]}</Text>
-                        ) : null}
+                        {inlineErrors[`d_${i}_sehri`] ? <Text style={[styles.err, { color: theme.danger }]}>{inlineErrors[`d_${i}_sehri`]}</Text> : null}
 
-                        <Text style={[styles.label, { color: theme.muted }]}>Iftar</Text>
                         <TextInput
                           value={d.iftar}
-                          onChangeText={(v) => updateDayInput(idx, 'iftar', v)}
-                          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.inputBorder, color: theme.text }]}
-                          placeholder="HH:MM"
+                          onChangeText={(v) =>
+                            setScheduleForm((p) => ({
+                              ...p,
+                              days: p.days.map((x, idx) => (idx === i ? { ...x, iftar: v.trim() } : x)),
+                            }))
+                          }
+                          style={[styles.input, { backgroundColor: theme.inputBg, borderColor: theme.border, color: theme.text }]}
+                          placeholder="Iftar HH:MM"
                           placeholderTextColor={theme.muted}
                           maxLength={5}
                         />
-                        {errors[`${idx}_iftar`] ? (
-                          <Text style={[styles.error, { color: theme.danger }]}>{errors[`${idx}_iftar`]}</Text>
-                        ) : null}
+                        {inlineErrors[`d_${i}_iftar`] ? <Text style={[styles.err, { color: theme.danger }]}>{inlineErrors[`d_${i}_iftar`]}</Text> : null}
                       </View>
                     ))}
 
-                    <Pressable
-                      onPress={validateAndSaveSchedule}
-                      style={({ pressed }) => [styles.saveBtn, { backgroundColor: pressed ? theme.muted : theme.accent }]}
-                    >
-                      <Text style={[styles.saveBtnText, { color: theme.accentText }]}>Schedule speichern</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() => setIsAdmin(false)}
-                      style={({ pressed }) => [styles.saveBtn, { backgroundColor: pressed ? theme.muted : theme.accent, marginTop: 8 }]}
-                    >
-                      <Text style={[styles.saveBtnText, { color: theme.accentText }]}>Logout</Text>
+                    <Pressable onPress={saveScheduleToCloud} style={[styles.saveBtn, { backgroundColor: theme.accent }]}>
+                      <Text style={[styles.saveTxt, { color: theme.accentText }]}>Schedule speichern (Cloud)</Text>
                     </Pressable>
                   </>
                 )}
@@ -673,98 +790,106 @@ export default function App() {
           </View>
         </View>
       </Modal>
+
+      {snackbar.visible ? (
+        <View style={[styles.snack, { backgroundColor: snackbar.type === 'ok' ? '#166534' : '#991B1B' }]}>
+          <Text style={styles.snackTxt}>{snackbar.text}</Text>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  scroll: { padding: 16, paddingBottom: 28, gap: 12 },
+  content: { padding: 16, gap: 12, paddingBottom: 30 },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   title: { fontSize: 30, fontWeight: '800' },
-  subtitle: { fontSize: 14, marginTop: -2 },
-  settingsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  settingsIcon: { fontSize: 15 },
-  settingsText: { fontSize: 13, fontWeight: '700' },
-  counterArea: {
-    borderWidth: 1,
-    borderRadius: 28,
-    minHeight: 280,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 5,
-  },
-  countText: { fontSize: 96, fontWeight: '800', lineHeight: 104 },
-  progressWrap: { gap: 8 },
+  subtitle: { fontSize: 14 },
+  settingsBtn: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 },
+  settingsTxt: { fontSize: 13, fontWeight: '700' },
+  counter: { minHeight: 280, borderWidth: 1, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
+  counterText: { fontSize: 96, fontWeight: '800', lineHeight: 102 },
+  progressWrap: { gap: 7 },
   progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 999 },
-  progressText: { textAlign: 'center', fontSize: 13, fontWeight: '600' },
-  resetButton: { borderRadius: 14, paddingVertical: 14, alignItems: 'center', borderWidth: 1 },
-  resetText: { fontSize: 17, fontWeight: '700' },
-  card: {
+  progressFill: { height: '100%' },
+  progressLabel: { textAlign: 'center', fontSize: 13, fontWeight: '600' },
+  buttonRow: { flexDirection: 'row', gap: 10 },
+  mainBtn: { flex: 1, borderRadius: 12, paddingVertical: 13, alignItems: 'center' },
+  mainBtnTxt: { fontSize: 15, fontWeight: '700' },
+  footer: { textAlign: 'center', marginTop: 4, fontSize: 12, fontWeight: '500' },
+
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(2,6,23,0.45)' },
+  modalSheet: {
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
     borderWidth: 1,
-    borderRadius: 20,
+    maxHeight: '92%',
     padding: 12,
     gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 14,
-    elevation: 3,
   },
-  prayerHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { fontSize: 18, fontWeight: '700' },
-  arabic: { fontSize: 14, writingDirection: 'rtl' },
-  meta: { fontSize: 13, fontWeight: '500' },
-  warningBox: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
-  warningText: { fontSize: 12, fontWeight: '700' },
-  smallBtn: { borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
-  smallBtnText: { fontSize: 12, fontWeight: '700' },
-  dayCard: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 4 },
-  dayTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  row: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
-  k: { fontSize: 12, fontWeight: '600' },
-  v: { fontSize: 12, fontWeight: '700' },
-  footer: { textAlign: 'center', marginTop: 2, fontSize: 12, fontWeight: '500' },
+  settingsSheet: {
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: 1,
+    maxHeight: '95%',
+    padding: 12,
+  },
+  modalTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  closeTxt: { fontSize: 14, fontWeight: '700' },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(2,6,23,0.45)', justifyContent: 'flex-end' },
-  modalSheet: {
-    maxHeight: '92%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 1,
-    padding: 14,
-  },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  modalTitle: { fontSize: 22, fontWeight: '800' },
-  closeText: { fontSize: 14, fontWeight: '700' },
+  arabicLine: { fontSize: 12 },
+  prayerTitle: { fontSize: 44, fontWeight: '900', textAlign: 'center', letterSpacing: 0.5 },
+  prayerRange: { textAlign: 'center', fontSize: 20, fontWeight: '700' },
+  currentHint: { borderWidth: 1, borderColor: '#2D2119', borderRadius: 10, padding: 8, gap: 6 },
+  hintText: { fontSize: 12, fontWeight: '700' },
+  smallAction: { borderRadius: 8, paddingVertical: 8, alignItems: 'center' },
+  smallActionTxt: { fontSize: 12, fontWeight: '700' },
+  refreshBtn: { borderWidth: 1, borderRadius: 8, paddingVertical: 7, alignItems: 'center' },
+  refreshTxt: { fontSize: 12, fontWeight: '700' },
+
+  tableRow: { flexDirection: 'row' },
+  leftHeaderCell: { width: 72, minHeight: 62, borderWidth: 1, alignItems: 'center', justifyContent: 'center', padding: 6 },
+  dayHeaderCell: { width: 68, minHeight: 62, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  leftCell: { width: 72, minHeight: 58, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  dayCell: { width: 68, minHeight: 58, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  tableHeaderDate: { fontSize: 20, fontWeight: '900', color: '#111' },
+  tableHeaderSmall: { fontSize: 10, fontWeight: '700', color: '#111', textAlign: 'center' },
+  rowLabel: { fontSize: 11, fontWeight: '700', color: '#111', textAlign: 'center' },
+  rowValue: { fontSize: 30, fontWeight: '900', color: '#111' },
+
+  lowerTable: { marginTop: 10, alignSelf: 'center' },
+  lowerRow: { flexDirection: 'row' },
+  lowerLeft: { width: 160, minHeight: 70, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  lowerRight: { width: 175, minHeight: 70, borderWidth: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  lowerLeftTxt: { fontSize: 34, fontWeight: '900', color: '#111' },
+  lowerRightTxt: { fontSize: 30, fontWeight: '900', color: '#111', textAlign: 'center' },
+  computedMini: { marginTop: 4, fontSize: 10, color: '#222', textAlign: 'center', fontWeight: '600' },
+
+  settingsHeader: { fontSize: 24, fontWeight: '800' },
+  settingsCard: { borderWidth: 1, borderRadius: 14, padding: 10, gap: 8, marginBottom: 10 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  presetsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  presetBtn: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  presetText: { fontSize: 13, fontWeight: '700' },
-  input: {
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
+  label: { fontSize: 16, fontWeight: '700' },
+  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  presetBtn: { borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
+  presetTxt: { fontWeight: '700' },
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 11, paddingVertical: 9, fontSize: 14 },
+  saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+  saveTxt: { fontWeight: '700', fontSize: 14 },
+  note: { fontSize: 12, fontWeight: '600' },
+  subLabel: { fontSize: 12, fontWeight: '700' },
+  err: { fontSize: 11, fontWeight: '700', marginTop: -4 },
+  dayEditWrap: { borderWidth: 1, borderRadius: 10, padding: 8, gap: 6 },
+  dayEditTitle: { fontSize: 13, fontWeight: '700' },
+
+  snack: {
+    position: 'absolute',
+    bottom: 18,
+    left: 16,
+    right: 16,
+    borderRadius: 10,
     paddingVertical: 10,
-    fontSize: 14,
+    alignItems: 'center',
   },
-  saveBtn: { borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
-  saveBtnText: { fontSize: 14, fontWeight: '700' },
-  label: { fontSize: 12, fontWeight: '600' },
-  error: { fontSize: 11, fontWeight: '700', marginTop: -2 },
-  fieldBlock: { gap: 5 },
-  dayEditCard: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 5 },
+  snackTxt: { color: '#fff', fontWeight: '700' },
 });
