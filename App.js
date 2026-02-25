@@ -55,10 +55,10 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
+      <StatusBar style="dark" />
       <View style={styles.container}>
-        <Text style={styles.title}>Tehmoors Tasbeeh Zähler</Text>
-        <Text style={styles.subtitle}>Tap the counter area to increase</Text>
+        <Text style={styles.title}>Tasbeeh Zähler</Text>
+        <Text style={styles.subtitle}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
 
         <Pressable
           style={({ pressed }) => [
@@ -68,7 +68,7 @@ export default function App() {
           onPress={incrementCount}
         >
           {isLoading ? (
-            <ActivityIndicator size="large" color="#ffffff" />
+            <ActivityIndicator size="large" color="#111111" />
           ) : (
             <Text style={styles.countText}>{count}</Text>
           )}
@@ -88,7 +88,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: '#FFFFFF',
   },
   container: {
     flex: 1,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   },
   title: {
     marginTop: 8,
-    color: '#E2E8F0',
+    color: '#111111',
     fontSize: 30,
     fontWeight: '700',
     letterSpacing: 0.2,
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 8,
     marginBottom: 24,
-    color: '#94A3B8',
+    color: '#444444',
     fontSize: 15,
   },
   counterArea: {
@@ -114,22 +114,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxHeight: 520,
     borderRadius: 28,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#E5E5E5',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#D4D4D4',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 8,
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
   },
   counterAreaPressed: {
-    backgroundColor: '#273449',
+    backgroundColor: '#DADADA',
   },
   countText: {
-    color: '#F8FAFC',
+    color: '#000000',
     fontSize: 96,
     fontWeight: '800',
     lineHeight: 102,
@@ -139,13 +139,13 @@ const styles = StyleSheet.create({
     marginTop: 24,
     width: '100%',
     borderRadius: 16,
-    backgroundColor: '#EF4444',
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
   },
   resetPressed: {
-    backgroundColor: '#DC2626',
+    backgroundColor: '#1F1F1F',
   },
   resetText: {
     color: '#FFFFFF',
