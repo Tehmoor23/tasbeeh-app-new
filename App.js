@@ -24,6 +24,7 @@ const STORAGE_KEYS = {
   darkMode: '@tasbeeh_darkmode',
   scheduleCache: '@tasbeeh_schedule',
   adminPin: '@tasbeeh_admin_pin',
+  adminSession: '@tasbeeh_admin_session',
 };
 
 const DEFAULT_GOAL = 100;
@@ -297,11 +298,12 @@ export default function App() {
   useEffect(() => {
     const loadLocal = async () => {
       try {
-        const [countRaw, goalRaw, darkRaw, pinRaw, scheduleRaw] = await Promise.all([
+        const [countRaw, goalRaw, darkRaw, pinRaw, adminSessionRaw, scheduleRaw] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.count),
           AsyncStorage.getItem(STORAGE_KEYS.goal),
           AsyncStorage.getItem(STORAGE_KEYS.darkMode),
           AsyncStorage.getItem(STORAGE_KEYS.adminPin),
+          AsyncStorage.getItem(STORAGE_KEYS.adminSession),
           AsyncStorage.getItem(STORAGE_KEYS.scheduleCache),
         ]);
 
@@ -325,6 +327,7 @@ export default function App() {
         }
 
         if (pinRaw) setAdminPin(pinRaw);
+        if (adminSessionRaw === '1') setIsAdmin(true);
 
         if (scheduleRaw) {
           const parsedSchedule = normalizeSchedule(JSON.parse(scheduleRaw));
@@ -349,15 +352,17 @@ export default function App() {
 
   const pullScheduleFromCloud = async () => {
     try {
-      const { db, doc, getDoc } = await initFirestore();
+      const { db, doc, getDoc, setDoc } = await initFirestore();
       const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC);
       const snap = await getDoc(ref);
 
       if (!snap.exists()) {
         const seed = createDefaultSchedule();
+        // Firestore remains source of truth; seed the document if missing.
+        await setDoc(ref, seed, { merge: true });
         setSchedule(seed);
         setScheduleForm(seed);
-        setScheduleState('cached');
+        setScheduleState('cloud');
         await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(seed));
         return;
       }
@@ -395,8 +400,10 @@ export default function App() {
             setScheduleState('cloud');
             await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloudSchedule));
           },
-          () => {
+          (error) => {
+            console.warn('Snapshot listener error:', error);
             setScheduleState((prev) => (prev === 'cloud' ? prev : 'cached'));
+            showSnack('Offline / cached', 'error');
           },
         );
       } catch {
@@ -449,13 +456,18 @@ export default function App() {
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
 
-  const adminLogin = () => {
+  const adminLogin = async () => {
     if (pinInput.trim() !== adminPin) {
       Alert.alert('Fehler', 'PIN ist nicht korrekt.');
       return;
     }
     setIsAdmin(true);
     setPinInput('');
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.adminSession, '1');
+    } catch (error) {
+      console.warn('Failed to persist admin session:', error);
+    }
   };
 
   const updateFormGlobal = (key, value) => {
@@ -763,6 +775,17 @@ export default function App() {
 
                     <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={saveSchedule}>
                       <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schedule speichern</Text>
+                    </Pressable>
+
+                    <Pressable
+                      style={[styles.saveBtn, { backgroundColor: theme.button }]}
+                      onPress={async () => {
+                        setIsAdmin(false);
+                        await AsyncStorage.setItem(STORAGE_KEYS.adminSession, '0');
+                        showSnack('Logged out');
+                      }}
+                    >
+                      <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Logout</Text>
                     </Pressable>
                   </>
                 )}
