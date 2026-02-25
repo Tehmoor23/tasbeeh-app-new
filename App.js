@@ -7,6 +7,7 @@ import {
   Animated,
   Modal,
   Pressable,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -364,6 +365,7 @@ export default function App() {
         setScheduleForm(seed);
         setScheduleState('cloud');
         await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(seed));
+        console.log('reloaded and schedule loaded', seed);
         return;
       }
 
@@ -372,6 +374,7 @@ export default function App() {
       setScheduleForm(cloudSchedule);
       setScheduleState('cloud');
       await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloudSchedule));
+      console.log('reloaded and schedule loaded', cloudSchedule);
     } catch (error) {
       console.warn('Cloud load failed, staying on cache:', error);
       setScheduleState('cached');
@@ -524,14 +527,43 @@ export default function App() {
     const normalized = normalizeSchedule(scheduleForm);
 
     try {
-      const { db, doc, setDoc } = await initFirestore();
-      await setDoc(doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC), normalized);
-      setSchedule(normalized);
-      setScheduleForm(normalized);
+      const { db, doc, setDoc, getDoc } = await initFirestore();
+      const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC);
+
+      console.log('save payload', normalized);
+      await setDoc(ref, normalized, { merge: true });
+      console.log('saved ok');
+
+      const verifySnap = await getDoc(ref);
+      if (!verifySnap.exists()) {
+        throw new Error('Verification failed: document missing after save.');
+      }
+
+      const verifiedData = normalizeSchedule(verifySnap.data());
+      const expected = JSON.stringify(normalized);
+      const actual = JSON.stringify(verifiedData);
+      console.log('verified', verifiedData);
+
+      if (expected !== actual) {
+        throw new Error('Verification failed: saved data mismatch.');
+      }
+
+      setSchedule(verifiedData);
+      setScheduleForm(verifiedData);
       setScheduleState('cloud');
-      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(normalized));
+      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(verifiedData));
+
       await successHaptic();
-      showSnack('Saved ✓');
+      showSnack('Gespeichert ✓ – wird aktualisiert ...');
+
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.reload) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 300);
+      } else {
+        await pullScheduleFromCloud();
+        console.log('reloaded and schedule loaded');
+      }
     } catch (error) {
       console.warn('Failed to save cloud schedule:', error);
       showSnack('Save failed', 'error');
@@ -774,7 +806,7 @@ export default function App() {
                     ))}
 
                     <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={saveSchedule}>
-                      <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schedule speichern</Text>
+                      <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schedule speichern und aktualisieren</Text>
                     </Pressable>
 
                     <Pressable
