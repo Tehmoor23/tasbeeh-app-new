@@ -45,6 +45,14 @@ const firebaseConfig = {
   appId: 'YOUR_APP_ID',
 };
 
+
+const hasFirebasePlaceholder = (value) => typeof value !== 'string' || value.includes('YOUR_');
+
+const isFirebaseConfigValid = () => !(
+  hasFirebasePlaceholder(firebaseConfig.apiKey) ||
+  hasFirebasePlaceholder(firebaseConfig.projectId)
+);
+
 /*
 Firestore Rules guidance (configure in Firebase console):
 match /databases/{database}/documents {
@@ -245,12 +253,19 @@ export default function App() {
 
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'ok' });
 
+  const snapshotAlertShownRef = useRef(false);
+  const pendingWebReloadRef = useRef(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const theme = isDarkMode ? THEME.dark : THEME.light;
 
   const today = new Date();
   const todayISO = toISO(today);
   const todayWeekday = DAY_NAMES_EN[today.getDay()];
+
+  const scheduleWeekDates = useMemo(() => {
+    const start = parseISO(scheduleForm.weekStartISO) ? scheduleForm.weekStartISO : createDefaultSchedule().weekStartISO;
+    return Array.from({ length: 7 }, (_, i) => addDaysISO(start, i));
+  }, [scheduleForm.weekStartISO]);
 
   const todayDaily = schedule.daily[todayISO] || { sehriEnd: '', iftar: '' };
   const fajrTime = addMinutes(todayDaily.sehriEnd, 20);
@@ -375,6 +390,11 @@ export default function App() {
       setScheduleState('cloud');
       await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloudSchedule));
       console.log('reloaded and schedule loaded', cloudSchedule);
+
+      if (pendingWebReloadRef.current && Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.reload) {
+        pendingWebReloadRef.current = false;
+        setTimeout(() => window.location.reload(), 300);
+      }
     } catch (error) {
       console.warn('Cloud load failed, staying on cache:', error);
       setScheduleState('cached');
@@ -407,6 +427,10 @@ export default function App() {
             console.warn('Snapshot listener error:', error);
             setScheduleState((prev) => (prev === 'cloud' ? prev : 'cached'));
             showSnack('Offline / cached', 'error');
+            if (!snapshotAlertShownRef.current) {
+              snapshotAlertShownRef.current = true;
+              Alert.alert('Live Sync failed: Offline/Cached', error?.message || 'Unknown snapshot error');
+            }
           },
         );
       } catch {
@@ -506,7 +530,7 @@ export default function App() {
       if (!isValidTime(scheduleForm.globals[k])) nextErrors[`g_${k}`] = 'HH:MM';
     });
 
-    const toCheck = [todayISO, ...Array.from({ length: 7 }, (_, i) => addDaysISO(todayISO, i))];
+    const toCheck = scheduleWeekDates;
     toCheck.forEach((dateISO) => {
       const row = scheduleForm.daily[dateISO] || { sehriEnd: '', iftar: '' };
       if (!isValidTime(row.sehriEnd)) nextErrors[`d_${dateISO}_sehriEnd`] = 'HH:MM';
@@ -521,52 +545,39 @@ export default function App() {
     if (!isAdmin) return;
     if (!validateForm()) {
       showSnack('Save failed', 'error');
+      Alert.alert('Speichern fehlgeschlagen', 'Bitte Zeitformat HH:MM prüfen.');
+      return;
+    }
+
+    if (!isFirebaseConfigValid()) {
+      Alert.alert('Firebase config fehlt', 'Bitte Firebase projectId/apiKey setzen.');
       return;
     }
 
     const normalized = normalizeSchedule(scheduleForm);
 
     try {
-      const { db, doc, setDoc, getDoc } = await initFirestore();
+      const { db, doc, setDoc } = await initFirestore();
       const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC);
 
       console.log('save payload', normalized);
       await setDoc(ref, normalized, { merge: true });
       console.log('saved ok');
 
-      const verifySnap = await getDoc(ref);
-      if (!verifySnap.exists()) {
-        throw new Error('Verification failed: document missing after save.');
-      }
-
-      const verifiedData = normalizeSchedule(verifySnap.data());
-      const expected = JSON.stringify(normalized);
-      const actual = JSON.stringify(verifiedData);
-      console.log('verified', verifiedData);
-
-      if (expected !== actual) {
-        throw new Error('Verification failed: saved data mismatch.');
-      }
-
-      setSchedule(verifiedData);
-      setScheduleForm(verifiedData);
-      setScheduleState('cloud');
-      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(verifiedData));
+      await pullScheduleFromCloud();
 
       await successHaptic();
       showSnack('Gespeichert ✓ – wird aktualisiert ...');
+      Alert.alert('Gespeichert', 'Schedule ist jetzt live');
 
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.reload) {
-        setTimeout(() => {
-          window.location.reload();
-        }, 300);
-      } else {
+      if (Platform.OS === 'web') {
+        pendingWebReloadRef.current = true;
         await pullScheduleFromCloud();
-        console.log('reloaded and schedule loaded');
       }
     } catch (error) {
       console.warn('Failed to save cloud schedule:', error);
       showSnack('Save failed', 'error');
+      Alert.alert('Speichern fehlgeschlagen', error?.message || 'Unknown error');
     }
   };
 
@@ -768,21 +779,21 @@ export default function App() {
 
                     <Text style={[styles.fieldLabel, { color: theme.muted }]}>Today Sehri-Ende/Tahajjud (HH:MM)</Text>
                     <TextInput
-                      value={scheduleForm.daily[todayISO]?.sehriEnd || ''}
-                      onChangeText={(v) => updateFormDaily(todayISO, 'sehriEnd', v)}
+                      value={scheduleForm.daily[scheduleWeekDates[0]]?.sehriEnd || ''}
+                      onChangeText={(v) => updateFormDaily(scheduleWeekDates[0], 'sehriEnd', v)}
                       style={[styles.input, { borderColor: theme.border, backgroundColor: theme.bg, color: theme.text }]}
                     />
-                    {errors[`d_${todayISO}_sehriEnd`] ? <Text style={[styles.errorText, { color: theme.danger }]}>{errors[`d_${todayISO}_sehriEnd`]}</Text> : null}
+                    {errors[`d_${scheduleWeekDates[0]}_sehriEnd`] ? <Text style={[styles.errorText, { color: theme.danger }]}>{errors[`d_${scheduleWeekDates[0]}_sehriEnd`]}</Text> : null}
 
                     <Text style={[styles.fieldLabel, { color: theme.muted }]}>Today Iftar (HH:MM)</Text>
                     <TextInput
-                      value={scheduleForm.daily[todayISO]?.iftar || ''}
-                      onChangeText={(v) => updateFormDaily(todayISO, 'iftar', v)}
+                      value={scheduleForm.daily[scheduleWeekDates[0]]?.iftar || ''}
+                      onChangeText={(v) => updateFormDaily(scheduleWeekDates[0], 'iftar', v)}
                       style={[styles.input, { borderColor: theme.border, backgroundColor: theme.bg, color: theme.text }]}
                     />
-                    {errors[`d_${todayISO}_iftar`] ? <Text style={[styles.errorText, { color: theme.danger }]}>{errors[`d_${todayISO}_iftar`]}</Text> : null}
+                    {errors[`d_${scheduleWeekDates[0]}_iftar`] ? <Text style={[styles.errorText, { color: theme.danger }]}>{errors[`d_${scheduleWeekDates[0]}_iftar`]}</Text> : null}
 
-                    {Array.from({ length: 7 }, (_, i) => addDaysISO(todayISO, i)).map((dateISO) => (
+                    {scheduleWeekDates.map((dateISO) => (
                       <View key={dateISO} style={[styles.dayEditBox, { borderColor: theme.border }]}>
                         <Text style={[styles.dayEditTitle, { color: theme.text }]}>{dateISO}</Text>
                         <TextInput
