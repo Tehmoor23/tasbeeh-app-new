@@ -57,7 +57,7 @@ export default function App() {
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <View style={styles.container}>
-        <Text style={styles.title}>Tasbeeh Zähler</Text>
+        <Text style={styles.title}>Munsooras Tasbeeh Zähler</Text>
         <Text style={styles.subtitle}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
 
         <Pressable
