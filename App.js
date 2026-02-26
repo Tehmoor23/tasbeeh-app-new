@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
