@@ -244,6 +244,8 @@ export default function App() {
   const [selectedTanzeem, setSelectedTanzeem] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState('');
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsAttendance, setStatsAttendance] = useState(null);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
@@ -387,6 +389,77 @@ export default function App() {
     };
   }, [now, timesToday]);
 
+  useEffect(() => {
+    if (activeTab !== 'stats') return;
+
+    let isMounted = true;
+    let intervalId;
+
+    const loadAttendance = async () => {
+      setStatsLoading(true);
+      try {
+        const attendance = await getDocData('attendance_daily', todayISO);
+        if (isMounted) {
+          setStatsAttendance(attendance);
+        }
+      } catch {
+        if (isMounted) {
+          setToast('Datenbankfehler – bitte Internet prüfen');
+        }
+      } finally {
+        if (isMounted) {
+          setStatsLoading(false);
+        }
+      }
+    };
+
+    loadAttendance();
+    intervalId = setInterval(loadAttendance, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, [activeTab, todayISO]);
+
+  const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
+
+  const statsView = useMemo(() => {
+    if (!statsAttendance?.byPrayer || !statsPrayerKey) return null;
+
+    const prayerData = statsAttendance.byPrayer[statsPrayerKey] || {};
+    const tanzeemData = prayerData.tanzeem || {};
+    const tanzeemKeys = ['ansar', 'khuddam', 'atfal'];
+
+    const tanzeemTotals = tanzeemKeys.reduce((acc, tanzeem) => {
+      const majlisMap = tanzeemData[tanzeem]?.majlis || {};
+      acc[tanzeem] = Object.values(majlisMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
+      return acc;
+    }, {});
+
+    const topMajlisMap = {};
+    tanzeemKeys.forEach((tanzeem) => {
+      const majlisMap = tanzeemData[tanzeem]?.majlis || {};
+      Object.entries(majlisMap).forEach(([locationKey, value]) => {
+        topMajlisMap[locationKey] = (topMajlisMap[locationKey] || 0) + (Number(value) || 0);
+      });
+    });
+
+    const topMajlis = Object.entries(topMajlisMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+
+    const guestTotal = Number(prayerData.guest) || 0;
+    const totalAttendance = guestTotal + Object.values(tanzeemTotals).reduce((sum, value) => sum + value, 0);
+
+    return {
+      guestTotal,
+      tanzeemTotals,
+      topMajlis,
+      totalAttendance,
+    };
+  }, [statsAttendance, statsPrayerKey]);
+
   const countAttendance = async (kind, locationName) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
@@ -520,8 +593,31 @@ export default function App() {
   const renderStats = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Stats</Text>
-        <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Gebetsanwesenheit heute</Text>
+        <Text style={[styles.noteText, { color: theme.text }]}>Gebet: {statsPrayerKey || '—'}</Text>
+
+        {statsLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+
+        {!statsAttendance?.byPrayer || !statsView ? (
+          <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
+        ) : (
+          <>
+            <Text style={[styles.noteText, { color: theme.text }]}>Gesamt: {statsView.totalAttendance}</Text>
+            <Text style={[styles.noteText, { color: theme.text }]}>Gäste: {statsView.guestTotal}</Text>
+            <Text style={[styles.noteText, { color: theme.text }]}>Ansar: {statsView.tanzeemTotals.ansar || 0}</Text>
+            <Text style={[styles.noteText, { color: theme.text }]}>Khuddam: {statsView.tanzeemTotals.khuddam || 0}</Text>
+            <Text style={[styles.noteText, { color: theme.text }]}>Atfal: {statsView.tanzeemTotals.atfal || 0}</Text>
+
+            <Text style={[styles.noteText, { color: theme.text, marginTop: 4 }]}>Top 3 Majlises:</Text>
+            {statsView.topMajlis.length === 0 ? (
+              <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
+            ) : (
+              statsView.topMajlis.map(([locationKey, count]) => (
+                <Text key={locationKey} style={[styles.noteText, { color: theme.text }]}>{locationKey}: {count}</Text>
+              ))
+            )}
+          </>
+        )}
       </View>
     </ScrollView>
   );
