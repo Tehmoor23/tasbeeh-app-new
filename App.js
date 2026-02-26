@@ -49,7 +49,7 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const TAB_ITEMS = [
-  { key: 'tasbeeh', label: 'Tasbeeh' },
+  { key: 'tasbeeh', label: 'Dhikr' },
   { key: 'gebetsplan', label: 'Gebetszeiten' },
   { key: 'terminal', label: 'Anwesenheit' },
   { key: 'stats', label: 'Stats' },
@@ -606,9 +606,8 @@ export default function App() {
   };
 
   const renderTasbeeh = () => (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Tasbeeh</Text><Text style={[styles.titleArabic, { color: theme.muted }]}>تسبيح</Text></View></View>
-      <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
+    <ScrollView contentContainerStyle={[styles.content, styles.tasbeehContent]} showsVerticalScrollIndicator={false}>
+      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Dhikr</Text><Text style={[styles.titleArabic, { color: theme.muted }]}>ذِكر</Text></View></View>
       <View style={styles.mainFlex}>
         <Pressable style={withPressEffect(styles.counterPressable)} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
           <Animated.View style={[styles.counter, { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] }]}>
@@ -805,7 +804,7 @@ export default function App() {
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Tasbeeh Goal</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Dhikr Ziel</Text>
         <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={({ pressed }) => [[styles.presetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
         <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
@@ -855,9 +854,10 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
-  title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
+  title: { fontSize: 31, fontWeight: '800', textAlign: 'center', letterSpacing: 0.4 },
   subtitle: { fontSize: 14, textAlign: 'center' },
-  titleArabic: { fontSize: 20, textAlign: 'center', marginTop: 2 },
+  titleArabic: { fontSize: 16, textAlign: 'center', marginTop: 0 },
+  tasbeehContent: { paddingTop: 8, gap: 8 },
   mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
   counterPressable: { flex: 1 },
   counter: { flex: 1, borderRadius: 26, borderWidth: 1, minHeight: 340, alignItems: 'center', justifyContent: 'center' },
