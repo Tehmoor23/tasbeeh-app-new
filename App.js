@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -277,6 +278,7 @@ export default function App() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
+  const visitorCounterRef = useRef(0);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = useMemo(() => {
@@ -535,6 +537,15 @@ export default function App() {
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
+      visitorCounterRef.current += 1;
+      console.log('ATTENDANCE LOG:', {
+        visitorNumber: visitorCounterRef.current,
+        timestamp: new Date().toISOString(),
+        prayer: prayerWindow.prayerKey,
+        tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
+        majlis: kind === 'guest' ? null : toLocationKey(locationName),
+        platform: Platform.OS,
+      });
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
