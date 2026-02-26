@@ -33,6 +33,7 @@ const FORCE_TIME = null;
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
+  'Bad Vilbel',
   'Berg',
   'Bornheim',
   'Eschersheim',
@@ -67,6 +68,7 @@ const PRAYER_LABELS = {
 const MAJLIS_LABELS = {
   baitus_sabuh_nord: 'Baitus Sabuh Nord',
   baitus_sabuh_sued: 'Baitus Sabuh Süd',
+  bad_vilbel: 'Bad Vilbel',
   berg: 'Berg',
   bornheim: 'Bornheim',
   eschersheim: 'Eschersheim',
