@@ -23,10 +23,9 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_GOAL = 100;
-const GOAL_PRESETS = [33, 99, 100, 1000];
+const GOAL_PRESETS = [33, 100, 300, 1000];
 const CITY = 'Bait-Us-Sabuh';
-// const FORCE_TIME = '13:05'; // development override, set null for real time
-const FORCE_TIME = null; // e.g. '13:05' for development testing
+const FORCE_TIME = '13:05'; // development override, set null for real time
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -48,10 +47,17 @@ const TERMINAL_LOCATIONS = [
 const TAB_ITEMS = [
   { key: 'tasbeeh', label: 'Tasbeeh' },
   { key: 'gebetsplan', label: 'Gebetsplan' },
-  { key: 'terminal', label: 'Gebetsanwesenheit' },
+  { key: 'terminal', label: 'Anwesenheit' },
   { key: 'stats', label: 'Stats' },
-  { key: 'settings', label: 'Settings' },
 ];
+
+const PRAYER_LABELS = {
+  fajr: 'Fajr',
+  sohar: 'Sohar',
+  asr: 'Asr',
+  maghrib: 'Maghrib',
+  ishaa: 'Ishaa & Taravih',
+};
 
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyC_Kz1Cxs-HQ5G994mBztV_ADlAHYsgDKs',
@@ -424,6 +430,7 @@ export default function App() {
   }, [activeTab, todayISO]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
+  const statsPrayerLabel = PRAYER_LABELS[statsPrayerKey] || '—';
 
   const statsView = useMemo(() => {
     if (!statsAttendance?.byPrayer || !statsPrayerKey) return null;
@@ -542,6 +549,11 @@ export default function App() {
 
   const renderTerminal = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={[styles.terminalBanner, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.terminalBannerTitle, { color: theme.text }]}>Gebetsanwesenheit (عبادت حاضری)</Text>
+        <Text style={[styles.terminalBannerSubtitle, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
+      </View>
+
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border, padding: 16 }]}>
         {prayerWindow.isActive ? (
           <>
@@ -562,6 +574,7 @@ export default function App() {
       {prayerWindow.isActive ? terminalMode === 'tanzeem' ? (
         <>
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
+          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
           <View style={styles.tanzeemRow}>
             {['ansar', 'khuddam', 'atfal'].map((tanzeem) => (
               <Pressable key={tanzeem} style={[styles.tanzeemBtn, { backgroundColor: theme.button }]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
@@ -569,11 +582,14 @@ export default function App() {
               </Pressable>
             ))}
           </View>
-          <Pressable style={[styles.bigTerminalBtn, { backgroundColor: theme.button }]} onPress={() => countAttendance('guest')}><Text style={[styles.bigTerminalText, { color: theme.buttonText }]}>Gast</Text></Pressable>
+          <Pressable onPress={() => countAttendance('guest')} style={styles.guestLinkWrap}>
+            <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
+          </Pressable>
         </>
       ) : (
         <>
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
           <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
@@ -593,33 +609,81 @@ export default function App() {
 
   const renderStats = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Gebetsanwesenheit heute</Text>
-        <Text style={[styles.noteText, { color: theme.text }]}>Gebet: {statsPrayerKey || '—'}</Text>
+      <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Heutige Gebetsstatistik</Text>
+        <Text style={[styles.statsHeaderSub, { color: theme.muted }]}>Gebet: {statsPrayerLabel}</Text>
+      </View>
 
-        {statsLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+      {statsLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
 
-        {!statsAttendance?.byPrayer || !statsView ? (
+      {!statsAttendance?.byPrayer || !statsView ? (
+        <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
-        ) : (
-          <>
-            <Text style={[styles.noteText, { color: theme.text }]}>Gesamt: {statsView.totalAttendance}</Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>Gäste: {statsView.guestTotal}</Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>Ansar: {statsView.tanzeemTotals.ansar || 0}</Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>Khuddam: {statsView.tanzeemTotals.khuddam || 0}</Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>Atfal: {statsView.tanzeemTotals.atfal || 0}</Text>
+        </View>
+      ) : (
+        <>
+          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
+            <Text style={[styles.statsBigValue, { color: theme.text }]}>{statsView.totalAttendance}</Text>
+          </View>
 
-            <Text style={[styles.noteText, { color: theme.text, marginTop: 4 }]}>Top 3 Majlises:</Text>
+          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gäste vs Mitglieder</Text>
+            <View style={styles.splitRow}>
+              <View style={styles.splitCol}>
+                <Text style={[styles.splitLabel, { color: theme.muted }]}>Gäste</Text>
+                <Text style={[styles.splitValue, { color: theme.text }]}>{statsView.guestTotal}</Text>
+              </View>
+              <View style={[styles.splitDivider, { backgroundColor: theme.border }]} />
+              <View style={styles.splitCol}>
+                <Text style={[styles.splitLabel, { color: theme.muted }]}>Mitglieder</Text>
+                <Text style={[styles.splitValue, { color: theme.text }]}>{statsView.totalAttendance - statsView.guestTotal}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top 3 Majlises</Text>
             {statsView.topMajlis.length === 0 ? (
               <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
             ) : (
               statsView.topMajlis.map(([locationKey, count]) => (
-                <Text key={locationKey} style={[styles.noteText, { color: theme.text }]}>{locationKey}: {count}</Text>
+                <View key={locationKey} style={[styles.topMajlisRow, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.noteText, { color: theme.text, textTransform: 'capitalize' }]}>{locationKey.replace(/_/g, ' ')}</Text>
+                  <Text style={[styles.noteText, { color: theme.text, fontWeight: '800' }]}>{count}</Text>
+                </View>
               ))
             )}
-          </>
-        )}
-      </View>
+          </View>
+
+          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
+            {(() => {
+              const prayerKeys = ['fajr', 'sohar', 'asr', 'maghrib', 'ishaa'];
+              const totals = prayerKeys.map((prayerKey) => {
+                const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
+                const guest = Number(prayer.guest) || 0;
+                const tanzeem = prayer.tanzeem || {};
+                const members = ['ansar', 'khuddam', 'atfal'].reduce((sum, tanzeemKey) => {
+                  const majlis = tanzeem[tanzeemKey]?.majlis || {};
+                  return sum + Object.values(majlis).reduce((x, y) => x + (Number(y) || 0), 0);
+                }, 0);
+                return { prayerKey, total: guest + members };
+              });
+              const maxTotal = Math.max(1, ...totals.map((item) => item.total));
+              return totals.map(({ prayerKey, total }) => (
+                <View key={prayerKey} style={styles.barRow}>
+                  <Text style={[styles.barLabel, { color: theme.text }]}>{PRAYER_LABELS[prayerKey]}</Text>
+                  <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
+                    <View style={[styles.barFill, { backgroundColor: theme.button, width: `${(total / maxTotal) * 100}%` }]} />
+                  </View>
+                  <Text style={[styles.barValue, { color: theme.text }]}>{total}</Text>
+                </View>
+              ));
+            })()}
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 
@@ -637,11 +701,24 @@ export default function App() {
     </ScrollView>
   );
 
-  const body = activeTab === 'tasbeeh' ? renderTasbeeh() : activeTab === 'gebetsplan' ? renderPrayer() : activeTab === 'terminal' ? renderTerminal() : activeTab === 'stats' ? renderStats() : renderSettings();
+  const body = activeTab === 'tasbeeh'
+    ? renderTasbeeh()
+    : activeTab === 'gebetsplan'
+      ? renderPrayer()
+      : activeTab === 'terminal'
+        ? renderTerminal()
+        : activeTab === 'stats'
+          ? renderStats()
+          : renderSettings();
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <View style={styles.topSettingsRow}>
+        <Pressable style={[styles.settingsFab, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => setActiveTab(activeTab === 'settings' ? 'tasbeeh' : 'settings')}>
+          <Text style={[styles.settingsFabText, { color: theme.text }]}>{activeTab === 'settings' ? '←' : '⚙️'}</Text>
+        </Pressable>
+      </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
@@ -661,7 +738,10 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
+  content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16, paddingTop: 8 },
+  topSettingsRow: { alignItems: 'flex-end', paddingHorizontal: 16, paddingTop: 8 },
+  settingsFab: { width: 34, height: 34, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  settingsFabText: { fontSize: 16, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
@@ -702,8 +782,31 @@ const styles = StyleSheet.create({
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
+  terminalBanner: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  terminalBannerTitle: { textAlign: 'center', fontSize: 20, fontWeight: '800', letterSpacing: 0.2 },
+  terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
+  urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
+  guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
+  guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  statsHeaderCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  statsHeaderTitle: { fontSize: 24, fontWeight: '800' },
+  statsHeaderSub: { marginTop: 2, fontSize: 13, fontWeight: '600' },
+  statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
+  statsCardTitle: { fontSize: 13, fontWeight: '700' },
+  statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
+  splitRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center' },
+  splitCol: { flex: 1, alignItems: 'center' },
+  splitLabel: { fontSize: 12, fontWeight: '600' },
+  splitValue: { fontSize: 24, fontWeight: '800', marginTop: 2 },
+  splitDivider: { width: 1, alignSelf: 'stretch' },
+  topMajlisRow: { borderBottomWidth: 1, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  barRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barLabel: { width: 76, fontSize: 12, fontWeight: '700' },
+  barTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
+  barFill: { height: '100%', borderRadius: 999 },
+  barValue: { width: 30, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridText: { textAlign: 'center', fontWeight: '700' },
