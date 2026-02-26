@@ -489,7 +489,7 @@ export default function App() {
     });
 
     const guestTotal = Number(prayerData.guest) || 0;
-    const totalAttendance = guestTotal + Object.values(tanzeemTotals).reduce((sum, value) => sum + value, 0);
+    const totalAttendance = Object.values(tanzeemTotalsToday).reduce((sum, value) => sum + value, 0);
 
     return {
       guestTotal,
