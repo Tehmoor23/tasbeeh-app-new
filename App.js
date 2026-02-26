@@ -27,7 +27,7 @@ const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 // const FORCE_TIME = null;
-const FORCE_TIME = '17:01'; // development override, set null for real time
+const FORCE_TIME = '19:31'; // development override, set null for real time
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
