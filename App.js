@@ -1,5 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,6 +17,19 @@ import {
   View,
   Vibration,
 } from 'react-native';
+
+const firebaseConfig = {
+    apiKey: "AIzaSyC_Kz1Cxs-HQ5G994mBztV_ADlAHYsgDKs",
+    authDomain: "tasbeeh-1e356.firebaseapp.com",
+    projectId: "tasbeeh-1e356",
+    storageBucket: "tasbeeh-1e356.firebasestorage.app",
+    messagingSenderId: "839190734965",
+    appId: "1:839190734965:web:6bef9b34edf1f0b84cb03c",
+    measurementId: "G-908CPHGR56"
+  };
+
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
