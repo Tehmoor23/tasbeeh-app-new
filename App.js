@@ -786,7 +786,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
-  topSettingsOverlay: { position: 'absolute', top: 36, right: 16, zIndex: 20 },
+  topSettingsOverlay: { position: 'absolute', top: 39, right: 16, zIndex: 20 },
   settingsFab: { width: 30, height: 30, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   settingsFabText: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
   prayerValue: { fontSize: 20, fontWeight: '700' },
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
-  section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10 },
+  section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
