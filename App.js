@@ -25,14 +25,29 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
+const FORCE_TIME = null; // e.g. '13:05' for development testing
 const TERMINAL_LOCATIONS = [
-  'Baitus Sabuh Nord', 'Baitus Sabuh Süd', 'Berg', 'Bornheim', 'Eschersheim', 'Griesheim', 'Ginnheim', 'Goldstein',
-  'Hausen', 'Höchst', 'Nied', 'Nordweststadt', 'Nuur Moschee', 'Riedberg', 'Rödelheim', 'Zeilsheim',
+  'Baitus Sabuh Nord',
+  'Baitus Sabuh Süd',
+  'Berg',
+  'Bornheim',
+  'Eschersheim',
+  'Griesheim',
+  'Ginnheim',
+  'Goldstein',
+  'Hausen',
+  'Höchst',
+  'Nied',
+  'Nordweststadt',
+  'Nuur Moschee',
+  'Riedberg',
+  'Rödelheim',
+  'Zeilsheim',
 ];
 const TAB_ITEMS = [
   { key: 'tasbeeh', label: 'Tasbeeh' },
   { key: 'gebetsplan', label: 'Gebetsplan' },
-  { key: 'terminal', label: 'Terminal' },
+  { key: 'terminal', label: 'Gebetsanwesenheit' },
   { key: 'stats', label: 'Stats' },
   { key: 'settings', label: 'Settings' },
 ];
@@ -195,7 +210,15 @@ async function setDocData(collection, id, data, merge = true) {
   if (!res.ok && res.status !== 409) throw new Error('Firestore write failed');
 }
 
-const toLocationKey = (name) => name.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
+const toLocationKey = (name) => name
+  .toLowerCase()
+  .replace(/ä/g, 'ae')
+  .replace(/ö/g, 'oe')
+  .replace(/ü/g, 'ue')
+  .replace(/ß/g, 'ss')
+  .replace(/[^a-z0-9\s]/g, '')
+  .trim()
+  .replace(/\s+/g, '_');
 
 const getNextPrayer = (now, timesToday) => {
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -217,18 +240,23 @@ export default function App() {
   const [goal, setGoal] = useState(DEFAULT_GOAL);
   const [goalInput, setGoalInput] = useState(String(DEFAULT_GOAL));
   const [isDarkMode, setIsDarkMode] = useState(false);
-  const [terminalMode, setTerminalMode] = useState('main');
+  const [terminalMode, setTerminalMode] = useState('tanzeem');
+  const [selectedTanzeem, setSelectedTanzeem] = useState('');
+  const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState('');
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [statsData, setStatsData] = useState({ metrics: null, attendance: null });
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
-  const tabLogRef = useRef({});
   const terminalLastCountRef = useRef(0);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
-  const now = new Date();
+  const now = useMemo(() => {
+    const d = new Date();
+    if (isValidTime(FORCE_TIME)) {
+      d.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
+    }
+    return d;
+  }, [refreshTick]);
   const todayISO = toISO(now);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const selectedISO = useMemo(() => RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates), [todayISO, availableDates]);
@@ -297,28 +325,6 @@ export default function App() {
 
   useEffect(() => { if (countLoaded) AsyncStorage.setItem(STORAGE_KEYS.count, String(count)).catch(() => {}); }, [count, countLoaded]);
 
-  useEffect(() => {
-    const run = async () => {
-      const lastAt = tabLogRef.current[activeTab] || 0;
-      const nowTs = Date.now();
-      if (nowTs - lastAt < 30000) return;
-      tabLogRef.current[activeTab] = nowTs;
-      if (!hasFirebaseConfig()) return;
-
-      const hh = pad(getGermanHour());
-      try {
-        await incrementDocCounters('metrics_daily', todayISO, [
-          'visits_total',
-          `visits_by_screen.${activeTab}`,
-          `visits_by_hour.\`${hh}\``,
-        ]);
-      } catch {
-        setToast('Datenbankfehler – bitte Internet prüfen');
-      }
-    };
-    run();
-  }, [activeTab, todayISO]);
-
   const onPressIn = () => Animated.spring(scaleAnim, { toValue: 0.975, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
   const onPressOut = () => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
 
@@ -339,6 +345,48 @@ export default function App() {
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
 
+  const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
+  const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
+
+  const prayerWindow = useMemo(() => {
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const sequence = [
+      { key: 'fajr', label: 'Fajr', time: timesToday.fajr },
+      { key: 'sohar', label: 'Sohar', time: timesToday.sohar },
+      { key: 'asr', label: 'Asr', time: timesToday.asr },
+      { key: 'maghrib', label: 'Maghrib', time: timesToday.maghrib },
+      { key: 'ishaa', label: 'Ishaa & Taravih', time: timesToday.ishaa },
+    ];
+    const active = sequence.find((item) => {
+      const base = getMinutes(item.time);
+      if (base === null) return false;
+      const start = base - 30;
+      const end = base + 60;
+      return nowMinutes >= start && nowMinutes <= end;
+    });
+    const nextKey = getNextPrayer(now, timesToday);
+    const next = sequence.find((item) => item.key === nextKey) || sequence[0];
+    if (active) {
+      const base = getMinutes(active.time);
+      return {
+        isActive: true,
+        prayerKey: active.key,
+        prayerLabel: active.label,
+        prayerTime: active.time,
+        windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
+        nextLabel: null,
+      };
+    }
+    return {
+      isActive: false,
+      prayerKey: null,
+      prayerLabel: null,
+      prayerTime: null,
+      windowLabel: null,
+      nextLabel: `${next?.label || '—'} – ${next?.time || '—'}`,
+    };
+  }, [now, timesToday]);
+
   const countAttendance = async (kind, locationName) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
@@ -349,65 +397,30 @@ export default function App() {
       return;
     }
 
-    const prayer = nextPrayer;
-    const paths = [`totals.byPrayer.${prayer}`];
+    if (!prayerWindow.isActive || !prayerWindow.prayerKey) {
+      setToast('Derzeit kein aktives Gebetszeitfenster');
+      return;
+    }
+
+    const prayer = prayerWindow.prayerKey;
+    const paths = [];
     if (kind === 'guest') {
-      paths.push(`guests.byPrayer.${prayer}`);
-    } else if (locationName) {
-      paths.push(`members.byPrayerAndLocation.${prayer}.${toLocationKey(locationName)}`);
+      paths.push(`byPrayer.${prayer}.guest`);
+    } else if (locationName && selectedTanzeem) {
+      paths.push(`byPrayer.${prayer}.tanzeem.${selectedTanzeem}.majlis.${toLocationKey(locationName)}`);
     }
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
-      setTerminalMode('main');
+      setTerminalMode('tanzeem');
+      setSelectedTanzeem('');
     } catch {
       Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
       setToast('Datenbankfehler – bitte Internet prüfen');
     }
   };
-
-  const refreshStats = async () => {
-    setStatsLoading(true);
-    try {
-      const [metrics, attendance] = await Promise.all([
-        getDocData('metrics_daily', todayISO),
-        getDocData('attendance_daily', todayISO),
-      ]);
-      setStatsData({ metrics, attendance });
-    } catch {
-      setToast('Datenbankfehler – bitte Internet prüfen');
-    } finally {
-      setStatsLoading(false);
-    }
-  };
-
-  useEffect(() => { if (activeTab === 'stats') refreshStats(); }, [activeTab]);
-
-  const topHour = useMemo(() => {
-    const byHour = statsData.metrics?.visits_by_hour || {};
-    return Object.entries(byHour).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0] || null;
-  }, [statsData]);
-
-  const topLocations = useMemo(() => {
-    const byPrayerAndLocation = statsData.attendance?.members?.byPrayerAndLocation || {};
-    const totals = {};
-    Object.values(byPrayerAndLocation).forEach((locMap) => {
-      Object.entries(locMap || {}).forEach(([k, v]) => {
-        totals[k] = (totals[k] || 0) + (v || 0);
-      });
-    });
-    return Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  }, [statsData]);
-
-  const nextPrayerLabel = {
-    fajr: `Fajr (${timesToday.fajr})`,
-    sohar: `Sohar (${timesToday.sohar})`,
-    asr: `Asr (${timesToday.asr})`,
-    maghrib: `Maghrib (${timesToday.maghrib})`,
-    ishaa: `Ishaa (${timesToday.ishaa})`,
-  }[nextPrayer] || '—';
 
   const renderTasbeeh = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -456,53 +469,59 @@ export default function App() {
   const renderTerminal = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border, padding: 16 }]}>
-        <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>Nächstes Gebet: {nextPrayerLabel}</Text>
+        {prayerWindow.isActive ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Aktuelles Gebet: {prayerWindow.prayerLabel} ({prayerWindow.prayerTime})</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Zeitfenster: {prayerWindow.windowLabel}</Text>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Derzeit kein Gebet</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Nächstes Gebet: {prayerWindow.nextLabel}</Text>
+            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => setRefreshTick((v) => v + 1)}>
+              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
+            </Pressable>
+          </>
+        )}
       </View>
 
-      {terminalMode === 'main' ? (
+      {prayerWindow.isActive ? terminalMode === 'tanzeem' ? (
         <>
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
+          <View style={styles.tanzeemRow}>
+            {['ansar', 'khuddam', 'atfal'].map((tanzeem) => (
+              <Pressable key={tanzeem} style={[styles.tanzeemBtn, { backgroundColor: theme.button }]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
+                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{tanzeem.charAt(0).toUpperCase() + tanzeem.slice(1)}</Text>
+              </Pressable>
+            ))}
+          </View>
           <Pressable style={[styles.bigTerminalBtn, { backgroundColor: theme.button }]} onPress={() => countAttendance('guest')}><Text style={[styles.bigTerminalText, { color: theme.buttonText }]}>Gast</Text></Pressable>
-          <Pressable style={[styles.bigTerminalBtn, { backgroundColor: theme.button }]} onPress={() => setTerminalMode('member')}><Text style={[styles.bigTerminalText, { color: theme.buttonText }]}>Mitglied</Text></Pressable>
         </>
       ) : (
-        <View style={styles.gridWrap}>
-          {TERMINAL_LOCATIONS.map((loc) => (
-            <Pressable key={loc} style={[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => countAttendance('member', loc)}>
-              <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
-            </Pressable>
-          ))}
-        </View>
+        <>
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+          <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
+            <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+          </Pressable>
+          <View style={styles.gridWrap}>
+            {TERMINAL_LOCATIONS.map((loc) => (
+              <Pressable key={loc} style={[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => countAttendance('member', loc)}>
+                <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : (
+        <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden.</Text>
       )}
     </ScrollView>
   );
 
   const renderStats = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={refreshStats}><Text style={[styles.resetText, { color: theme.buttonText }]}>Aktualisieren</Text></Pressable>
-      {statsLoading ? <ActivityIndicator size="large" color={theme.text} /> : null}
-
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Besucher heute</Text>
-        {!statsData.metrics ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text> : (
-          <>
-            <Text style={[styles.noteText, { color: theme.text }]}>Total: {statsData.metrics.visits_total || 0}</Text>
-            {Object.entries(statsData.metrics.visits_by_screen || {}).map(([k, v]) => <Text key={k} style={[styles.noteText, { color: theme.muted }]}>{k}: {v}</Text>)}
-            <Text style={[styles.noteText, { color: theme.muted }]}>Top hour: {topHour ? `${topHour[0]} (${topHour[1]})` : '—'}</Text>
-          </>
-        )}
-      </View>
-
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Attendance heute</Text>
-        {!statsData.attendance ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text> : (
-          <>
-            {Object.entries(statsData.attendance.totals?.byPrayer || {}).map(([k, v]) => <Text key={k} style={[styles.noteText, { color: theme.muted }]}>{k}: {v}</Text>)}
-            <Text style={[styles.noteText, { color: theme.text }]}>Gäste gesamt: {Object.values(statsData.attendance.guests?.byPrayer || {}).reduce((a, b) => a + b, 0)}</Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>Mitglieder gesamt: {topLocations.reduce((a, [, v]) => a + v, 0)}</Text>
-            <Text style={[styles.noteText, { color: theme.text }]}>Top 3 Locations:</Text>
-            {topLocations.map(([k, v]) => <Text key={k} style={[styles.noteText, { color: theme.muted }]}>{k}: {v}</Text>)}
-          </>
-        )}
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Stats</Text>
+        <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
       </View>
     </ScrollView>
   );
@@ -586,6 +605,8 @@ const styles = StyleSheet.create({
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
+  tanzeemRow: { flexDirection: 'row', gap: 10 },
+  tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridText: { textAlign: 'center', fontWeight: '700' },
