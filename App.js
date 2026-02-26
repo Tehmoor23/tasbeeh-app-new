@@ -48,9 +48,10 @@ const TERMINAL_LOCATIONS = [
 ];
 const TAB_ITEMS = [
   { key: 'tasbeeh', label: 'Tasbeeh' },
-  { key: 'gebetsplan', label: 'Gebetsplan' },
-  { key: 'terminal', label: 'Gebetsanwesenheit' },
+  { key: 'gebetsplan', label: 'Gebetszeiten' },
+  { key: 'terminal', label: 'Anwesenheit' },
   { key: 'stats', label: 'Stats' },
+  { key: 'settings', label: '⚙️' },
 ];
 
 const PRAYER_LABELS = {
@@ -157,6 +158,21 @@ const findClosestISO = (targetISO, availableISOs) => {
     const d = parseISO(iso); const prev = parseISO(closest);
     return Math.abs(d - target) < Math.abs(prev - target) ? iso : closest;
   }, sorted[0]);
+};
+
+const buildPrayerTimes = (raw) => ({
+  fajr: addMinutes(raw?.sehriEnd, 20),
+  sohar: FIXED_TIMES.sohar,
+  asr: FIXED_TIMES.asr,
+  maghrib: addMinutes(raw?.iftar, 10),
+  ishaa: FIXED_TIMES.ishaa,
+  jumma: FIXED_TIMES.jumma,
+});
+
+const addDays = (date, days) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 };
 
 const getGermanHour = () => {
@@ -295,14 +311,10 @@ export default function App() {
   const selectedRaw = selectedISO ? RAMADAN_RAW[selectedISO] : null;
   const hasTodayData = Boolean(RAMADAN_RAW[todayISO]);
 
-  const timesToday = useMemo(() => ({
-    fajr: addMinutes(selectedRaw?.sehriEnd, 20),
-    sohar: FIXED_TIMES.sohar,
-    asr: FIXED_TIMES.asr,
-    maghrib: addMinutes(selectedRaw?.iftar, 10),
-    ishaa: FIXED_TIMES.ishaa,
-    jumma: FIXED_TIMES.jumma,
-  }), [selectedRaw]);
+  const timesToday = useMemo(() => buildPrayerTimes(selectedRaw), [selectedRaw]);
+  const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
+  const tomorrowRaw = useMemo(() => RAMADAN_RAW[tomorrowISO] || null, [tomorrowISO]);
+  const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw), [tomorrowRaw]);
   const nextPrayer = useMemo(() => getNextPrayer(now, timesToday), [now, timesToday]);
 
   const prayerRows = useMemo(() => [
@@ -395,8 +407,15 @@ export default function App() {
       const end = base + 60;
       return nowMinutes >= start && nowMinutes <= end;
     });
-    const nextKey = getNextPrayer(now, timesToday);
-    const next = sequence.find((item) => item.key === nextKey) || sequence[0];
+    const nextKeyToday = getNextPrayer(now, timesToday);
+    const nextToday = sequence.find((item) => item.key === nextKeyToday) || sequence[0];
+    const todayHasUpcomingPrayer = sequence.some((item) => {
+      const mins = getMinutes(item.time);
+      return mins !== null && mins >= nowMinutes;
+    });
+    const nextLabel = todayHasUpcomingPrayer
+      ? `${nextToday?.label || '—'} – ${nextToday?.time || '—'}`
+      : `${PRAYER_LABELS.fajr} – ${timesTomorrow.fajr || '—'}`;
     if (active) {
       const base = getMinutes(active.time);
       return {
@@ -405,7 +424,7 @@ export default function App() {
         prayerLabel: active.label,
         prayerTime: active.time,
         windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
-        nextLabel: null,
+        nextLabel,
       };
     }
     return {
@@ -414,9 +433,9 @@ export default function App() {
       prayerLabel: null,
       prayerTime: null,
       windowLabel: null,
-      nextLabel: `${next?.label || '—'} – ${next?.time || '—'}`,
+      nextLabel,
     };
-  }, [now, timesToday]);
+  }, [now, timesToday, timesTomorrow]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return;
@@ -652,7 +671,10 @@ export default function App() {
           </View>
         </>
       ) : (
-        <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden.</Text>
+        <>
+          <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).</Text>
+          <Text style={[styles.urduText, { color: theme.muted, marginTop: 6 }]}>حاضری صرف فعال نماز میں درج کی جا سکتی ہے (30 منٹ پہلے یا 60 منٹ بعد تک)</Text>
+        </>
       )}
     </ScrollView>
   );
@@ -770,19 +792,14 @@ export default function App() {
           : renderSettings();
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      <View style={styles.topSettingsOverlay}>
-        <Pressable style={[styles.settingsFab, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => setActiveTab(activeTab === 'settings' ? 'tasbeeh' : 'settings')}>
-          <Text style={[styles.settingsFabText, { color: theme.text }]}>{activeTab === 'settings' ? '←' : '⚙️'}</Text>
-        </Pressable>
-      </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
         {TAB_ITEMS.map((tab) => (
           <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
-            <Text style={{ color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500', fontSize: 12 }}>{tab.label}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -797,9 +814,6 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
-  topSettingsOverlay: { position: 'absolute', top: 39, right: 16, zIndex: 20 },
-  settingsFab: { width: 30, height: 30, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  settingsFabText: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
@@ -835,8 +849,9 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 52 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 2 },
+  tabLabel: { fontSize: 11, textAlign: 'center', width: '100%' },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
