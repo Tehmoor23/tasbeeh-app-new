@@ -280,7 +280,7 @@ export default function App() {
 
   const incrementCount = () => {
     setCount((prev) => prev + 1);
-    Vibration.vibrate(8);
+    Vibration.vibrate(4);
   };
 
   const saveGoal = async () => {
@@ -459,8 +459,8 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
-  settingsBtn: { position: 'absolute', right: 0, borderRadius: 12, borderWidth: 1, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  settingsBtnText: { fontSize: 20 },
+  settingsBtn: { position: 'absolute', right: 0, borderRadius: 11, borderWidth: 1, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  settingsBtnText: { fontSize: 17 },
   subtitle: { fontSize: 14, textAlign: 'center' },
 
   mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
