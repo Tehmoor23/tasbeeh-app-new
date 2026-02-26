@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
   Vibration,
+  useWindowDimensions,
 } from 'react-native';
 
 import { initializeApp } from 'firebase/app';
@@ -51,10 +52,11 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const TAB_ITEMS = [
-  { key: 'tasbeeh', label: 'Tasbeeh' },
-  { key: 'gebetsplan', label: 'Gebetsplan' },
-  { key: 'terminal', label: 'Gebetsanwesenheit' },
-  { key: 'stats', label: 'Stats' },
+  { key: 'tasbeeh', label: 'Tasbeeh', icon: '📿' },
+  { key: 'gebetsplan', label: 'Gebetsplan', icon: '🕌' },
+  { key: 'terminal', label: 'Anwesenheit', icon: '✅' },
+  { key: 'stats', label: 'Stats', icon: '📊' },
+  { key: 'settings', label: 'Einst.', icon: '⚙️' },
 ];
 
 const PRAYER_LABELS = {
@@ -287,6 +289,7 @@ export default function App() {
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
   const didLogVisitRef = useRef(false);
+  const { width: screenWidth } = useWindowDimensions();
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = useMemo(() => {
@@ -335,6 +338,17 @@ export default function App() {
   }, [prayerRows, now]);
 
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
+
+  const tabLabelSize = useMemo(() => {
+    if (screenWidth < 350) return 9;
+    if (screenWidth < 390) return 10;
+    return 11;
+  }, [screenWidth]);
+  const tabIconSize = useMemo(() => {
+    if (screenWidth < 350) return 14;
+    if (screenWidth < 390) return 15;
+    return 16;
+  }, [screenWidth]);
 
   useEffect(() => {
     if (!toast) return;
@@ -685,7 +699,12 @@ export default function App() {
           </View>
         </>
       ) : (
-        <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden.</Text>
+        <>
+          <Text style={[styles.noteText, styles.attendanceWindowText, { color: theme.muted }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden
+(30 Min vorher – 60 Min nach dem Gebet)</Text>
+          <Text style={[styles.urduText, styles.attendanceWindowUrdu, { color: theme.muted }]}>حاضری صرف نماز کے فعال وقت میں شمار کی جا سکتی ہے
+(نماز سے 30 منٹ پہلے اور 60 منٹ بعد تک)</Text>
+        </>
       )}
     </ScrollView>
   );
@@ -805,19 +824,25 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      <View style={styles.topSettingsOverlay}>
-        <Pressable style={[styles.settingsFab, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => setActiveTab(activeTab === 'settings' ? 'tasbeeh' : 'settings')}>
-          <Text style={[styles.settingsFabText, { color: theme.text }]}>{activeTab === 'settings' ? '←' : '⚙️'}</Text>
-        </Pressable>
-      </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-        {TAB_ITEMS.map((tab) => (
-          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
-            <Text style={{ color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500', fontSize: 12 }}>{tab.label}</Text>
-          </Pressable>
-        ))}
+        {TAB_ITEMS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
+              <Text style={[styles.tabIcon, { color: isActive ? theme.text : theme.muted, fontSize: tabIconSize }]}>{tab.icon}</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                style={{ color: isActive ? theme.text : theme.muted, fontWeight: isActive ? '700' : '500', fontSize: tabLabelSize }}
+              >
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {toast ? (
@@ -830,9 +855,6 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
-  topSettingsOverlay: { position: 'absolute', top: 39, right: 16, zIndex: 20 },
-  settingsFab: { width: 30, height: 30, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  settingsFabText: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
@@ -868,8 +890,9 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 6, paddingTop: 6, paddingBottom: 8 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0 },
+  tabIcon: { lineHeight: 18 },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
@@ -879,6 +902,8 @@ const styles = StyleSheet.create({
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
+  attendanceWindowText: { textAlign: 'center', lineHeight: 18 },
+  attendanceWindowUrdu: { fontSize: 11, marginTop: 4, lineHeight: 18, opacity: 0.95 },
   guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
