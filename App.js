@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 
 import { initializeApp } from 'firebase/app';
-import { addDoc, collection, getFirestore } from 'firebase/firestore';
+import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -285,6 +285,7 @@ export default function App() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
+  const didLogVisitRef = useRef(false);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = useMemo(() => {
@@ -339,6 +340,26 @@ export default function App() {
     const t = setTimeout(() => setToast(''), 1800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (didLogVisitRef.current) return;
+    didLogVisitRef.current = true;
+
+    (async () => {
+      try {
+        const payload = {
+          ts: serverTimestamp(),
+          tsIso: new Date().toISOString(),
+          platform: Platform.OS,
+        };
+
+        const docRef = await addDoc(collection(db, 'visit_logs'), payload);
+        console.log('[visit_logs] write ok:', docRef.id, payload);
+      } catch (e) {
+        console.warn('[visit_logs] write failed:', e?.message || e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const loadLocal = async () => {
