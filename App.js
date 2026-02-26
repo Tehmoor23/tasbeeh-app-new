@@ -26,8 +26,8 @@ const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const TERMINAL_LOCATIONS = [
-  'Rödelheim', 'Ginnheim', 'Bockenheim', 'Gallus', 'Sossenheim', 'Höchst', 'Eschersheim', 'Nordend',
-  'Bornheim', 'Sachsenhausen', 'Ostend', 'Westend', 'Niederrad', 'Griesheim', 'Fechenheim', 'Riederwald',
+  'Baitus Sabuh Nord', 'Baitus Sabuh Süd', 'Berg', 'Bornheim', 'Eschersheim', 'Griesheim', 'Ginnheim', 'Goldstein',
+  'Hausen', 'Höchst', 'Nied', 'Nordweststadt', 'Nuur Moschee', 'Riedberg', 'Rödelheim', 'Zeilsheim',
 ];
 const TAB_ITEMS = [
   { key: 'tasbeeh', label: 'Tasbeeh' },
