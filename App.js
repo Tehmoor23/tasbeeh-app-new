@@ -569,7 +569,7 @@ export default function App() {
         <View style={styles.bottomSticky}>
           <View style={styles.progressWrap}><View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}><View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text></View>
           <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
-          <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
+          <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor Bhatti</Text>
         </View>
       </View>
     </ScrollView>
