@@ -126,7 +126,7 @@ const englishDateLong = (date) => {
   }
 };
 
-const DAY_NAMES_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
 const findClosestISO = (targetISO, availableISOs) => {
   const target = parseISO(targetISO);
@@ -279,7 +279,7 @@ export default function App() {
         <StatusBar style={isDarkMode ? 'light' : 'dark'} />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_EN[displayDate.getDay()]}</Text>
+            <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
             <Text style={[styles.dayDate, { color: theme.muted }]}>{englishDateLong(displayDate)}</Text>
 
             <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
@@ -331,7 +331,7 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.titleWrap}>
-            <Text style={[styles.title, { color: theme.text }]}>Tasbeeh</Text>
+            <Text style={[styles.title, { color: theme.text }]}>Tasbeeh (تسبيح)</Text>
           </View>
           <Pressable
             onPress={() => setSettingsOpen(true)}
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
-  title: { fontSize: 36, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5, fontFamily: 'serif' },
+  title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
   settingsBtn: { position: 'absolute', right: 0, borderRadius: 12, borderWidth: 1, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   settingsBtnText: { fontSize: 20 },
   subtitle: { fontSize: 14, textAlign: 'center' },
