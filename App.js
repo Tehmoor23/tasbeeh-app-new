@@ -29,7 +29,7 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_GOAL = 100;
-const GOAL_PRESETS = [33, 99, 100, 1000];
+const GOAL_PRESETS = [33, 99, 100, 200, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const FORCE_TIME = null;
 // const FORCE_TIME = '17:01'; // development override, set null for real time
