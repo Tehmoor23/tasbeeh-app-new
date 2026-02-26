@@ -59,6 +59,25 @@ const PRAYER_LABELS = {
   ishaa: 'Ishaa & Taravih',
 };
 
+const MAJLIS_LABELS = {
+  baitus_sabuh_nord: 'Baitus Sabuh Nord',
+  baitus_sabuh_sued: 'Baitus Sabuh Süd',
+  berg: 'Berg',
+  bornheim: 'Bornheim',
+  eschersheim: 'Eschersheim',
+  griesheim: 'Griesheim',
+  ginnheim: 'Ginnheim',
+  goldstein: 'Goldstein',
+  hausen: 'Hausen',
+  hoechst: 'Höchst',
+  nied: 'Nied',
+  nordweststadt: 'Nordweststadt',
+  nuur_moschee: 'Nuur Moschee',
+  riedberg: 'Riedberg',
+  roedelheim: 'Rödelheim',
+  zeilsheim: 'Zeilsheim',
+};
+
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyC_Kz1Cxs-HQ5G994mBztV_ADlAHYsgDKs',
   authDomain: 'tasbeeh-1e356.firebaseapp.com',
@@ -456,8 +475,18 @@ export default function App() {
     });
 
     const topMajlis = Object.entries(topMajlisMap)
+      .filter(([, count]) => count > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8);
+
+    const tanzeemTotalsToday = { ansar: 0, khuddam: 0, atfal: 0 };
+    Object.values(statsAttendance.byPrayer || {}).forEach((prayer) => {
+      const prayerTanzeem = prayer?.tanzeem || {};
+      ['ansar', 'khuddam', 'atfal'].forEach((tanzeem) => {
+        const majlisMap = prayerTanzeem[tanzeem]?.majlis || {};
+        tanzeemTotalsToday[tanzeem] += Object.values(majlisMap).reduce((sum, val) => sum + (Number(val) || 0), 0);
+      });
+    });
 
     const guestTotal = Number(prayerData.guest) || 0;
     const totalAttendance = guestTotal + Object.values(tanzeemTotals).reduce((sum, value) => sum + value, 0);
@@ -465,10 +494,20 @@ export default function App() {
     return {
       guestTotal,
       tanzeemTotals,
+      tanzeemTotalsToday,
       topMajlis,
       totalAttendance,
     };
   }, [statsAttendance, statsPrayerKey]);
+
+  const formatMajlisName = (locationKey) => {
+    if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
+    return String(locationKey || '')
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  };
 
   const countAttendance = async (kind, locationName) => {
     const nowTs = Date.now();
@@ -616,7 +655,7 @@ export default function App() {
 
       {!statsAttendance?.byPrayer || !statsView ? (
         <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
+          <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
         </View>
       ) : (
         <>
@@ -626,24 +665,37 @@ export default function App() {
           </View>
 
           <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
+            <View style={styles.tanzeemStatsRow}>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border }]}>
+                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.ansar}</Text>
+                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Ansar</Text>
+              </View>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border }]}>
+                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.khuddam}</Text>
+                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Khuddam</Text>
+              </View>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border }]}>
+                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.atfal}</Text>
+                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Atfal</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises heute (alle Gebete)</Text>
             {statsView.topMajlis.length === 0 ? (
-              <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text>
+              <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
             ) : (
               (() => {
                 const maxTop = Math.max(1, ...statsView.topMajlis.map(([, count]) => count));
-                return statsView.topMajlis.map(([locationKey, count], idx) => (
-                  <View key={locationKey} style={styles.rankRow}>
-                    <Text style={[styles.rankText, { color: theme.muted }]}>{idx + 1}</Text>
-                    <View style={styles.rankContent}>
-                      <View style={styles.rankLabelRow}>
-                        <Text style={[styles.noteText, { color: theme.text, textTransform: 'capitalize' }]}>{locationKey.replace(/_/g, ' ')}</Text>
-                        <Text style={[styles.noteText, { color: theme.text, fontWeight: '800' }]}>{count}</Text>
-                      </View>
-                      <View style={[styles.rankTrack, { backgroundColor: theme.border }]}>
-                        <View style={[styles.rankFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
-                      </View>
+                return statsView.topMajlis.map(([locationKey, count]) => (
+                  <View key={locationKey} style={styles.majlisBarRow}>
+                    <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
+                    <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                      <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
                     </View>
+                    <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
                   </View>
                 ));
               })()
@@ -733,7 +785,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
-  topSettingsOverlay: { position: 'absolute', top: 8, right: 16, zIndex: 20 },
+  topSettingsOverlay: { position: 'absolute', top: 14, right: 16, zIndex: 20 },
   settingsFab: { width: 30, height: 30, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   settingsFabText: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
@@ -788,11 +840,18 @@ const styles = StyleSheet.create({
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   statsHeaderCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   statsHeaderTitle: { fontSize: 24, fontWeight: '800' },
-  statsHeaderSub: { marginTop: 2, fontSize: 13, fontWeight: '600' },
   statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
-  topMajlisRow: { borderBottomWidth: 1, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  tanzeemStatsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  tanzeemStatBox: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  tanzeemStatValue: { fontSize: 26, fontWeight: '800', lineHeight: 30 },
+  tanzeemStatLabel: { marginTop: 2, fontSize: 12, fontWeight: '600' },
+  majlisBarRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  majlisBarLabel: { width: 120, fontSize: 12, fontWeight: '600' },
+  majlisBarTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
+  majlisBarFill: { height: '100%', borderRadius: 999 },
+  majlisBarValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   barRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
   barLabel: { width: 76, fontSize: 12, fontWeight: '700' },
   barTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
