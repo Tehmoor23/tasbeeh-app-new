@@ -120,6 +120,48 @@ const addDaysISO = (iso, days) => {
   return toISO(d);
 };
 
+
+const getCurrentWeekStartISO = () => {
+  const d = new Date();
+  const day = d.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + mondayOffset);
+  return toISO(d);
+};
+
+const buildWeekDates = (weekStartISO) => Array.from({ length: 7 }, (_, i) => addDaysISO(weekStartISO, i));
+
+const alignScheduleToCurrentWeek = (rawSchedule) => {
+  const normalized = normalizeSchedule(rawSchedule);
+  const currentWeekStartISO = getCurrentWeekStartISO();
+  const targetDates = buildWeekDates(currentWeekStartISO);
+  const existingDates = buildWeekDates(normalized.weekStartISO);
+
+  const hasToday = Object.prototype.hasOwnProperty.call(normalized.daily || {}, toISO(new Date()));
+  if (hasToday && normalized.weekStartISO === currentWeekStartISO) {
+    return { schedule: normalized, shifted: false };
+  }
+
+  const nextDaily = {};
+  targetDates.forEach((dateISO, idx) => {
+    const sourceDate = existingDates[idx];
+    const source = normalized.daily?.[sourceDate] || {};
+    nextDaily[dateISO] = {
+      sehriEnd: typeof source.sehriEnd === 'string' ? source.sehriEnd : '',
+      iftar: typeof source.iftar === 'string' ? source.iftar : '',
+    };
+  });
+
+  return {
+    schedule: {
+      ...normalized,
+      weekStartISO: currentWeekStartISO,
+      daily: nextDaily,
+    },
+    shifted: true,
+  };
+};
+
 const isValidTime = (value) => {
   if (!/^\d{2}:\d{2}$/.test(value || '')) return false;
   const [h, m] = value.split(':').map(Number);
@@ -254,7 +296,6 @@ export default function App() {
   const [snackbar, setSnackbar] = useState({ visible: false, message: '', type: 'ok' });
 
   const snapshotAlertShownRef = useRef(false);
-  const pendingWebReloadRef = useRef(false);
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const theme = isDarkMode ? THEME.dark : THEME.light;
 
@@ -270,7 +311,7 @@ export default function App() {
   const todayDaily = schedule.daily[todayISO] || { sehriEnd: '', iftar: '' };
   const fajrTime = addMinutes(todayDaily.sehriEnd, 20);
   const maghribTime = addMinutes(todayDaily.iftar, 10);
-  const jummaToday = today.getDay() === 5 ? schedule.globals.jumma : '—';
+  const jummaToday = schedule.globals.jumma;
 
   const prayerRows = useMemo(
     () => [
@@ -347,9 +388,14 @@ export default function App() {
 
         if (scheduleRaw) {
           const parsedSchedule = normalizeSchedule(JSON.parse(scheduleRaw));
-          setSchedule(parsedSchedule);
-          setScheduleForm(parsedSchedule);
+          const aligned = alignScheduleToCurrentWeek(parsedSchedule);
+          setSchedule(aligned.schedule);
+          setScheduleForm(aligned.schedule);
           setScheduleState('cached');
+          if (aligned.shifted) {
+            await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(aligned.schedule));
+            showSnack('Week updated to current');
+          }
         }
       } catch (error) {
         console.warn('Failed to load local data:', error);
@@ -376,29 +422,30 @@ export default function App() {
         const seed = createDefaultSchedule();
         // Firestore remains source of truth; seed the document if missing.
         await setDoc(ref, seed, { merge: true });
-        setSchedule(seed);
-        setScheduleForm(seed);
+        const alignedSeed = alignScheduleToCurrentWeek(seed);
+        setSchedule(alignedSeed.schedule);
+        setScheduleForm(alignedSeed.schedule);
         setScheduleState('cloud');
-        await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(seed));
-        console.log('reloaded and schedule loaded', seed);
+        await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(alignedSeed.schedule));
+        if (alignedSeed.shifted) showSnack('Week updated to current');
+        console.log('reloaded and schedule loaded', alignedSeed.schedule);
         return;
       }
 
       const cloudSchedule = normalizeSchedule(snap.data());
-      setSchedule(cloudSchedule);
-      setScheduleForm(cloudSchedule);
+      const alignedCloud = alignScheduleToCurrentWeek(cloudSchedule);
+      setSchedule(alignedCloud.schedule);
+      setScheduleForm(alignedCloud.schedule);
       setScheduleState('cloud');
-      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloudSchedule));
-      console.log('reloaded and schedule loaded', cloudSchedule);
+      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(alignedCloud.schedule));
+      if (alignedCloud.shifted) showSnack('Week updated to current');
+      console.log('reloaded and schedule loaded', alignedCloud.schedule);
 
-      if (pendingWebReloadRef.current && Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.reload) {
-        pendingWebReloadRef.current = false;
-        setTimeout(() => window.location.reload(), 300);
-      }
     } catch (error) {
       console.warn('Cloud load failed, staying on cache:', error);
       setScheduleState('cached');
       showSnack('Offline / cached', 'error');
+      Alert.alert('Cloud load failed', error?.message || 'Offline / cached');
     }
   };
 
@@ -418,10 +465,12 @@ export default function App() {
           async (snap) => {
             if (!snap.exists()) return;
             const cloudSchedule = normalizeSchedule(snap.data());
-            setSchedule(cloudSchedule);
-            setScheduleForm(cloudSchedule);
+            const alignedCloud = alignScheduleToCurrentWeek(cloudSchedule);
+            setSchedule(alignedCloud.schedule);
+            setScheduleForm(alignedCloud.schedule);
             setScheduleState('cloud');
-            await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(cloudSchedule));
+            await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(alignedCloud.schedule));
+            if (alignedCloud.shifted) showSnack('Week updated to current');
           },
           (error) => {
             console.warn('Snapshot listener error:', error);
@@ -557,22 +606,32 @@ export default function App() {
     const normalized = normalizeSchedule(scheduleForm);
 
     try {
-      const { db, doc, setDoc } = await initFirestore();
+      const { db, doc, setDoc, getDoc } = await initFirestore();
       const ref = doc(db, FIRESTORE_COLLECTION, FIRESTORE_DOC);
 
       console.log('save payload', normalized);
       await setDoc(ref, normalized, { merge: true });
       console.log('saved ok');
 
-      await pullScheduleFromCloud();
+      const verifySnap = await getDoc(ref);
+      if (!verifySnap.exists()) {
+        throw new Error('Saved document not found after write.');
+      }
+      const verified = normalizeSchedule(verifySnap.data());
+      const alignedVerified = alignScheduleToCurrentWeek(verified);
+      setSchedule(alignedVerified.schedule);
+      setScheduleForm(alignedVerified.schedule);
+      setScheduleState('cloud');
+      await AsyncStorage.setItem(STORAGE_KEYS.scheduleCache, JSON.stringify(alignedVerified.schedule));
+      console.log('verified', alignedVerified.schedule);
+      console.log('reloaded and schedule loaded', alignedVerified.schedule);
 
       await successHaptic();
       showSnack('Gespeichert ✓ – wird aktualisiert ...');
       Alert.alert('Gespeichert', 'Schedule ist jetzt live');
 
-      if (Platform.OS === 'web') {
-        pendingWebReloadRef.current = true;
-        await pullScheduleFromCloud();
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.reload) {
+        setTimeout(() => window.location.reload(), 300);
       }
     } catch (error) {
       console.warn('Failed to save cloud schedule:', error);
