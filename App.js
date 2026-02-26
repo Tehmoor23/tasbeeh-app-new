@@ -128,6 +128,28 @@ const englishDateLong = (date) => {
 
 const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
+
+const getGermanHour = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      hour: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    const hourPart = parts.find((part) => part.type === 'hour');
+    const hour = Number.parseInt(hourPart?.value || '', 10);
+    if (!Number.isNaN(hour)) return hour;
+  } catch {
+    // fallback to local time below
+  }
+  return new Date().getHours();
+};
+
+const isGermanNightDefault = () => {
+  const hour = getGermanHour();
+  return hour >= 22 || hour < 6;
+};
+
 const findClosestISO = (targetISO, availableISOs) => {
   const target = parseISO(targetISO);
   if (!target || availableISOs.length === 0) return null;
@@ -158,6 +180,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const themePulseAnim = useRef(new Animated.Value(1)).current;
   const theme = isDarkMode ? THEME.dark : THEME.light;
 
   const now = new Date();
@@ -231,7 +254,7 @@ export default function App() {
         if (darkRaw === '1' || darkRaw === '0') {
           setIsDarkMode(darkRaw === '1');
         } else {
-          setIsDarkMode(false);
+          setIsDarkMode(isGermanNightDefault());
         }
       } catch (e) {
         console.warn('Failed to load local settings:', e);
@@ -268,6 +291,11 @@ export default function App() {
   };
 
   const onToggleDarkMode = async (value) => {
+    Animated.sequence([
+      Animated.timing(themePulseAnim, { toValue: 0.96, duration: 140, useNativeDriver: true }),
+      Animated.spring(themePulseAnim, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }),
+    ]).start();
+
     setIsDarkMode(value);
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
@@ -277,6 +305,7 @@ export default function App() {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
         <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+        <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
@@ -320,6 +349,7 @@ export default function App() {
             <Text style={[styles.resetText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
         </ScrollView>
+        </Animated.View>
       </SafeAreaView>
     );
   }
@@ -328,6 +358,7 @@ export default function App() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
+      <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
           <View style={styles.titleWrap}>
@@ -378,6 +409,7 @@ export default function App() {
           </View>
         </View>
       </ScrollView>
+      </Animated.View>
 
       <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
         <View style={styles.modalOverlay}>
