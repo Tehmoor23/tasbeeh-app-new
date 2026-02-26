@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,10 +14,13 @@ import {
   Switch,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
   Vibration,
+  useWindowDimensions,
 } from 'react-native';
+
+import { initializeApp } from 'firebase/app';
+import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -27,7 +31,8 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
-const FORCE_TIME = '13:05'; // development override, set null for real time
+const FORCE_TIME = null;
+// const FORCE_TIME = '17:01'; // development override, set null for real time
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -47,11 +52,11 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const TAB_ITEMS = [
-  { key: 'tasbeeh', label: 'Tasbeeh', icon: '🧿' },
+  { key: 'tasbeeh', label: 'Tasbeeh', icon: '📿' },
   { key: 'gebetsplan', label: 'Gebetsplan', icon: '🕌' },
   { key: 'terminal', label: 'Anwesenheit', icon: '✅' },
   { key: 'stats', label: 'Stats', icon: '📊' },
-  { key: 'settings', label: 'Einstellungen', icon: '⚙️' },
+  { key: 'settings', label: 'Einst.', icon: '⚙️' },
 ];
 
 const PRAYER_LABELS = {
@@ -91,6 +96,10 @@ const FIREBASE_CONFIG = {
   measurementId: 'G-908CPHGR56',
 };
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
+
+const firebaseApp = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(firebaseApp);
+
 
 const FIXED_TIMES = {
   sohar: '13:30',
@@ -263,7 +272,6 @@ const getNextPrayer = (now, timesToday) => {
 };
 
 export default function App() {
-  const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState('tasbeeh');
   const [count, setCount] = useState(0);
   const [countLoaded, setCountLoaded] = useState(false);
@@ -280,11 +288,10 @@ export default function App() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
+  const didLogVisitRef = useRef(false);
+  const { width: screenWidth } = useWindowDimensions();
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
-  const isSmallScreen = width < 380;
-  const tabIconSize = isSmallScreen ? 13 : 15;
-  const tabLabelSize = isSmallScreen ? 10 : 11;
   const now = useMemo(() => {
     const d = new Date();
     if (isValidTime(FORCE_TIME)) {
@@ -332,11 +339,45 @@ export default function App() {
 
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
 
+  const tabLabelSize = useMemo(() => {
+    if (screenWidth < 350) return 9;
+    if (screenWidth < 390) return 10;
+    if (screenWidth < 430) return 11;
+    return 12;
+  }, [screenWidth]);
+  const tabIconSize = useMemo(() => {
+    if (screenWidth < 350) return 14;
+    if (screenWidth < 390) return 15;
+    if (screenWidth < 430) return 16;
+    return 17;
+  }, [screenWidth]);
+  const tabBarPaddingHorizontal = useMemo(() => (screenWidth < 360 ? 4 : 6), [screenWidth]);
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(''), 1800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (didLogVisitRef.current) return;
+    didLogVisitRef.current = true;
+
+    (async () => {
+      try {
+        const payload = {
+          ts: serverTimestamp(),
+          tsIso: new Date().toISOString(),
+          platform: Platform.OS,
+        };
+
+        const docRef = await addDoc(collection(db, 'visit_logs'), payload);
+        console.log('[visit_logs] write ok:', docRef.id, payload);
+      } catch (e) {
+        console.warn('[visit_logs] write failed:', e?.message || e);
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     const loadLocal = async () => {
@@ -541,6 +582,14 @@ export default function App() {
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
+      await addDoc(collection(db, 'attendance_logs'), {
+        timestamp: new Date(),
+        date: new Date().toISOString().split('T')[0],
+        prayer: prayerWindow.prayerKey,
+        tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
+        majlis: kind === 'guest' ? null : toLocationKey(locationName),
+        platform: Platform.OS,
+      });
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
@@ -609,7 +658,13 @@ export default function App() {
           <>
             <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Nächstes Gebet: {prayerWindow.nextLabel}</Text>
-            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => setRefreshTick((v) => v + 1)}>
+            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={async () => {
+              if (Platform.OS === 'web') {
+                window.location.reload();
+                return;
+              }
+              await Updates.reloadAsync();
+            }}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
             </Pressable>
           </>
@@ -648,8 +703,10 @@ export default function App() {
         </>
       ) : (
         <>
-          <Text style={[styles.noteText, styles.terminalInfoText, { color: theme.muted }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden{`\n`}(30 Min vorher – 60 Min nach dem Gebet)</Text>
-          <Text style={[styles.urduText, styles.terminalInfoUrdu, { color: theme.muted }]}>حاضری صرف نماز کے فعال وقت میں شمار کی جا سکتی ہے{`\n`}(نماز سے 30 منٹ پہلے اور 60 منٹ بعد تک)</Text>
+          <Text style={[styles.noteText, styles.attendanceWindowText, { color: theme.muted }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden
+(30 Min vorher – 60 Min nach dem Gebet)</Text>
+          <Text style={[styles.urduText, styles.attendanceWindowUrdu, { color: theme.muted }]}>حاضری صرف نماز کے فعال وقت میں شمار کی جا سکتی ہے
+(نماز سے 30 منٹ پہلے اور 60 منٹ بعد تک)</Text>
         </>
       )}
     </ScrollView>
@@ -772,22 +829,23 @@ export default function App() {
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-        {TAB_ITEMS.map((tab) => (
-          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
-            <Text style={[styles.tabIcon, { color: activeTab === tab.key ? theme.text : theme.muted, fontSize: tabIconSize }]}>{tab.icon}</Text>
-            <Text
-              numberOfLines={1}
-              style={{
-                color: activeTab === tab.key ? theme.text : theme.muted,
-                fontWeight: activeTab === tab.key ? '700' : '500',
-                fontSize: tabLabelSize,
-              }}
-            >
-              {tab.label}
-            </Text>
-          </Pressable>
-        ))}
+      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingHorizontal: tabBarPaddingHorizontal }]}>
+        {TAB_ITEMS.map((tab) => {
+          const isActive = activeTab === tab.key;
+          return (
+            <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
+              <Text style={[styles.tabIcon, { color: isActive ? theme.text : theme.muted, fontSize: tabIconSize }]}>{tab.icon}</Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.85}
+                style={[styles.tabLabel, { color: isActive ? theme.text : theme.muted, fontWeight: isActive ? '700' : '500', fontSize: tabLabelSize }]}
+              >
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
       {toast ? (
@@ -825,7 +883,7 @@ const styles = StyleSheet.create({
   prayerValue: { fontSize: 20, fontWeight: '700' },
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
-  section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10 },
+  section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
@@ -835,9 +893,10 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, paddingTop: 6, paddingBottom: Platform.OS === 'ios' ? 8 : 6 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 3, paddingHorizontal: 2 },
-  tabIcon: { marginBottom: 2 },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingTop: 6, paddingBottom: 8 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0 },
+  tabIcon: { lineHeight: 18 },
+  tabLabel: { textAlign: 'center', maxWidth: '100%' },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
@@ -847,8 +906,8 @@ const styles = StyleSheet.create({
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
-  terminalInfoText: { textAlign: 'center', lineHeight: 18 },
-  terminalInfoUrdu: { fontSize: 11, lineHeight: 18, marginTop: 6 },
+  attendanceWindowText: { textAlign: 'center', lineHeight: 18 },
+  attendanceWindowUrdu: { fontSize: 11, marginTop: 4, lineHeight: 18, opacity: 0.95 },
   guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
