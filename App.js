@@ -650,7 +650,7 @@ export default function App() {
 
   const renderTerminal = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
-      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#111111', borderColor: isDarkMode ? '#374151' : '#111111' }]}>
+      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#334155', borderColor: isDarkMode ? '#374151' : '#475569' }]}>
         <Text style={[styles.terminalBannerTitle, { color: '#FFFFFF' }]}>Gebetsanwesenheit</Text>
         <Text style={[styles.terminalBannerArabic, { color: '#D1D5DB' }]}>عبادت حاضری</Text>
         <Text style={[styles.terminalBannerSubtitle, { color: '#D1D5DB' }]}>Local Amarat Frankfurt</Text>
