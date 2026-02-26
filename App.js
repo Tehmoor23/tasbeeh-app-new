@@ -809,6 +809,11 @@ export default function App() {
         <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
       </View>
+
+      <View style={styles.appMetaWrap}>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.0</Text>
+        <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>Copyright © 2026 Ahmadiyya Muslim Community. All rights reserved.</Text>
+      </View>
     </ScrollView>
   );
 
@@ -879,6 +884,9 @@ const styles = StyleSheet.create({
   prayerValue: { fontSize: 20, fontWeight: '700' },
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
+  appMetaWrap: { marginTop: 6, marginBottom: 8, paddingHorizontal: 6, gap: 4 },
+  appMetaVersion: { textAlign: 'center', fontSize: 12, fontWeight: '700' },
+  appMetaCopyright: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
