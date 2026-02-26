@@ -823,9 +823,7 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-      <View style={[styles.basmalaWrap, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <Text style={[styles.basmalaText, { color: theme.text }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
-      </View>
+      <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
@@ -845,8 +843,7 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  basmalaWrap: { borderBottomWidth: 1, paddingTop: 4, paddingBottom: 8, paddingHorizontal: 16 },
-  basmalaText: { textAlign: 'center', fontSize: 24, lineHeight: 36, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
+  basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
