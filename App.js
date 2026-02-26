@@ -3,16 +3,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
-  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
-  useColorScheme,
   Vibration,
 } from 'react-native';
 
@@ -24,12 +24,30 @@ const STORAGE_KEYS = {
 
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
-
 const CITY = 'Bait-Us-Sabuh';
+const TERMINAL_LOCATIONS = [
+  'Rödelheim', 'Ginnheim', 'Bockenheim', 'Gallus', 'Sossenheim', 'Höchst', 'Eschersheim', 'Nordend',
+  'Bornheim', 'Sachsenhausen', 'Ostend', 'Westend', 'Niederrad', 'Griesheim', 'Fechenheim', 'Riederwald',
+];
+const TAB_ITEMS = [
+  { key: 'tasbeeh', label: 'Tasbeeh' },
+  { key: 'gebetsplan', label: 'Gebetsplan' },
+  { key: 'terminal', label: 'Terminal' },
+  { key: 'stats', label: 'Stats' },
+  { key: 'settings', label: 'Settings' },
+];
+
+const FIREBASE_CONFIG = {
+  // Insert your Firebase keys here
+  apiKey: 'YOUR_API_KEY',
+  projectId: 'YOUR_PROJECT_ID',
+};
+// Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
+
 const FIXED_TIMES = {
   sohar: '13:30',
-  assr: '16:00',
-  ishaaTaravih: '20:00',
+  asr: '16:00',
+  ishaa: '20:00',
   jumma: '13:15',
 };
 
@@ -66,90 +84,22 @@ const RAMADAN_RAW = {
 };
 
 const THEME = {
-  light: {
-    bg: '#F4F4F5',
-    card: '#FFFFFF',
-    border: '#E4E4E7',
-    text: '#09090B',
-    muted: '#71717A',
-    button: '#111827',
-    buttonText: '#FFFFFF',
-    progressTrack: '#E4E4E7',
-    progressFill: '#111827',
-    rowActiveBg: '#ECFDF3',
-    rowActiveBorder: '#86EFAC',
-    chipBg: '#ECFDF3',
-    chipText: '#166534',
-  },
-  dark: {
-    bg: '#09090B',
-    card: '#111827',
-    border: '#374151',
-    text: '#F9FAFB',
-    muted: '#9CA3AF',
-    button: '#F9FAFB',
-    buttonText: '#111827',
-    progressTrack: '#1F2937',
-    progressFill: '#93C5FD',
-    rowActiveBg: '#052E1B',
-    rowActiveBorder: '#22C55E',
-    chipBg: '#14532D',
-    chipText: '#BBF7D0',
-  },
+  light: { bg: '#F4F4F5', card: '#FFFFFF', border: '#E4E4E7', text: '#09090B', muted: '#71717A', button: '#111827', buttonText: '#FFFFFF', progressTrack: '#E4E4E7', progressFill: '#111827', rowActiveBg: '#ECFDF3', rowActiveBorder: '#86EFAC', chipBg: '#ECFDF3', chipText: '#166534' },
+  dark: { bg: '#09090B', card: '#111827', border: '#374151', text: '#F9FAFB', muted: '#9CA3AF', button: '#F9FAFB', buttonText: '#111827', progressTrack: '#1F2937', progressFill: '#93C5FD', rowActiveBg: '#052E1B', rowActiveBorder: '#22C55E', chipBg: '#14532D', chipText: '#BBF7D0' },
 };
 
+const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 const pad = (n) => String(n).padStart(2, '0');
 const toISO = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-const parseISO = (iso) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
-  const d = new Date(`${iso}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-const isValidTime = (value) => {
-  if (!/^\d{2}:\d{2}$/.test(value || '')) return false;
-  const [h, m] = value.split(':').map(Number);
-  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
-};
-
+const parseISO = (iso) => (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? null : new Date(`${iso}T00:00:00`));
+const isValidTime = (value) => /^\d{2}:\d{2}$/.test(value || '') && Number(value.slice(0, 2)) <= 23 && Number(value.slice(3)) <= 59;
 const addMinutes = (time, minutes) => {
   if (!isValidTime(time)) return '—';
   const [h, m] = time.split(':').map(Number);
   const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 };
-
-const englishDateLong = (date) => {
-  try {
-    return new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
-  } catch {
-    return `${date.getDate()}.${date.getMonth() + 1}.${date.getFullYear()}`;
-  }
-};
-
-const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-
-
-const getGermanHour = () => {
-  try {
-    const parts = new Intl.DateTimeFormat('de-DE', {
-      timeZone: 'Europe/Berlin',
-      hour: '2-digit',
-      hour12: false,
-    }).formatToParts(new Date());
-    const hourPart = parts.find((part) => part.type === 'hour');
-    const hour = Number.parseInt(hourPart?.value || '', 10);
-    if (!Number.isNaN(hour)) return hour;
-  } catch {
-    // fallback to local time below
-  }
-  return new Date().getHours();
-};
-
-const isGermanNightDefault = () => {
-  const hour = getGermanHour();
-  return hour >= 22 || hour < 6;
-};
-
+const englishDateLong = (date) => new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
 const findClosestISO = (targetISO, availableISOs) => {
   const target = parseISO(targetISO);
   if (!target || availableISOs.length === 0) return null;
@@ -157,77 +107,169 @@ const findClosestISO = (targetISO, availableISOs) => {
   if (targetISO <= sorted[0]) return sorted[0];
   if (targetISO >= sorted[sorted.length - 1]) return sorted[sorted.length - 1];
   return sorted.reduce((closest, iso) => {
-    const d = parseISO(iso);
-    const prev = parseISO(closest);
-    if (!d || !prev) return closest;
-    const diff = Math.abs(d.getTime() - target.getTime());
-    const prevDiff = Math.abs(prev.getTime() - target.getTime());
-    return diff < prevDiff ? iso : closest;
+    const d = parseISO(iso); const prev = parseISO(closest);
+    return Math.abs(d - target) < Math.abs(prev - target) ? iso : closest;
   }, sorted[0]);
 };
 
-export default function App() {
-  const systemScheme = useColorScheme();
-  const [screen, setScreen] = useState('tasbeeh');
+const getGermanHour = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }).formatToParts(new Date());
+    const hour = Number.parseInt(parts.find((part) => part.type === 'hour')?.value || '', 10);
+    if (!Number.isNaN(hour)) return hour;
+  } catch {}
+  return new Date().getHours();
+};
+const isGermanNightDefault = () => { const h = getGermanHour(); return h >= 22 || h < 6; };
+const hasFirebaseConfig = () => FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.projectId).includes('YOUR_') && !String(FIREBASE_CONFIG.apiKey).includes('YOUR_');
 
+const toFirestoreValue = (value) => {
+  if (value === null || value === undefined) return { nullValue: null };
+  if (typeof value === 'number') return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  if (typeof value === 'string') return { stringValue: value };
+  if (typeof value === 'boolean') return { booleanValue: value };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(toFirestoreValue) } };
+  if (typeof value === 'object') {
+    const fields = {};
+    Object.entries(value).forEach(([k, v]) => { fields[k] = toFirestoreValue(v); });
+    return { mapValue: { fields } };
+  }
+  return { stringValue: String(value) };
+};
+
+const fromFirestoreValue = (v) => {
+  if (!v) return null;
+  if (v.stringValue !== undefined) return v.stringValue;
+  if (v.integerValue !== undefined) return Number(v.integerValue);
+  if (v.doubleValue !== undefined) return Number(v.doubleValue);
+  if (v.booleanValue !== undefined) return v.booleanValue;
+  if (v.nullValue !== undefined) return null;
+  if (v.mapValue) {
+    const out = {};
+    Object.entries(v.mapValue.fields || {}).forEach(([k, val]) => { out[k] = fromFirestoreValue(val); });
+    return out;
+  }
+  if (v.arrayValue) return (v.arrayValue.values || []).map(fromFirestoreValue);
+  return null;
+};
+
+const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}?key=${FIREBASE_CONFIG.apiKey}`;
+const commitUrl = () => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit?key=${FIREBASE_CONFIG.apiKey}`;
+
+async function incrementDocCounters(collection, id, fieldPaths) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const document = `projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}`;
+  const body = {
+    writes: [{
+      transform: {
+        document,
+        fieldTransforms: [
+          ...fieldPaths.map((fieldPath) => ({ fieldPath, increment: { integerValue: '1' } })),
+          { fieldPath: 'updatedAt', setToServerValue: 'REQUEST_TIME' },
+        ],
+      },
+    }],
+  };
+  const res = await fetch(commitUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error('Firestore increment failed');
+}
+
+async function getDocData(collection, id) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const res = await fetch(docUrl(collection, id));
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Firestore read failed');
+  const json = await res.json();
+  return fromFirestoreValue({ mapValue: { fields: json.fields || {} } });
+}
+
+async function setDocData(collection, id, data, merge = true) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const body = { fields: toFirestoreValue(data).mapValue.fields };
+  const url = merge ? `${docUrl(collection, id)}&currentDocument.exists=false` : docUrl(collection, id);
+  const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok && res.status !== 409) throw new Error('Firestore write failed');
+}
+
+const toLocationKey = (name) => name.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss').replace(/[^a-z0-9]/g, '');
+
+const getNextPrayer = (now, timesToday) => {
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const entries = [
+    ['fajr', timesToday.fajr],
+    ['sohar', timesToday.sohar],
+    ['asr', timesToday.asr],
+    ['maghrib', timesToday.maghrib],
+    ['ishaa', timesToday.ishaa],
+  ].map(([name, t]) => ({ name, t, mins: isValidTime(t) ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) : null }));
+  const next = entries.find((entry) => entry.mins !== null && entry.mins >= nowMinutes);
+  return (next || entries[0]).name;
+};
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState('tasbeeh');
   const [count, setCount] = useState(0);
   const [countLoaded, setCountLoaded] = useState(false);
-
   const [goal, setGoal] = useState(DEFAULT_GOAL);
   const [goalInput, setGoalInput] = useState(String(DEFAULT_GOAL));
-
-  const [isDarkMode, setIsDarkMode] = useState(false); // default light mode
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [terminalMode, setTerminalMode] = useState('main');
+  const [toast, setToast] = useState('');
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [statsData, setStatsData] = useState({ metrics: null, attendance: null });
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
-  const theme = isDarkMode ? THEME.dark : THEME.light;
+  const tabLogRef = useRef({});
+  const terminalLastCountRef = useRef(0);
 
+  const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = new Date();
   const todayISO = toISO(now);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
-
-  const selectedISO = useMemo(() => {
-    if (RAMADAN_RAW[todayISO]) return todayISO;
-    return findClosestISO(todayISO, availableDates);
-  }, [todayISO, availableDates]);
-
+  const selectedISO = useMemo(() => RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates), [todayISO, availableDates]);
   const selectedDate = selectedISO ? parseISO(selectedISO) : now;
   const selectedRaw = selectedISO ? RAMADAN_RAW[selectedISO] : null;
-
   const hasTodayData = Boolean(RAMADAN_RAW[todayISO]);
 
-  const fajrTime = addMinutes(selectedRaw?.sehriEnd, 20);
-  const maghribTime = addMinutes(selectedRaw?.iftar, 10);
+  const timesToday = useMemo(() => ({
+    fajr: addMinutes(selectedRaw?.sehriEnd, 20),
+    sohar: FIXED_TIMES.sohar,
+    asr: FIXED_TIMES.asr,
+    maghrib: addMinutes(selectedRaw?.iftar, 10),
+    ishaa: FIXED_TIMES.ishaa,
+    jumma: FIXED_TIMES.jumma,
+  }), [selectedRaw]);
+  const nextPrayer = useMemo(() => getNextPrayer(now, timesToday), [now, timesToday]);
 
-  const prayerRows = useMemo(
-    () => [
-      { key: 'fajr', label: 'Fajr (الفجر)', time: fajrTime, activeCheck: true },
-      { key: 'sohar', label: 'Sohar (الظهر)', time: FIXED_TIMES.sohar, activeCheck: true },
-      { key: 'assr', label: 'Asr (العصر)', time: FIXED_TIMES.assr, activeCheck: true },
-      { key: 'maghrib', label: 'Maghrib (المغرب)', time: maghribTime, activeCheck: true },
-      { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', time: FIXED_TIMES.ishaaTaravih, activeCheck: true },
-      { key: 'jumma', label: 'Jumma (الجمعة)', time: FIXED_TIMES.jumma, activeCheck: false },
-    ],
-    [fajrTime, maghribTime],
-  );
+  const prayerRows = useMemo(() => [
+    { key: 'fajr', label: 'Fajr (الفجر)', time: timesToday.fajr, activeCheck: true },
+    { key: 'sohar', label: 'Sohar (الظهر)', time: timesToday.sohar, activeCheck: true },
+    { key: 'asr', label: 'Asr (العصر)', time: timesToday.asr, activeCheck: true },
+    { key: 'maghrib', label: 'Maghrib (المغرب)', time: timesToday.maghrib, activeCheck: true },
+    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeCheck: true },
+    { key: 'jumma', label: 'Jumma (الجمعة)', time: timesToday.jumma, activeCheck: false },
+  ], [timesToday]);
 
   const activePrayerKey = useMemo(() => {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
     let current = null;
-    prayerRows
-      .filter((r) => r.activeCheck)
-      .forEach((row) => {
-        if (isValidTime(row.time)) {
-          const [h, m] = row.time.split(':').map(Number);
-          const mins = h * 60 + m;
-          if (mins <= nowMinutes) current = row.key;
-        }
-      });
+    prayerRows.filter((r) => r.activeCheck).forEach((row) => {
+      if (isValidTime(row.time)) {
+        const mins = Number(row.time.slice(0, 2)) * 60 + Number(row.time.slice(3));
+        if (mins <= nowMinutes) current = row.key;
+      }
+    });
     return current;
   }, [prayerRows, now]);
 
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 1800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   useEffect(() => {
     const loadLocal = async () => {
@@ -237,218 +279,262 @@ export default function App() {
           AsyncStorage.getItem(STORAGE_KEYS.goal),
           AsyncStorage.getItem(STORAGE_KEYS.darkMode),
         ]);
-
-        if (countRaw !== null) {
-          const n = Number.parseInt(countRaw, 10);
-          if (!Number.isNaN(n)) setCount(n);
-        }
-
-        if (goalRaw) {
-          const n = Number.parseInt(goalRaw, 10);
-          if (!Number.isNaN(n) && n >= 1 && n <= 100000) {
-            setGoal(n);
-            setGoalInput(String(n));
-          }
-        }
-
-        if (darkRaw === '1' || darkRaw === '0') {
-          setIsDarkMode(darkRaw === '1');
-        } else {
-          setIsDarkMode(isGermanNightDefault());
-        }
+        if (countRaw !== null) { const n = Number.parseInt(countRaw, 10); if (!Number.isNaN(n)) setCount(n); }
+        if (goalRaw) { const n = Number.parseInt(goalRaw, 10); if (!Number.isNaN(n) && n >= 1 && n <= 100000) { setGoal(n); setGoalInput(String(n)); } }
+        if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(isGermanNightDefault());
       } catch (e) {
         console.warn('Failed to load local settings:', e);
       } finally {
         setCountLoaded(true);
       }
     };
-
     loadLocal();
-  }, [systemScheme]);
+  }, []);
+
+  useEffect(() => { if (countLoaded) AsyncStorage.setItem(STORAGE_KEYS.count, String(count)).catch(() => {}); }, [count, countLoaded]);
 
   useEffect(() => {
-    if (!countLoaded) return;
-    AsyncStorage.setItem(STORAGE_KEYS.count, String(count)).catch(() => {});
-  }, [count, countLoaded]);
+    const run = async () => {
+      const lastAt = tabLogRef.current[activeTab] || 0;
+      const nowTs = Date.now();
+      if (nowTs - lastAt < 30000) return;
+      tabLogRef.current[activeTab] = nowTs;
+      if (!hasFirebaseConfig()) return;
 
-  const onPressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.975, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
-  };
-  const onPressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
-  };
+      const hh = pad(getGermanHour());
+      try {
+        await incrementDocCounters('metrics_daily', todayISO, [
+          'visits_total',
+          `visits_by_screen.${activeTab}`,
+          `visits_by_hour.\`${hh}\``,
+        ]);
+      } catch {
+        setToast('Datenbankfehler – bitte Internet prüfen');
+      }
+    };
+    run();
+  }, [activeTab, todayISO]);
 
-  const incrementCount = () => {
-    setCount((prev) => prev + 1);
-    Vibration.vibrate(4);
-  };
+  const onPressIn = () => Animated.spring(scaleAnim, { toValue: 0.975, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
+  const onPressOut = () => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
 
+  const incrementCount = () => { setCount((prev) => prev + 1); Vibration.vibrate(4); };
   const saveGoal = async () => {
     const n = Number.parseInt(goalInput.trim(), 10);
     if (Number.isNaN(n) || n < 1 || n > 100000) return;
     setGoal(n);
     await AsyncStorage.setItem(STORAGE_KEYS.goal, String(n));
+    setToast('Gespeichert ✓');
   };
-
   const onToggleDarkMode = async (value) => {
     Animated.sequence([
       Animated.timing(themePulseAnim, { toValue: 0.96, duration: 140, useNativeDriver: true }),
       Animated.spring(themePulseAnim, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }),
     ]).start();
-
     setIsDarkMode(value);
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
 
-  if (screen === 'prayer') {
+  const countAttendance = async (kind, locationName) => {
+    const nowTs = Date.now();
+    if (nowTs - terminalLastCountRef.current < 2000) return;
+    terminalLastCountRef.current = nowTs;
+
+    if (!hasFirebaseConfig()) {
+      Alert.alert('Datenbankfehler', 'Bitte Firebase Konfiguration setzen.');
+      return;
+    }
+
+    const prayer = nextPrayer;
+    const paths = [`totals.byPrayer.${prayer}`];
+    if (kind === 'guest') {
+      paths.push(`guests.byPrayer.${prayer}`);
+    } else if (locationName) {
+      paths.push(`members.byPrayerAndLocation.${prayer}.${toLocationKey(locationName)}`);
+    }
+
+    try {
+      await incrementDocCounters('attendance_daily', todayISO, paths);
+      Vibration.vibrate(4);
+      setToast('Gezählt ✓');
+      setTerminalMode('main');
+    } catch {
+      Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
+      setToast('Datenbankfehler – bitte Internet prüfen');
+    }
+  };
+
+  const refreshStats = async () => {
+    setStatsLoading(true);
+    try {
+      const [metrics, attendance] = await Promise.all([
+        getDocData('metrics_daily', todayISO),
+        getDocData('attendance_daily', todayISO),
+      ]);
+      setStatsData({ metrics, attendance });
+    } catch {
+      setToast('Datenbankfehler – bitte Internet prüfen');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  useEffect(() => { if (activeTab === 'stats') refreshStats(); }, [activeTab]);
+
+  const topHour = useMemo(() => {
+    const byHour = statsData.metrics?.visits_by_hour || {};
+    return Object.entries(byHour).sort((a, b) => (b[1] || 0) - (a[1] || 0))[0] || null;
+  }, [statsData]);
+
+  const topLocations = useMemo(() => {
+    const byPrayerAndLocation = statsData.attendance?.members?.byPrayerAndLocation || {};
+    const totals = {};
+    Object.values(byPrayerAndLocation).forEach((locMap) => {
+      Object.entries(locMap || {}).forEach(([k, v]) => {
+        totals[k] = (totals[k] || 0) + (v || 0);
+      });
+    });
+    return Object.entries(totals).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  }, [statsData]);
+
+  const nextPrayerLabel = {
+    fajr: `Fajr (${timesToday.fajr})`,
+    sohar: `Sohar (${timesToday.sohar})`,
+    asr: `Asr (${timesToday.asr})`,
+    maghrib: `Maghrib (${timesToday.maghrib})`,
+    ishaa: `Ishaa (${timesToday.ishaa})`,
+  }[nextPrayer] || '—';
+
+  const renderTasbeeh = () => (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Tasbeeh (تسبيح)</Text></View></View>
+      <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
+      <View style={styles.mainFlex}>
+        <Pressable style={styles.counterPressable} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
+          <Animated.View style={[styles.counter, { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] }]}>
+            {!countLoaded ? <ActivityIndicator size="large" color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
+          </Animated.View>
+        </Pressable>
+        <View style={styles.bottomSticky}>
+          <View style={styles.progressWrap}><View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}><View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text></View>
+          <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
+          <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
+        </View>
+      </View>
+    </ScrollView>
+  );
+
+  const renderPrayer = () => {
     const displayDate = selectedDate || now;
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
-        <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
-            <Text style={[styles.dayDate, { color: theme.muted }]}>{englishDateLong(displayDate)}</Text>
-
-            <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
-              <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text>
-            </View>
-
-            {!hasTodayData ? (
-              <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text>
-            ) : null}
-
-            {prayerRows.map((row) => {
-              const isActive = row.key === activePrayerKey;
-              return (
-                <View
-                  key={row.key}
-                  style={[
-                    styles.prayerRow,
-                    { borderBottomColor: theme.border },
-                    isActive && {
-                      backgroundColor: theme.rowActiveBg,
-                      borderColor: theme.rowActiveBorder,
-                      borderWidth: 1,
-                      borderRadius: 10,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.prayerLabel, { color: theme.text }]}>{row.label}</Text>
-                  <Text style={[styles.prayerValue, { color: theme.text }]}>{row.time || '—'}</Text>
-                </View>
-              );
-            })}
-
-            <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text>
-            <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text>
-          </View>
-
-          <Pressable onPress={() => setScreen('tasbeeh')} style={[styles.resetBtn, { backgroundColor: theme.button }]}>
-            <Text style={[styles.resetText, { color: theme.buttonText }]}>Zurück</Text>
-          </Pressable>
-        </ScrollView>
-        </Animated.View>
-      </SafeAreaView>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
+          <Text style={[styles.dayDate, { color: theme.muted }]}>{englishDateLong(displayDate)}</Text>
+          <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
+          {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
+          {prayerRows.map((row) => {
+            const isActive = row.key === activePrayerKey;
+            return (
+              <View key={row.key} style={[styles.prayerRow, { borderBottomColor: theme.border }, isActive && { backgroundColor: theme.rowActiveBg, borderColor: theme.rowActiveBorder, borderWidth: 1, borderRadius: 10 }]}>
+                <Text style={[styles.prayerLabel, { color: theme.text }]}>{row.label}</Text>
+                <Text style={[styles.prayerValue, { color: theme.text }]}>{row.time || '—'}</Text>
+              </View>
+            );
+          })}
+          <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text>
+          <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text>
+        </View>
+      </ScrollView>
     );
-  }
+  };
+
+  const renderTerminal = () => (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border, padding: 16 }]}>
+        <Text style={[styles.modalTitle, { color: theme.text, textAlign: 'center' }]}>Nächstes Gebet: {nextPrayerLabel}</Text>
+      </View>
+
+      {terminalMode === 'main' ? (
+        <>
+          <Pressable style={[styles.bigTerminalBtn, { backgroundColor: theme.button }]} onPress={() => countAttendance('guest')}><Text style={[styles.bigTerminalText, { color: theme.buttonText }]}>Gast</Text></Pressable>
+          <Pressable style={[styles.bigTerminalBtn, { backgroundColor: theme.button }]} onPress={() => setTerminalMode('member')}><Text style={[styles.bigTerminalText, { color: theme.buttonText }]}>Mitglied</Text></Pressable>
+        </>
+      ) : (
+        <View style={styles.gridWrap}>
+          {TERMINAL_LOCATIONS.map((loc) => (
+            <Pressable key={loc} style={[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => countAttendance('member', loc)}>
+              <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+
+  const renderStats = () => (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={refreshStats}><Text style={[styles.resetText, { color: theme.buttonText }]}>Aktualisieren</Text></Pressable>
+      {statsLoading ? <ActivityIndicator size="large" color={theme.text} /> : null}
+
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Besucher heute</Text>
+        {!statsData.metrics ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text> : (
+          <>
+            <Text style={[styles.noteText, { color: theme.text }]}>Total: {statsData.metrics.visits_total || 0}</Text>
+            {Object.entries(statsData.metrics.visits_by_screen || {}).map(([k, v]) => <Text key={k} style={[styles.noteText, { color: theme.muted }]}>{k}: {v}</Text>)}
+            <Text style={[styles.noteText, { color: theme.muted }]}>Top hour: {topHour ? `${topHour[0]} (${topHour[1]})` : '—'}</Text>
+          </>
+        )}
+      </View>
+
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Attendance heute</Text>
+        {!statsData.attendance ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten vorhanden</Text> : (
+          <>
+            {Object.entries(statsData.attendance.totals?.byPrayer || {}).map(([k, v]) => <Text key={k} style={[styles.noteText, { color: theme.muted }]}>{k}: {v}</Text>)}
+            <Text style={[styles.noteText, { color: theme.text }]}>Gäste gesamt: {Object.values(statsData.attendance.guests?.byPrayer || {}).reduce((a, b) => a + b, 0)}</Text>
+            <Text style={[styles.noteText, { color: theme.text }]}>Mitglieder gesamt: {topLocations.reduce((a, [, v]) => a + v, 0)}</Text>
+            <Text style={[styles.noteText, { color: theme.text }]}>Top 3 Locations:</Text>
+            {topLocations.map(([k, v]) => <Text key={k} style={[styles.noteText, { color: theme.muted }]}>{k}: {v}</Text>)}
+          </>
+        )}
+      </View>
+    </ScrollView>
+  );
+
+  const renderSettings = () => (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={styles.switchRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
+      </View>
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Tasbeeh Goal</Text>
+        <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={[styles.presetBtn, { backgroundColor: theme.button }]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
+        <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+        <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
+      </View>
+    </ScrollView>
+  );
+
+  const body = activeTab === 'tasbeeh' ? renderTasbeeh() : activeTab === 'gebetsplan' ? renderPrayer() : activeTab === 'terminal' ? renderTerminal() : activeTab === 'stats' ? renderStats() : renderSettings();
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerRow}>
-          <View style={styles.titleWrap}>
-            <Text style={[styles.title, { color: theme.text }]}>Tasbeeh (تسبيح)</Text>
-          </View>
-          <Pressable
-            onPress={() => setSettingsOpen(true)}
-            style={({ pressed }) => [
-              styles.settingsBtn,
-              { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Text style={[styles.settingsBtnText, { color: theme.text }]}>⚙️</Text>
+      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+        {TAB_ITEMS.map((tab) => (
+          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
+            <Text style={{ color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500', fontSize: 12 }}>{tab.label}</Text>
           </Pressable>
-        </View>
+        ))}
+      </View>
 
-        <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
-
-        <View style={styles.mainFlex}>
-          <Pressable style={styles.counterPressable} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
-            <Animated.View
-            style={[
-              styles.counter,
-              { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] },
-            ]}
-          >
-            {!countLoaded ? <ActivityIndicator size="large" color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
-            </Animated.View>
-          </Pressable>
-
-          <View style={styles.bottomSticky}>
-            <View style={styles.progressWrap}>
-          <View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}>
-            <View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} />
-          </View>
-              <Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text>
-            </View>
-
-            <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}>
-          <Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text>
-        </Pressable>
-
-            <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setScreen('prayer')}>
-              <Text style={[styles.resetText, { color: theme.buttonText }]}>Gebetszeiten</Text>
-            </Pressable>
-
-            <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
-          </View>
-        </View>
-      </ScrollView>
-      </Animated.View>
-
-      <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-            <View style={styles.modalHeaderRow}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Settings</Text>
-              <Pressable onPress={() => setSettingsOpen(false)}>
-                <Text style={[styles.closeText, { color: theme.text }]}>Schließen</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <View style={styles.switchRow}>
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text>
-                  <Switch value={isDarkMode} onValueChange={onToggleDarkMode} />
-                </View>
-              </View>
-
-              <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>Tasbeeh Goal</Text>
-                <View style={styles.presetRow}>
-                  {GOAL_PRESETS.map((preset) => (
-                    <Pressable key={preset} style={[styles.presetBtn, { backgroundColor: theme.button }]} onPress={() => setGoalInput(String(preset))}>
-                      <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-
-                <Text style={[styles.noteText, { color: theme.muted }]}>Aktuelles Ziel: {goalInput}</Text>
-
-                <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={saveGoal}>
-                  <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text>
-                </Pressable>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+      {toast ? (
+        <View style={[styles.toast, { backgroundColor: theme.button }]}><Text style={{ color: theme.buttonText, fontWeight: '700' }}>{toast}</Text></View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -459,57 +545,44 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
-  settingsBtn: { position: 'absolute', right: 0, borderRadius: 11, borderWidth: 1, width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  settingsBtnText: { fontSize: 17 },
   subtitle: { fontSize: 14, textAlign: 'center' },
-
   mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
   counterPressable: { flex: 1 },
   counter: { flex: 1, borderRadius: 26, borderWidth: 1, minHeight: 340, alignItems: 'center', justifyContent: 'center' },
   counterText: { fontSize: 92, fontWeight: '800', lineHeight: 98 },
-
   progressWrap: { gap: 8 },
   progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
   progressFill: { height: '100%' },
   progressText: { textAlign: 'center', fontSize: 13, fontWeight: '600' },
   resetBtn: { borderRadius: 14, paddingVertical: 13, alignItems: 'center' },
   resetText: { fontSize: 17, fontWeight: '700' },
-
   dayCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
   dayName: { fontSize: 42, fontWeight: '800', textAlign: 'center' },
   dayDate: { fontSize: 20, textAlign: 'center' },
   cityBadge: { alignSelf: 'center', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 4 },
   cityBadgeText: { fontSize: 18, fontWeight: '700' },
   syncStatus: { textAlign: 'center', fontSize: 12, fontWeight: '700', marginBottom: 6 },
-
-  prayerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderBottomWidth: 1,
-  },
+  prayerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1 },
   prayerLabel: { fontSize: 17, fontWeight: '500', flex: 1, marginRight: 10 },
   prayerValue: { fontSize: 20, fontWeight: '700' },
-
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
-
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.32)' },
-  modalSheet: { maxHeight: '92%', borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, padding: 12 },
-  modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  modalTitle: { fontSize: 24, fontWeight: '800' },
-  closeText: { fontSize: 14, fontWeight: '700' },
-
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10 },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   presetBtn: { borderRadius: 9, paddingHorizontal: 12, paddingVertical: 8 },
   presetBtnText: { fontSize: 13, fontWeight: '700' },
-
   saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
+  goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10 },
+  toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
+  bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
+  bigTerminalText: { fontSize: 34, fontWeight: '800' },
+  gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
+  gridText: { textAlign: 'center', fontWeight: '700' },
 });
