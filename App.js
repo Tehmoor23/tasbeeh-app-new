@@ -1,4 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
+import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -640,7 +641,13 @@ export default function App() {
           <>
             <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Nächstes Gebet: {prayerWindow.nextLabel}</Text>
-            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => { setRefreshTick((v) => v + 1); setToast('Aktualisiert ✓'); }}>
+            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={async () => {
+              if (Platform.OS === 'web') {
+                window.location.reload();
+                return;
+              }
+              await Updates.reloadAsync();
+            }}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
             </Pressable>
           </>
