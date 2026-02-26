@@ -5,7 +5,10 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+<<<<<<< HEAD
   Platform,
+=======
+>>>>>>> origin/codex/update-app.js-for-tasbeeh-counter-oit6d2
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -26,8 +29,12 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
+<<<<<<< HEAD
 const FORCE_TIME = null;
 // const FORCE_TIME = '17:01'; // development override, set null for real time
+=======
+const FORCE_TIME = '13:05'; // development override, set null for real time
+>>>>>>> origin/codex/update-app.js-for-tasbeeh-counter-oit6d2
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -278,7 +285,10 @@ export default function App() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
+<<<<<<< HEAD
   const visitorCounterRef = useRef(0);
+=======
+>>>>>>> origin/codex/update-app.js-for-tasbeeh-counter-oit6d2
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = useMemo(() => {
@@ -537,15 +547,6 @@ export default function App() {
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
-      visitorCounterRef.current += 1;
-      console.log('ATTENDANCE LOG:', {
-        visitorNumber: visitorCounterRef.current,
-        timestamp: new Date().toISOString(),
-        prayer: prayerWindow.prayerKey,
-        tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
-        majlis: kind === 'guest' ? null : toLocationKey(locationName),
-        platform: Platform.OS,
-      });
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
@@ -797,7 +798,11 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
+<<<<<<< HEAD
   topSettingsOverlay: { position: 'absolute', top: 39, right: 16, zIndex: 20 },
+=======
+  topSettingsOverlay: { position: 'absolute', top: 14, right: 16, zIndex: 20 },
+>>>>>>> origin/codex/update-app.js-for-tasbeeh-counter-oit6d2
   settingsFab: { width: 30, height: 30, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   settingsFabText: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
@@ -825,7 +830,11 @@ const styles = StyleSheet.create({
   prayerValue: { fontSize: 20, fontWeight: '700' },
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
+<<<<<<< HEAD
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
+=======
+  section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10 },
+>>>>>>> origin/codex/update-app.js-for-tasbeeh-counter-oit6d2
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
