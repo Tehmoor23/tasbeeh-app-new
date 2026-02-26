@@ -25,7 +25,7 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 
-const CITY = 'Frankfurt am Main';
+const CITY = 'Bait-Us-Sabuh';
 const FIXED_TIMES = {
   sohar: '13:30',
   assr: '16:00',
@@ -180,8 +180,8 @@ export default function App() {
   const prayerRows = useMemo(
     () => [
       { key: 'fajr', label: 'Fajr (الفجر)', time: fajrTime, activeCheck: true },
-      { key: 'sohar', label: 'Sohar / Dhuhr (الظهر)', time: FIXED_TIMES.sohar, activeCheck: true },
-      { key: 'assr', label: 'Assr / Asr (العصر)', time: FIXED_TIMES.assr, activeCheck: true },
+      { key: 'sohar', label: 'Sohar (الظهر)', time: FIXED_TIMES.sohar, activeCheck: true },
+      { key: 'assr', label: 'Asr (العصر)', time: FIXED_TIMES.assr, activeCheck: true },
       { key: 'maghrib', label: 'Maghrib (المغرب)', time: maghribTime, activeCheck: true },
       { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', time: FIXED_TIMES.ishaaTaravih, activeCheck: true },
       { key: 'jumma', label: 'Jumma (الجمعة)', time: FIXED_TIMES.jumma, activeCheck: false },
@@ -278,10 +278,6 @@ export default function App() {
       <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
         <StatusBar style={isDarkMode ? 'light' : 'dark'} />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          <Pressable onPress={() => setScreen('tasbeeh')} style={[styles.resetBtn, { backgroundColor: theme.button }]}>
-            <Text style={[styles.resetText, { color: theme.buttonText }]}>Zurück</Text>
-          </Pressable>
-
           <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_EN[displayDate.getDay()]}</Text>
             <Text style={[styles.dayDate, { color: theme.muted }]}>{englishDateLong(displayDate)}</Text>
@@ -319,6 +315,10 @@ export default function App() {
             <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text>
             <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text>
           </View>
+
+          <Pressable onPress={() => setScreen('tasbeeh')} style={[styles.resetBtn, { backgroundColor: theme.button }]}>
+            <Text style={[styles.resetText, { color: theme.buttonText }]}>Zurück</Text>
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     );
@@ -330,7 +330,9 @@ export default function App() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.headerRow}>
-          <Text style={[styles.title, { color: theme.text }]}>Tasbeeh Zähler</Text>
+          <View style={styles.titleWrap}>
+            <Text style={[styles.title, { color: theme.text }]}>Tasbeeh</Text>
+          </View>
           <Pressable
             onPress={() => setSettingsOpen(true)}
             style={({ pressed }) => [
@@ -344,33 +346,37 @@ export default function App() {
 
         <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
 
-        <Pressable onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
-          <Animated.View
+        <View style={styles.mainFlex}>
+          <Pressable style={styles.counterPressable} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
+            <Animated.View
             style={[
               styles.counter,
               { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] },
             ]}
           >
             {!countLoaded ? <ActivityIndicator size="large" color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
-          </Animated.View>
-        </Pressable>
+            </Animated.View>
+          </Pressable>
 
-        <View style={styles.progressWrap}>
+          <View style={styles.bottomSticky}>
+            <View style={styles.progressWrap}>
           <View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}>
             <View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} />
           </View>
-          <Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text>
-        </View>
+              <Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text>
+            </View>
 
-        <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}>
+            <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}>
           <Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text>
         </Pressable>
 
-        <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setScreen('prayer')}>
-          <Text style={[styles.resetText, { color: theme.buttonText }]}>Gebetsplan</Text>
-        </Pressable>
+            <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setScreen('prayer')}>
+              <Text style={[styles.resetText, { color: theme.buttonText }]}>Gebetszeiten</Text>
+            </Pressable>
 
-        <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
+            <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
+          </View>
+        </View>
       </ScrollView>
 
       <Modal visible={settingsOpen} transparent animationType="slide" onRequestClose={() => setSettingsOpen(false)}>
@@ -417,14 +423,17 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  content: { padding: 16, gap: 12, paddingBottom: 28 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  title: { fontSize: 30, fontWeight: '800' },
-  settingsBtn: { borderRadius: 12, borderWidth: 1, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
+  headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  titleWrap: { flex: 1, alignItems: 'center' },
+  title: { fontSize: 36, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5, fontFamily: 'serif' },
+  settingsBtn: { position: 'absolute', right: 0, borderRadius: 12, borderWidth: 1, width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   settingsBtnText: { fontSize: 20 },
-  subtitle: { fontSize: 14 },
+  subtitle: { fontSize: 14, textAlign: 'center' },
 
-  counter: { borderRadius: 26, borderWidth: 1, minHeight: 250, alignItems: 'center', justifyContent: 'center' },
+  mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
+  counterPressable: { flex: 1 },
+  counter: { flex: 1, borderRadius: 26, borderWidth: 1, minHeight: 340, alignItems: 'center', justifyContent: 'center' },
   counterText: { fontSize: 92, fontWeight: '800', lineHeight: 98 },
 
   progressWrap: { gap: 8 },
@@ -452,7 +461,8 @@ const styles = StyleSheet.create({
   prayerLabel: { fontSize: 17, fontWeight: '500', flex: 1, marginRight: 10 },
   prayerValue: { fontSize: 20, fontWeight: '700' },
 
-  footer: { textAlign: 'center', fontSize: 12, fontWeight: '500' },
+  bottomSticky: { gap: 10 },
+  footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
 
   modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.32)' },
   modalSheet: { maxHeight: '92%', borderTopLeftRadius: 18, borderTopRightRadius: 18, borderWidth: 1, padding: 12 },
