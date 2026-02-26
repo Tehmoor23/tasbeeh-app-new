@@ -280,7 +280,7 @@ export default function App() {
 
   const incrementCount = () => {
     setCount((prev) => prev + 1);
-    Vibration.vibrate(4);
+    Vibration.vibrate(1);
   };
 
   const saveGoal = async () => {
