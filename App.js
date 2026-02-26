@@ -38,9 +38,13 @@ const TAB_ITEMS = [
 ];
 
 const FIREBASE_CONFIG = {
-  // Insert your Firebase keys here
-  apiKey: 'YOUR_API_KEY',
-  projectId: 'YOUR_PROJECT_ID',
+  apiKey: 'AIzaSyC_Kz1Cxs-HQ5G994mBztV_ADlAHYsgDKs',
+  authDomain: 'tasbeeh-1e356.firebaseapp.com',
+  projectId: 'tasbeeh-1e356',
+  storageBucket: 'tasbeeh-1e356.firebasestorage.app',
+  messagingSenderId: '839190734965',
+  appId: '1:839190734965:web:6bef9b34edf1f0b84cb03c',
+  measurementId: 'G-908CPHGR56',
 };
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
 
