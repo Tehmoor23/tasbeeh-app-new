@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Modal,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -24,7 +25,7 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 
-const CITY = 'Bait-us-Sabuh (Frankfurt)';
+const CITY = 'Frankfurt am Main';
 const FIXED_TIMES = {
   sohar: '13:30',
   assr: '16:00',
