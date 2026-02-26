@@ -212,6 +212,7 @@ const getGermanHour = () => {
 };
 const isGermanNightDefault = () => { const h = getGermanHour(); return h >= 22 || h < 6; };
 const hasFirebaseConfig = () => FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.projectId).includes('YOUR_') && !String(FIREBASE_CONFIG.apiKey).includes('YOUR_');
+const withPressEffect = (style) => ({ pressed }) => [style, pressed && styles.buttonPressed];
 
 const toFirestoreValue = (value) => {
   if (value === null || value === undefined) return { nullValue: null };
@@ -607,14 +608,14 @@ export default function App() {
       <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Tasbeeh (تسبيح)</Text></View></View>
       <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
       <View style={styles.mainFlex}>
-        <Pressable style={styles.counterPressable} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
+        <Pressable style={withPressEffect(styles.counterPressable)} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
           <Animated.View style={[styles.counter, { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] }]}>
             {!countLoaded ? <ActivityIndicator size="large" color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
           </Animated.View>
         </Pressable>
         <View style={styles.bottomSticky}>
           <View style={styles.progressWrap}><View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}><View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text></View>
-          <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
+          <Pressable style={({ pressed }) => [[styles.resetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
           <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor Bhatti</Text>
         </View>
       </View>
@@ -661,7 +662,7 @@ export default function App() {
             <Text style={[styles.noPrayerTitle, { color: theme.text }]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
             <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
-            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => setRefreshTick((v) => v + 1)}>
+            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }], pressed && styles.buttonPressed]} onPress={() => setRefreshTick((v) => v + 1)}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
             </Pressable>
           </>
@@ -674,12 +675,12 @@ export default function App() {
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
           <View style={styles.tanzeemRow}>
             {['ansar', 'khuddam', 'atfal'].map((tanzeem) => (
-              <Pressable key={tanzeem} style={[styles.tanzeemBtn, { backgroundColor: theme.button }]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
+              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
                 <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{tanzeem.charAt(0).toUpperCase() + tanzeem.slice(1)}</Text>
               </Pressable>
             ))}
           </View>
-          <Pressable onPress={() => countAttendance('guest')} style={styles.guestLinkWrap}>
+          <Pressable onPress={() => countAttendance('guest')} style={withPressEffect(styles.guestLinkWrap)}>
             <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
           </Pressable>
         </>
@@ -687,12 +688,12 @@ export default function App() {
         <>
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
-          <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
           <View style={styles.gridWrap}>
             {TERMINAL_LOCATIONS.map((loc) => (
-              <Pressable key={loc} style={[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => countAttendance('member', loc)}>
+              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', loc)}>
                 <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
               </Pressable>
             ))}
@@ -802,9 +803,9 @@ export default function App() {
       </View>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Tasbeeh Goal</Text>
-        <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={[styles.presetBtn, { backgroundColor: theme.button }]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
+        <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={({ pressed }) => [[styles.presetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
         <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-        <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
+        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
       </View>
     </ScrollView>
   );
@@ -822,11 +823,14 @@ export default function App() {
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <View style={[styles.basmalaWrap, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
+        <Text style={[styles.basmalaText, { color: theme.text }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
+      </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
         {TAB_ITEMS.map((tab) => (
-          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
+          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
             <Text numberOfLines={1} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
           </Pressable>
         ))}
@@ -841,6 +845,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
+  basmalaWrap: { borderBottomWidth: 1, paddingTop: 4, paddingBottom: 8, paddingHorizontal: 16 },
+  basmalaText: { textAlign: 'center', fontSize: 24, lineHeight: 36, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
@@ -879,6 +885,7 @@ const styles = StyleSheet.create({
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
+  buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
   tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
