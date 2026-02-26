@@ -786,7 +786,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
-  topSettingsOverlay: { position: 'absolute', top: 28, right: 16, zIndex: 20 },
+  topSettingsOverlay: { position: 'absolute', top: 32, right: 16, zIndex: 20 },
   settingsFab: { width: 30, height: 30, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   settingsFabText: { fontSize: 14, fontWeight: '700' },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
