@@ -50,7 +50,7 @@ const TAB_ITEMS = [
   { key: 'tasbeeh', label: 'Tasbeeh' },
   { key: 'gebetsplan', label: 'Gebetsplan' },
   { key: 'terminal', label: 'Gebetsanwesenheit' },
-  { key: 'settings', label: 'Einstellungen' },
+  { key: 'stats', label: 'Stats' },
 ];
 
 const PRAYER_LABELS = {
