@@ -147,7 +147,7 @@ const addMinutes = (time, minutes) => {
   const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 };
-const englishDateLong = (date) => new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+const germanDateLong = (date) => new Intl.DateTimeFormat('de-DE', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
 const findClosestISO = (targetISO, availableISOs) => {
   const target = parseISO(targetISO);
   if (!target || availableISOs.length === 0) return null;
@@ -605,7 +605,7 @@ export default function App() {
 
   const renderTasbeeh = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Tasbeeh (تسبيح)</Text></View></View>
+      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Tasbeeh</Text><Text style={[styles.titleArabic, { color: theme.muted }]}>تسبيح</Text></View></View>
       <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
       <View style={styles.mainFlex}>
         <Pressable style={withPressEffect(styles.counterPressable)} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
@@ -628,7 +628,7 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
-          <Text style={[styles.dayDate, { color: theme.muted }]}>{englishDateLong(displayDate)}</Text>
+          <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
           <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
@@ -650,7 +650,8 @@ export default function App() {
   const renderTerminal = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
       <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#111111', borderColor: isDarkMode ? '#374151' : '#111111' }]}>
-        <Text style={[styles.terminalBannerTitle, { color: '#FFFFFF' }]}>Gebetsanwesenheit (عبادت حاضری)</Text>
+        <Text style={[styles.terminalBannerTitle, { color: '#FFFFFF' }]}>Gebetsanwesenheit</Text>
+        <Text style={[styles.terminalBannerArabic, { color: '#D1D5DB' }]}>عبادت حاضری</Text>
         <Text style={[styles.terminalBannerSubtitle, { color: '#D1D5DB' }]}>Local Amarat Frankfurt</Text>
       </View>
 
@@ -849,6 +850,7 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
   subtitle: { fontSize: 14, textAlign: 'center' },
+  titleArabic: { fontSize: 20, textAlign: 'center', marginTop: 2 },
   mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
   counterPressable: { flex: 1 },
   counter: { flex: 1, borderRadius: 26, borderWidth: 1, minHeight: 340, alignItems: 'center', justifyContent: 'center' },
@@ -889,6 +891,7 @@ const styles = StyleSheet.create({
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
   terminalBanner: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   terminalBannerTitle: { textAlign: 'center', fontSize: 20, fontWeight: '800', letterSpacing: 0.2 },
+  terminalBannerArabic: { textAlign: 'center', marginTop: 2, fontSize: 16, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
