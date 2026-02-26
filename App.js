@@ -17,6 +17,9 @@ import {
   Vibration,
 } from 'react-native';
 
+import { initializeApp } from 'firebase/app';
+import { addDoc, collection, getFirestore } from 'firebase/firestore';
+
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
   goal: '@tasbeeh_goal',
@@ -90,6 +93,10 @@ const FIREBASE_CONFIG = {
   measurementId: 'G-908CPHGR56',
 };
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
+
+const firebaseApp = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(firebaseApp);
+
 
 const FIXED_TIMES = {
   sohar: '13:30',
@@ -278,7 +285,6 @@ export default function App() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
-  const visitorCounterRef = useRef(0);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = useMemo(() => {
@@ -537,10 +543,9 @@ export default function App() {
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
-      visitorCounterRef.current += 1;
-      console.log('ATTENDANCE LOG:', {
-        visitorNumber: visitorCounterRef.current,
-        timestamp: new Date().toISOString(),
+      await addDoc(collection(db, 'attendance_logs'), {
+        timestamp: new Date(),
+        date: new Date().toISOString().split('T')[0],
         prayer: prayerWindow.prayerKey,
         tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
         majlis: kind === 'guest' ? null : toLocationKey(locationName),
