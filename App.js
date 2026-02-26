@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -15,6 +16,9 @@ import {
   View,
   Vibration,
 } from 'react-native';
+
+import { initializeApp } from 'firebase/app';
+import { addDoc, collection, getFirestore } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -89,6 +93,10 @@ const FIREBASE_CONFIG = {
   measurementId: 'G-908CPHGR56',
 };
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
+
+const firebaseApp = initializeApp(FIREBASE_CONFIG);
+const db = getFirestore(firebaseApp);
+
 
 const FIXED_TIMES = {
   sohar: '13:30',
@@ -535,6 +543,14 @@ export default function App() {
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
+      await addDoc(collection(db, 'attendance_logs'), {
+        timestamp: new Date(),
+        date: new Date().toISOString().split('T')[0],
+        prayer: prayerWindow.prayerKey,
+        tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
+        majlis: kind === 'guest' ? null : toLocationKey(locationName),
+        platform: Platform.OS,
+      });
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
