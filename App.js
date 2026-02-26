@@ -617,7 +617,6 @@ export default function App() {
         <View style={styles.bottomSticky}>
           <View style={styles.progressWrap}><View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}><View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text></View>
           <Pressable style={({ pressed }) => [[styles.resetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
-          <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor Bhatti</Text>
         </View>
       </View>
     </ScrollView>
@@ -812,7 +811,7 @@ export default function App() {
 
       <View style={styles.appMetaWrap}>
         <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.0</Text>
-        <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>Copyright © 2026 Ahmadiyya Muslim Community. All rights reserved.</Text>
+        <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
   );
