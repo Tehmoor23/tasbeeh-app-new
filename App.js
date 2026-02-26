@@ -175,6 +175,33 @@ const addDays = (date, days) => {
   return next;
 };
 
+const getBerlinNow = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Berlin',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    const byType = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+    return new Date(
+      Number(byType.year),
+      Number(byType.month) - 1,
+      Number(byType.day),
+      Number(byType.hour),
+      Number(byType.minute),
+      Number(byType.second),
+      0,
+    );
+  } catch {
+    return new Date();
+  }
+};
+
 const getGermanHour = () => {
   try {
     const parts = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }).formatToParts(new Date());
@@ -298,7 +325,7 @@ export default function App() {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const now = useMemo(() => {
-    const d = new Date();
+    const d = getBerlinNow();
     if (isValidTime(FORCE_TIME)) {
       d.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
@@ -414,8 +441,8 @@ export default function App() {
       return mins !== null && mins >= nowMinutes;
     });
     const nextLabel = todayHasUpcomingPrayer
-      ? `${nextToday?.label || '—'} – ${nextToday?.time || '—'}`
-      : `${PRAYER_LABELS.fajr} – ${timesTomorrow.fajr || '—'}`;
+      ? `${nextToday?.label || '—'} - ${nextToday?.time || '—'}`
+      : `${PRAYER_LABELS.fajr} - ${timesTomorrow.fajr || '—'}`;
     if (active) {
       const base = getMinutes(active.time);
       return {
@@ -631,8 +658,9 @@ export default function App() {
           <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
         ) : (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Derzeit kein Gebet</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Nächstes Gebet: {prayerWindow.nextLabel}</Text>
+            <Text style={[styles.noPrayerTitle, { color: theme.text }]}>Derzeit kein Gebet</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
+            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
             <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => setRefreshTick((v) => v + 1)}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
             </Pressable>
@@ -799,7 +827,7 @@ export default function App() {
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
         {TAB_ITEMS.map((tab) => (
           <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
+            <Text numberOfLines={1} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -849,9 +877,9 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 52 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 2 },
-  tabLabel: { fontSize: 11, textAlign: 'center', width: '100%' },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
+  tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
@@ -860,7 +888,10 @@ const styles = StyleSheet.create({
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
+  noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', backgroundColor: '#FDE68A', color: '#1F2937', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, overflow: 'hidden' },
+  nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
+
   guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
