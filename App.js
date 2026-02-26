@@ -640,7 +640,7 @@ export default function App() {
           <>
             <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Nächstes Gebet: {prayerWindow.nextLabel}</Text>
-            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => setRefreshTick((v) => v + 1)}>
+            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={() => { setRefreshTick((v) => v + 1); setToast('Aktualisiert ✓'); }}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
             </Pressable>
           </>
