@@ -29,7 +29,7 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_GOAL = 100;
-const GOAL_PRESETS = [33, 99, 100, 200, 1000];
+const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const FORCE_TIME = null;
 // const FORCE_TIME = '17:01'; // development override, set null for real time
@@ -342,13 +342,16 @@ export default function App() {
   const tabLabelSize = useMemo(() => {
     if (screenWidth < 350) return 9;
     if (screenWidth < 390) return 10;
-    return 11;
+    if (screenWidth < 430) return 11;
+    return 12;
   }, [screenWidth]);
   const tabIconSize = useMemo(() => {
     if (screenWidth < 350) return 14;
     if (screenWidth < 390) return 15;
-    return 16;
+    if (screenWidth < 430) return 16;
+    return 17;
   }, [screenWidth]);
+  const tabBarPaddingHorizontal = useMemo(() => (screenWidth < 360 ? 4 : 6), [screenWidth]);
 
   useEffect(() => {
     if (!toast) return;
@@ -826,7 +829,7 @@ export default function App() {
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingHorizontal: tabBarPaddingHorizontal }]}>
         {TAB_ITEMS.map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -836,7 +839,7 @@ export default function App() {
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 minimumFontScale={0.85}
-                style={{ color: isActive ? theme.text : theme.muted, fontWeight: isActive ? '700' : '500', fontSize: tabLabelSize }}
+                style={[styles.tabLabel, { color: isActive ? theme.text : theme.muted, fontWeight: isActive ? '700' : '500', fontSize: tabLabelSize }]}
               >
                 {tab.label}
               </Text>
@@ -890,9 +893,10 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 6, paddingTop: 6, paddingBottom: 8 },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingTop: 6, paddingBottom: 8 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0 },
   tabIcon: { lineHeight: 18 },
+  tabLabel: { textAlign: 'center', maxWidth: '100%' },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
