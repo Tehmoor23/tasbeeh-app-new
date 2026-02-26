@@ -650,10 +650,10 @@ export default function App() {
 
   const renderTerminal = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
-      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#334155', borderColor: isDarkMode ? '#374151' : '#475569' }]}>
-        <Text style={[styles.terminalBannerTitle, { color: '#FFFFFF' }]}>Gebetsanwesenheit</Text>
-        <Text style={[styles.terminalBannerArabic, { color: '#D1D5DB' }]}>عبادت حاضری</Text>
-        <Text style={[styles.terminalBannerSubtitle, { color: '#D1D5DB' }]}>Local Amarat Frankfurt</Text>
+      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
+        <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>Gebetsanwesenheit</Text>
+        <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
+        <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
       </View>
 
       <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -661,7 +661,7 @@ export default function App() {
           <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
         ) : (
           <>
-            <Text style={[styles.noPrayerTitle, { color: theme.text }]}>Derzeit kein Gebet</Text>
+            <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
             <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }], pressed && styles.buttonPressed]} onPress={() => setRefreshTick((v) => v + 1)}>
@@ -902,7 +902,9 @@ const styles = StyleSheet.create({
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
-  noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', backgroundColor: '#FDE68A', color: '#1F2937', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, overflow: 'hidden' },
+  noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, overflow: 'hidden' },
+  noPrayerTitleLight: { backgroundColor: '#FDE68A', color: '#1F2937' },
+  noPrayerTitleDark: { backgroundColor: '#78350F', color: '#FDE68A' },
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
 
