@@ -6,6 +6,7 @@ import {
   AppState,
   Alert,
   Animated,
+  LayoutAnimation,
   Image,
   Platform,
   Pressable,
@@ -15,10 +16,13 @@ import {
   Switch,
   Text,
   TextInput,
+  UIManager,
   View,
   Vibration,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { doc, getFirestore, onSnapshot } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -261,6 +265,8 @@ const fromFirestoreValue = (v) => {
 
 const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}?key=${FIREBASE_CONFIG.apiKey}`;
 const commitUrl = () => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit?key=${FIREBASE_CONFIG.apiKey}`;
+const firebaseApp = hasFirebaseConfig() ? (getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG)) : null;
+const firestoreDb = firebaseApp ? getFirestore(firebaseApp) : null;
 
 async function incrementDocCounters(collection, id, fieldPaths) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
@@ -534,36 +540,40 @@ function AppContent() {
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
 
   useEffect(() => {
-    if (activeTab !== 'stats') return;
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
-    let isMounted = true;
-    let intervalId;
+  useEffect(() => {
+    if (activeTab !== 'stats') return undefined;
 
-    const loadAttendance = async () => {
-      setStatsLoading(true);
-      try {
-        const attendance = await getDocData('attendance_daily', todayISO);
-        if (isMounted) {
-          setStatsAttendance(attendance);
-        }
-      } catch {
-        if (isMounted) {
-          setToast('Datenbankfehler – bitte Internet prüfen');
-        }
-      } finally {
-        if (isMounted) {
-          setStatsLoading(false);
-        }
-      }
-    };
+    setStatsLoading(true);
 
-    loadAttendance();
-    intervalId = setInterval(loadAttendance, 5000);
+    if (!firestoreDb || !hasFirebaseConfig()) {
+      getDocData('attendance_daily', todayISO)
+        .then((attendance) => setStatsAttendance(attendance))
+        .catch(() => setToast('Datenbankfehler – bitte Internet prüfen'))
+        .finally(() => setStatsLoading(false));
+      return undefined;
+    }
 
-    return () => {
-      isMounted = false;
-      clearInterval(intervalId);
-    };
+    const attendanceRef = doc(firestoreDb, 'attendance_daily', todayISO);
+    const unsubscribe = onSnapshot(
+      attendanceRef,
+      (snapshot) => {
+        const nextData = snapshot.exists() ? snapshot.data() : null;
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setStatsAttendance(nextData);
+        setStatsLoading(false);
+      },
+      () => {
+        setStatsLoading(false);
+        setToast('Datenbankfehler – bitte Internet prüfen');
+      },
+    );
+
+    return () => unsubscribe();
   }, [activeTab, todayISO]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
