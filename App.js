@@ -410,9 +410,14 @@ function AppContent() {
       const mins = getMinutes(item.time);
       return mins !== null && mins >= nowMinutes;
     });
+    const nextPrayerTime = todayHasUpcomingPrayer ? (nextToday?.time || '—') : (referenceTimesTomorrow.fajr || '—');
     const nextLabel = todayHasUpcomingPrayer
-      ? `${nextToday?.label || '—'} - ${nextToday?.time || '—'}`
-      : `${PRAYER_LABELS.fajr} - ${referenceTimesTomorrow.fajr || '—'}`;
+      ? `${nextToday?.label || '—'} - ${nextPrayerTime}`
+      : `${PRAYER_LABELS.fajr} - ${nextPrayerTime}`;
+    const nextWindowStartMinutes = todayHasUpcomingPrayer
+      ? ((getMinutes(nextPrayerTime) ?? 0) - 30)
+      : (((getMinutes(nextPrayerTime) ?? 0) - 30) + 1440);
+    const minutesUntilNextWindow = Math.max(0, nextWindowStartMinutes - nowMinutes);
     if (active) {
       const base = getMinutes(active.time);
       return {
@@ -422,6 +427,8 @@ function AppContent() {
         prayerTime: active.time,
         windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
         nextLabel,
+        nextPrayerTime,
+        minutesUntilNextWindow,
       };
     }
     return {
@@ -431,6 +438,8 @@ function AppContent() {
       prayerTime: null,
       windowLabel: null,
       nextLabel,
+      nextPrayerTime,
+      minutesUntilNextWindow,
     };
   };
 
@@ -466,6 +475,12 @@ function AppContent() {
 
     const midnightTs = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0).getTime();
     if (midnightTs > nowTs) candidates.push(midnightTs);
+
+    const hasActiveWindow = resolvePrayerWindow(now, timesToday, timesTomorrow).isActive;
+    if (!hasActiveWindow) {
+      const nextMinuteTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0).getTime();
+      if (nextMinuteTs > nowTs) candidates.push(nextMinuteTs);
+    }
 
     const nextTickTs = candidates.length ? Math.min(...candidates) : (nowTs + 60 * 1000);
     const delay = Math.max(500, nextTickTs - nowTs + 50);
@@ -727,9 +742,11 @@ function AppContent() {
             <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
             <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
-            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }], pressed && styles.buttonPressed]} onPress={() => setRefreshTick((v) => v + 1)}>
-              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
-            </Pressable>
+            <View style={[styles.noPrayerCountdownChip, { backgroundColor: isDarkMode ? '#1F2937' : '#F3F4F6', borderColor: theme.border }]}>
+              <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
+                Zeitfenster öffnet sich in {Math.floor((prayerWindow.minutesUntilNextWindow || 0) / 60)}h {String((prayerWindow.minutesUntilNextWindow || 0) % 60).padStart(2, '0')}m
+              </Text>
+            </View>
           </>
         )}
       </View>
@@ -992,9 +1009,11 @@ const styles = StyleSheet.create({
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
-  noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, overflow: 'hidden' },
-  noPrayerTitleLight: { backgroundColor: '#FDE68A', color: '#1F2937' },
-  noPrayerTitleDark: { backgroundColor: '#78350F', color: '#FDE68A' },
+  noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, overflow: 'hidden', letterSpacing: 0.2 },
+  noPrayerTitleLight: { backgroundColor: '#F8FAFC', color: '#0F172A', borderWidth: 1, borderColor: '#CBD5E1' },
+  noPrayerTitleDark: { backgroundColor: '#111827', color: '#E5E7EB', borderWidth: 1, borderColor: '#374151' },
+  noPrayerCountdownChip: { alignSelf: 'center', marginTop: 12, borderRadius: 12, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12 },
+  noPrayerCountdownText: { fontSize: 13, fontWeight: '600', letterSpacing: 0.1 },
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
 
