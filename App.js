@@ -155,6 +155,7 @@ const addMinutes = (time, minutes) => {
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 };
 const germanDateLong = (date) => new Intl.DateTimeFormat('de-DE', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+const germanWeekdayDateLong = (date) => new Intl.DateTimeFormat('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
 const findClosestISO = (targetISO, availableISOs) => {
   const target = parseISO(targetISO);
   if (!target || availableISOs.length === 0) return null;
@@ -772,10 +773,15 @@ function AppContent() {
     </ScrollView>
   );
 
-  const renderStats = () => (
+  const renderStats = () => {
+    const statsHeaderDate = germanWeekdayDateLong(now);
+    return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Heutige Gebetsstatistik</Text>
+        <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
+        <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
+        <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
+        <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
       </View>
 
       {statsLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
@@ -794,17 +800,21 @@ function AppContent() {
           <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
             <View style={styles.tanzeemStatsRow}>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border }]}>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                 <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.ansar}</Text>
                 <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Ansar</Text>
               </View>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border }]}>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                 <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.khuddam}</Text>
                 <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Khuddam</Text>
               </View>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border }]}>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                 <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.atfal}</Text>
                 <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Atfal</Text>
+              </View>
+              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.guestTotal}</Text>
+                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
               </View>
             </View>
           </View>
@@ -859,6 +869,7 @@ function AppContent() {
       )}
     </ScrollView>
   );
+  };
 
   const renderSettings = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -991,13 +1002,16 @@ const styles = StyleSheet.create({
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  statsHeaderCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  statsHeaderTitle: { fontSize: 24, fontWeight: '800' },
+  statsHeaderCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  statsHeaderTitle: { fontSize: 28, fontWeight: '800', letterSpacing: 0.2 },
+  statsHeaderDate: { marginTop: 2, fontSize: 16, fontWeight: '600', textTransform: 'capitalize' },
+  statsHeaderSubline: { marginTop: 3, fontSize: 12, fontWeight: '600' },
+  statsHeaderDivider: { marginTop: 10, height: 1, width: '100%' },
   statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
-  tanzeemStatsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
-  tanzeemStatBox: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
+  tanzeemStatsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  tanzeemStatBox: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   tanzeemStatValue: { fontSize: 26, fontWeight: '800', lineHeight: 30 },
   tanzeemStatLabel: { marginTop: 2, fontSize: 12, fontWeight: '600' },
   majlisBarRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
