@@ -17,6 +17,7 @@ import {
   View,
   Vibration,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -27,6 +28,7 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
+const APP_LOGO = require('./assets/Icon2.png');
 const AHMADIYYA_LOGO_URI = `data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20143.11%20143.11'%3e%3cdefs%3e%3cstyle%3e.cls-1,.cls-2{fill:%23fff;}.cls-2{stroke:%23000;}%3c/style%3e%3c/defs%3e%3ctitle%3eAsset%201%3c/title%3e%3cg%20id='Layer_2'%20data-name='Layer%202'%3e%3cg%20id='Layer_1-2'%20data-name='Layer%201'%3e%3ccircle%20class='cls-1'%20cx='71.56'%20cy='71.55'%20r='71.05'/%3e%3ccircle%20class='cls-2'%20cx='71.56'%20cy='71.55'%20r='71.05'/%3e%3ccircle%20cx='71.56'%20cy='71.56'%20r='65.93'/%3e%3cpath%20class='cls-1'%20d='M71.55,54.92H87.28c2.84-14.37-4.89-19.27-12.34-21l.26,0a5.64,5.64,0,0,0-2.65-4.46,1.83,1.83,0,0,0,.6-1.47,1.57,1.57,0,0,0-.76-1.51V24.25a1,1,0,0,0,.31-.77.9.9,0,0,0-.31-.74V20.4h-.1a1,1,0,0,0,.41-.85,8.74,8.74,0,0,0-1.15-3,8.75,8.75,0,0,0-1.15,3,1,1,0,0,0,.4.85h-.1v2.35a.91.91,0,0,0-.31.74,1,1,0,0,0,.31.77v2.28A1.57,1.57,0,0,0,70,28a1.81,1.81,0,0,0,.6,1.47A5.64,5.64,0,0,0,67.91,34l.26,0c-7.73,1.76-15.18,9.44-12.34,21Z'/%3e%3cpolygon%20class='cls-1'%20points='53.36%2079.7%2053.19%2079.7%2051.92%2080.43%2051.92%2083.1%2053.19%2083.83%2053.36%2083.83%2054.85%2083.83%2071.56%2083.83%2088.26%2083.83%2089.75%2083.83%2089.91%2083.83%2091.19%2083.1%2091.19%2080.43%2089.91%2079.7%2089.75%2079.7%2088.22%2079.7%2071.56%2079.7%2054.88%2079.7%2053.36%2079.7'/%3e%3cpolygon%20class='cls-1'%20points='92.93%20102.06%2090.05%20102.06%2088.42%20102.06%2085.45%20102.06%2078.13%20102.06%2075.22%20102.06%2071.56%20102.06%2067.89%20102.06%2064.98%20102.06%2057.65%20102.06%2054.69%20102.06%2053.06%20102.06%2050.17%20102.06%2050.17%20100.14%2048.36%20100.14%2048.36%20115.48%2050.17%20115.48%2053.06%20115.48%2054.57%20115.48%2071.56%20115.48%2088.54%20115.48%2090.05%20115.48%2092.93%20115.48%2094.75%20115.48%2094.75%20100.14%2092.93%20100.14%2092.93%20102.06'/%3e%3cpath%20class='cls-1'%20d='M88.4,100.27l-.14-15.33H54.84l-.13,15.33h3V93.22c0-2.16,3.66-6.06,3.66-6.06S65,91.05,65,93.22v7.05h2.91V93.22c0-2.16,3.67-6.06,3.67-6.06s3.66,3.89,3.66,6.06v7.05h2.91V93.22c0-2.16,3.66-6.06,3.66-6.06s3.66,3.89,3.66,6.06v7.05Z'/%3e%3cpolygon%20class='cls-1'%20points='71.56%20117.27%2054.55%20117.27%2054.32%20138.38%2088.79%20138.38%2088.55%20117.27%2071.56%20117.27'/%3e%3cpolygon%20class='cls-1'%20points='87.98%2056.71%2071.56%2056.71%2055.13%2056.71%2048.36%2060.05%2048.36%2062.61%2053.36%2062.61%2055.04%2062.61%2071.56%2062.61%2088.07%2062.61%2089.75%2062.61%2094.75%2062.61%2094.75%2060.05%2087.98%2056.71'/%3e%3cpath%20class='cls-1'%20d='M88.09,64.5H55L54.9,78.59H88.21ZM71.56,76.94a5.39,5.39,0,1,1,5.39-5.39A5.39,5.39,0,0,1,71.56,76.94Z'/%3e%3cpolygon%20class='cls-1'%20points='71.03%2071.77%2071.55%2067.12%2072.08%2071.34%2073.81%2073.82%2071.03%2071.77%2071.03%2071.77%2071.03%2071.77'/%3e%3c/g%3e%3c/g%3e%3c/svg%3e`;
 const FORCE_TIME = null;
 // const FORCE_TIME = '19:31'; // development override, set null for real time
@@ -309,7 +311,7 @@ const getNextPrayer = (now, timesToday) => {
   return (next || entries[0]).name;
 };
 
-export default function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState('tasbeeh');
   const [count, setCount] = useState(0);
   const [countLoaded, setCountLoaded] = useState(false);
@@ -329,6 +331,8 @@ export default function App() {
   const visitorCounterRef = useRef(0);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
+  const insets = useSafeAreaInsets();
+  const logoSource = Platform.OS === 'web' ? { uri: AHMADIYYA_LOGO_URI } : APP_LOGO;
   const now = useMemo(() => {
     const d = getBerlinNow();
     if (isValidTime(FORCE_TIME)) {
@@ -833,11 +837,11 @@ export default function App() {
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
       <View style={styles.logoWrap}>
-        <Image source={{ uri: AHMADIYYA_LOGO_URI }} style={styles.logoImage} resizeMode="contain" />
+        <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
         {TAB_ITEMS.map((tab) => (
           <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
             <Text numberOfLines={1} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
@@ -849,6 +853,15 @@ export default function App() {
         <View style={[styles.toast, { backgroundColor: theme.button }]}><Text style={{ color: theme.buttonText, fontWeight: '700' }}>{toast}</Text></View>
       ) : null}
     </SafeAreaView>
+  );
+}
+
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
   );
 }
 
