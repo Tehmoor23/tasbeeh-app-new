@@ -21,8 +21,6 @@ import {
   Vibration,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getApp, getApps, initializeApp } from 'firebase/app';
-import { doc, getFirestore, onSnapshot } from 'firebase/firestore';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -265,8 +263,18 @@ const fromFirestoreValue = (v) => {
 
 const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}?key=${FIREBASE_CONFIG.apiKey}`;
 const commitUrl = () => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit?key=${FIREBASE_CONFIG.apiKey}`;
-const firebaseApp = hasFirebaseConfig() ? (getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG)) : null;
-const firestoreDb = firebaseApp ? getFirestore(firebaseApp) : null;
+const loadFirebaseRuntime = () => {
+  try {
+    const { getApp, getApps, initializeApp } = require('firebase/app');
+    const { doc, getFirestore, onSnapshot } = require('firebase/firestore');
+    const firebaseApp = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
+    return { db: getFirestore(firebaseApp), doc, onSnapshot };
+  } catch {
+    return null;
+  }
+};
+
+const firebaseRuntime = hasFirebaseConfig() ? loadFirebaseRuntime() : null;
 
 async function incrementDocCounters(collection, id, fieldPaths) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
@@ -550,7 +558,7 @@ function AppContent() {
 
     setStatsLoading(true);
 
-    if (!firestoreDb || !hasFirebaseConfig()) {
+    if (!firebaseRuntime || !hasFirebaseConfig()) {
       getDocData('attendance_daily', todayISO)
         .then((attendance) => setStatsAttendance(attendance))
         .catch(() => setToast('Datenbankfehler – bitte Internet prüfen'))
@@ -558,8 +566,8 @@ function AppContent() {
       return undefined;
     }
 
-    const attendanceRef = doc(firestoreDb, 'attendance_daily', todayISO);
-    const unsubscribe = onSnapshot(
+    const attendanceRef = firebaseRuntime.doc(firebaseRuntime.db, 'attendance_daily', todayISO);
+    const unsubscribe = firebaseRuntime.onSnapshot(
       attendanceRef,
       (snapshot) => {
         const nextData = snapshot.exists() ? snapshot.data() : null;
