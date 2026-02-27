@@ -332,7 +332,8 @@ function AppContent() {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const insets = useSafeAreaInsets();
-  const logoSource = Platform.OS === 'web' ? { uri: AHMADIYYA_LOGO_URI } : APP_LOGO;
+  const isWebPlatform = Platform.OS === 'web';
+  const logoSource = isWebPlatform ? { uri: AHMADIYYA_LOGO_URI } : APP_LOGO;
   const now = useMemo(() => {
     const d = getBerlinNow();
     if (isValidTime(FORCE_TIME)) {
@@ -837,7 +838,7 @@ function AppContent() {
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
       <View style={styles.logoWrap}>
-        <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
+        <Image source={logoSource} style={[styles.logoImage, !isWebPlatform && { tintColor: theme.muted, opacity: 0.78 }]} resizeMode="contain" />
       </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
@@ -869,7 +870,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
   logoWrap: { alignItems: 'center', paddingBottom: 6 },
-  logoImage: { width: 34, height: 34, opacity: 0.92 },
+  logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
