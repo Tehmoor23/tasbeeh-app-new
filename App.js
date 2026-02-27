@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   Animated,
   Image,
@@ -179,6 +180,13 @@ const addDays = (date, days) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+};
+
+const atMinutesOfDay = (baseDate, minutesOfDay) => {
+  const date = new Date(baseDate);
+  date.setHours(0, 0, 0, 0);
+  date.setMinutes(minutesOfDay, 0, 0);
+  return date;
 };
 
 const getBerlinNow = () => {
@@ -376,11 +384,48 @@ function AppContent() {
 
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
 
+  const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
+  const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(''), 1800);
     return () => clearTimeout(t);
   }, [toast]);
+
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setRefreshTick((v) => v + 1);
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    const nowTs = now.getTime();
+    const candidates = [];
+    const sequence = [timesToday.fajr, timesToday.sohar, timesToday.asr, timesToday.maghrib, timesToday.ishaa];
+
+    sequence.forEach((time) => {
+      const base = getMinutes(time);
+      if (base === null) return;
+      const startTs = atMinutesOfDay(now, base - 30).getTime();
+      const endTs = atMinutesOfDay(now, base + 60).getTime();
+      if (startTs > nowTs) candidates.push(startTs);
+      if (endTs > nowTs) candidates.push(endTs);
+    });
+
+    const midnightTs = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0).getTime();
+    if (midnightTs > nowTs) candidates.push(midnightTs);
+
+    const nextTickTs = candidates.length ? Math.min(...candidates) : (nowTs + 60 * 1000);
+    const delay = Math.max(500, nextTickTs - nowTs + 50);
+    const timer = setTimeout(() => setRefreshTick((v) => v + 1), delay);
+
+    return () => clearTimeout(timer);
+  }, [now, timesToday]);
 
   useEffect(() => {
     const loadLocal = async () => {
@@ -423,9 +468,6 @@ function AppContent() {
     setIsDarkMode(value);
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
-
-  const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
-  const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
 
   const prayerWindow = useMemo(() => {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
