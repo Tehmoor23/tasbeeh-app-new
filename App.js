@@ -387,6 +387,52 @@ function AppContent() {
   const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
   const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
 
+  const resolvePrayerWindow = (referenceNow, referenceTimesToday, referenceTimesTomorrow) => {
+    const nowMinutes = referenceNow.getHours() * 60 + referenceNow.getMinutes();
+    const sequence = [
+      { key: 'fajr', label: 'Fajr', time: referenceTimesToday.fajr },
+      { key: 'sohar', label: 'Sohar', time: referenceTimesToday.sohar },
+      { key: 'asr', label: 'Asr', time: referenceTimesToday.asr },
+      { key: 'maghrib', label: 'Maghrib', time: referenceTimesToday.maghrib },
+      { key: 'ishaa', label: 'Ishaa & Taravih', time: referenceTimesToday.ishaa },
+    ];
+    const active = sequence.find((item) => {
+      const base = getMinutes(item.time);
+      if (base === null) return false;
+      const start = base - 30;
+      const end = base + 60;
+      return nowMinutes >= start && nowMinutes <= end;
+    });
+    const nextKeyToday = getNextPrayer(referenceNow, referenceTimesToday);
+    const nextToday = sequence.find((item) => item.key === nextKeyToday) || sequence[0];
+    const todayHasUpcomingPrayer = sequence.some((item) => {
+      const mins = getMinutes(item.time);
+      return mins !== null && mins >= nowMinutes;
+    });
+    const nextLabel = todayHasUpcomingPrayer
+      ? `${nextToday?.label || '—'} - ${nextToday?.time || '—'}`
+      : `${PRAYER_LABELS.fajr} - ${referenceTimesTomorrow.fajr || '—'}`;
+    if (active) {
+      const base = getMinutes(active.time);
+      return {
+        isActive: true,
+        prayerKey: active.key,
+        prayerLabel: active.label,
+        prayerTime: active.time,
+        windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
+        nextLabel,
+      };
+    }
+    return {
+      isActive: false,
+      prayerKey: null,
+      prayerLabel: null,
+      prayerTime: null,
+      windowLabel: null,
+      nextLabel,
+    };
+  };
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(''), 1800);
@@ -412,7 +458,7 @@ function AppContent() {
       const base = getMinutes(time);
       if (base === null) return;
       const startTs = atMinutesOfDay(now, base - 30).getTime();
-      const endTs = atMinutesOfDay(now, base + 60).getTime();
+      const endTs = atMinutesOfDay(now, base + 61).getTime();
       if (startTs > nowTs) candidates.push(startTs);
       if (endTs > nowTs) candidates.push(endTs);
     });
@@ -469,51 +515,7 @@ function AppContent() {
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
 
-  const prayerWindow = useMemo(() => {
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const sequence = [
-      { key: 'fajr', label: 'Fajr', time: timesToday.fajr },
-      { key: 'sohar', label: 'Sohar', time: timesToday.sohar },
-      { key: 'asr', label: 'Asr', time: timesToday.asr },
-      { key: 'maghrib', label: 'Maghrib', time: timesToday.maghrib },
-      { key: 'ishaa', label: 'Ishaa & Taravih', time: timesToday.ishaa },
-    ];
-    const active = sequence.find((item) => {
-      const base = getMinutes(item.time);
-      if (base === null) return false;
-      const start = base - 30;
-      const end = base + 60;
-      return nowMinutes >= start && nowMinutes <= end;
-    });
-    const nextKeyToday = getNextPrayer(now, timesToday);
-    const nextToday = sequence.find((item) => item.key === nextKeyToday) || sequence[0];
-    const todayHasUpcomingPrayer = sequence.some((item) => {
-      const mins = getMinutes(item.time);
-      return mins !== null && mins >= nowMinutes;
-    });
-    const nextLabel = todayHasUpcomingPrayer
-      ? `${nextToday?.label || '—'} - ${nextToday?.time || '—'}`
-      : `${PRAYER_LABELS.fajr} - ${timesTomorrow.fajr || '—'}`;
-    if (active) {
-      const base = getMinutes(active.time);
-      return {
-        isActive: true,
-        prayerKey: active.key,
-        prayerLabel: active.label,
-        prayerTime: active.time,
-        windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
-        nextLabel,
-      };
-    }
-    return {
-      isActive: false,
-      prayerKey: null,
-      prayerLabel: null,
-      prayerTime: null,
-      windowLabel: null,
-      nextLabel,
-    };
-  }, [now, timesToday, timesTomorrow]);
+  const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return;
@@ -619,12 +621,25 @@ function AppContent() {
       return;
     }
 
-    if (!prayerWindow.isActive || !prayerWindow.prayerKey) {
+    const runtimeNow = getBerlinNow();
+    if (isValidTime(FORCE_TIME)) {
+      runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
+    }
+    const runtimeISO = toISO(runtimeNow);
+    const runtimeSelectedISO = RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates);
+    const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
+    const runtimeTimesToday = buildPrayerTimes(runtimeRaw);
+    const runtimeTomorrowRaw = RAMADAN_RAW[toISO(addDays(runtimeNow, 1))] || null;
+    const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw);
+    const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
+
+    if (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey) {
       setToast('Derzeit kein aktives Gebetszeitfenster');
+      setRefreshTick((v) => v + 1);
       return;
     }
 
-    const prayer = prayerWindow.prayerKey;
+    const prayer = runtimePrayerWindow.prayerKey;
     const paths = [];
     if (kind === 'guest') {
       paths.push(`byPrayer.${prayer}.guest`);
@@ -633,12 +648,12 @@ function AppContent() {
     }
 
     try {
-      await incrementDocCounters('attendance_daily', todayISO, paths);
+      await incrementDocCounters('attendance_daily', runtimeISO, paths);
       visitorCounterRef.current += 1;
       console.log('ATTENDANCE LOG:', {
         visitorNumber: visitorCounterRef.current,
         timestamp: new Date().toISOString(),
-        prayer: prayerWindow.prayerKey,
+        prayer: runtimePrayerWindow.prayerKey,
         tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
         majlis: kind === 'guest' ? null : toLocationKey(locationName),
         platform: Platform.OS,
