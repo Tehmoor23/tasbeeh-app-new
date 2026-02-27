@@ -1,11 +1,11 @@
 import { StatusBar } from 'expo-status-bar';
-import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Animated,
+  Image,
   Platform,
   Pressable,
   SafeAreaView,
@@ -16,11 +16,8 @@ import {
   TextInput,
   View,
   Vibration,
-  useWindowDimensions,
 } from 'react-native';
-
-import { initializeApp } from 'firebase/app';
-import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STORAGE_KEYS = {
   count: '@tasbeeh_count',
@@ -31,11 +28,14 @@ const STORAGE_KEYS = {
 const DEFAULT_GOAL = 100;
 const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
+const APP_LOGO_LIGHT = require('./assets/Icon3.png');
+const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
-// const FORCE_TIME = '17:01'; // development override, set null for real time
+// const FORCE_TIME = '19:31'; // development override, set null for real time
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
+  'Bad Vilbel',
   'Berg',
   'Bornheim',
   'Eschersheim',
@@ -52,11 +52,11 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const TAB_ITEMS = [
-  { key: 'tasbeeh', label: 'Tasbeeh', icon: '📿' },
-  { key: 'gebetsplan', label: 'Gebetsplan', icon: '🕌' },
-  { key: 'terminal', label: 'Anwesenheit', icon: '✅' },
-  { key: 'stats', label: 'Stats', icon: '📊' },
-  { key: 'settings', label: 'Einst.', icon: '⚙️' },
+  { key: 'tasbeeh', label: 'Dhikr' },
+  { key: 'gebetsplan', label: 'Gebetszeiten' },
+  { key: 'terminal', label: 'Anwesenheit' },
+  { key: 'stats', label: 'Stats' },
+  { key: 'settings', label: '⚙️' },
 ];
 
 const PRAYER_LABELS = {
@@ -70,6 +70,7 @@ const PRAYER_LABELS = {
 const MAJLIS_LABELS = {
   baitus_sabuh_nord: 'Baitus Sabuh Nord',
   baitus_sabuh_sued: 'Baitus Sabuh Süd',
+  bad_vilbel: 'Bad Vilbel',
   berg: 'Berg',
   bornheim: 'Bornheim',
   eschersheim: 'Eschersheim',
@@ -96,10 +97,6 @@ const FIREBASE_CONFIG = {
   measurementId: 'G-908CPHGR56',
 };
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
-
-const firebaseApp = initializeApp(FIREBASE_CONFIG);
-const db = getFirestore(firebaseApp);
-
 
 const FIXED_TIMES = {
   sohar: '13:30',
@@ -156,7 +153,7 @@ const addMinutes = (time, minutes) => {
   const total = (((h * 60 + m + minutes) % 1440) + 1440) % 1440;
   return `${pad(Math.floor(total / 60))}:${pad(total % 60)}`;
 };
-const englishDateLong = (date) => new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
+const germanDateLong = (date) => new Intl.DateTimeFormat('de-DE', { month: 'long', day: 'numeric', year: 'numeric' }).format(date);
 const findClosestISO = (targetISO, availableISOs) => {
   const target = parseISO(targetISO);
   if (!target || availableISOs.length === 0) return null;
@@ -169,6 +166,48 @@ const findClosestISO = (targetISO, availableISOs) => {
   }, sorted[0]);
 };
 
+const buildPrayerTimes = (raw) => ({
+  fajr: addMinutes(raw?.sehriEnd, 20),
+  sohar: FIXED_TIMES.sohar,
+  asr: FIXED_TIMES.asr,
+  maghrib: addMinutes(raw?.iftar, 10),
+  ishaa: FIXED_TIMES.ishaa,
+  jumma: FIXED_TIMES.jumma,
+});
+
+const addDays = (date, days) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const getBerlinNow = () => {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Berlin',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(new Date());
+    const byType = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+    return new Date(
+      Number(byType.year),
+      Number(byType.month) - 1,
+      Number(byType.day),
+      Number(byType.hour),
+      Number(byType.minute),
+      Number(byType.second),
+      0,
+    );
+  } catch {
+    return new Date();
+  }
+};
+
 const getGermanHour = () => {
   try {
     const parts = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false }).formatToParts(new Date());
@@ -179,6 +218,7 @@ const getGermanHour = () => {
 };
 const isGermanNightDefault = () => { const h = getGermanHour(); return h >= 22 || h < 6; };
 const hasFirebaseConfig = () => FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.projectId).includes('YOUR_') && !String(FIREBASE_CONFIG.apiKey).includes('YOUR_');
+const withPressEffect = (style) => ({ pressed }) => [style, pressed && styles.buttonPressed];
 
 const toFirestoreValue = (value) => {
   if (value === null || value === undefined) return { nullValue: null };
@@ -271,7 +311,7 @@ const getNextPrayer = (now, timesToday) => {
   return (next || entries[0]).name;
 };
 
-export default function App() {
+function AppContent() {
   const [activeTab, setActiveTab] = useState('tasbeeh');
   const [count, setCount] = useState(0);
   const [countLoaded, setCountLoaded] = useState(false);
@@ -288,12 +328,13 @@ export default function App() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
-  const didLogVisitRef = useRef(false);
-  const { width: screenWidth } = useWindowDimensions();
+  const visitorCounterRef = useRef(0);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
+  const insets = useSafeAreaInsets();
+  const logoSource = isDarkMode ? APP_LOGO_DARK : APP_LOGO_LIGHT;
   const now = useMemo(() => {
-    const d = new Date();
+    const d = getBerlinNow();
     if (isValidTime(FORCE_TIME)) {
       d.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
@@ -306,14 +347,10 @@ export default function App() {
   const selectedRaw = selectedISO ? RAMADAN_RAW[selectedISO] : null;
   const hasTodayData = Boolean(RAMADAN_RAW[todayISO]);
 
-  const timesToday = useMemo(() => ({
-    fajr: addMinutes(selectedRaw?.sehriEnd, 20),
-    sohar: FIXED_TIMES.sohar,
-    asr: FIXED_TIMES.asr,
-    maghrib: addMinutes(selectedRaw?.iftar, 10),
-    ishaa: FIXED_TIMES.ishaa,
-    jumma: FIXED_TIMES.jumma,
-  }), [selectedRaw]);
+  const timesToday = useMemo(() => buildPrayerTimes(selectedRaw), [selectedRaw]);
+  const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
+  const tomorrowRaw = useMemo(() => RAMADAN_RAW[tomorrowISO] || null, [tomorrowISO]);
+  const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw), [tomorrowRaw]);
   const nextPrayer = useMemo(() => getNextPrayer(now, timesToday), [now, timesToday]);
 
   const prayerRows = useMemo(() => [
@@ -339,45 +376,11 @@ export default function App() {
 
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
 
-  const tabLabelSize = useMemo(() => {
-    if (screenWidth < 350) return 9;
-    if (screenWidth < 390) return 10;
-    if (screenWidth < 430) return 11;
-    return 12;
-  }, [screenWidth]);
-  const tabIconSize = useMemo(() => {
-    if (screenWidth < 350) return 14;
-    if (screenWidth < 390) return 15;
-    if (screenWidth < 430) return 16;
-    return 17;
-  }, [screenWidth]);
-  const tabBarPaddingHorizontal = useMemo(() => (screenWidth < 360 ? 4 : 6), [screenWidth]);
-
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(''), 1800);
     return () => clearTimeout(t);
   }, [toast]);
-
-  useEffect(() => {
-    if (didLogVisitRef.current) return;
-    didLogVisitRef.current = true;
-
-    (async () => {
-      try {
-        const payload = {
-          ts: serverTimestamp(),
-          tsIso: new Date().toISOString(),
-          platform: Platform.OS,
-        };
-
-        const docRef = await addDoc(collection(db, 'visit_logs'), payload);
-        console.log('[visit_logs] write ok:', docRef.id, payload);
-      } catch (e) {
-        console.warn('[visit_logs] write failed:', e?.message || e);
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     const loadLocal = async () => {
@@ -440,8 +443,15 @@ export default function App() {
       const end = base + 60;
       return nowMinutes >= start && nowMinutes <= end;
     });
-    const nextKey = getNextPrayer(now, timesToday);
-    const next = sequence.find((item) => item.key === nextKey) || sequence[0];
+    const nextKeyToday = getNextPrayer(now, timesToday);
+    const nextToday = sequence.find((item) => item.key === nextKeyToday) || sequence[0];
+    const todayHasUpcomingPrayer = sequence.some((item) => {
+      const mins = getMinutes(item.time);
+      return mins !== null && mins >= nowMinutes;
+    });
+    const nextLabel = todayHasUpcomingPrayer
+      ? `${nextToday?.label || '—'} - ${nextToday?.time || '—'}`
+      : `${PRAYER_LABELS.fajr} - ${timesTomorrow.fajr || '—'}`;
     if (active) {
       const base = getMinutes(active.time);
       return {
@@ -450,7 +460,7 @@ export default function App() {
         prayerLabel: active.label,
         prayerTime: active.time,
         windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
-        nextLabel: null,
+        nextLabel,
       };
     }
     return {
@@ -459,9 +469,9 @@ export default function App() {
       prayerLabel: null,
       prayerTime: null,
       windowLabel: null,
-      nextLabel: `${next?.label || '—'} – ${next?.time || '—'}`,
+      nextLabel,
     };
-  }, [now, timesToday]);
+  }, [now, timesToday, timesTomorrow]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return;
@@ -582,9 +592,10 @@ export default function App() {
 
     try {
       await incrementDocCounters('attendance_daily', todayISO, paths);
-      await addDoc(collection(db, 'attendance_logs'), {
-        timestamp: new Date(),
-        date: new Date().toISOString().split('T')[0],
+      visitorCounterRef.current += 1;
+      console.log('ATTENDANCE LOG:', {
+        visitorNumber: visitorCounterRef.current,
+        timestamp: new Date().toISOString(),
         prayer: prayerWindow.prayerKey,
         tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
         majlis: kind === 'guest' ? null : toLocationKey(locationName),
@@ -601,19 +612,17 @@ export default function App() {
   };
 
   const renderTasbeeh = () => (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Tasbeeh (تسبيح)</Text></View></View>
-      <Text style={[styles.subtitle, { color: theme.muted }]}>Tippe auf den Zählerbereich, um zu erhöhen</Text>
+    <ScrollView contentContainerStyle={[styles.content, styles.tasbeehContent]} showsVerticalScrollIndicator={false}>
+      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Dhikr</Text><Text style={[styles.titleArabic, { color: theme.muted }]}>ذِكر</Text></View></View>
       <View style={styles.mainFlex}>
-        <Pressable style={styles.counterPressable} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
+        <Pressable style={withPressEffect(styles.counterPressable)} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
           <Animated.View style={[styles.counter, { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] }]}>
             {!countLoaded ? <ActivityIndicator size="large" color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
           </Animated.View>
         </Pressable>
         <View style={styles.bottomSticky}>
           <View style={styles.progressWrap}><View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}><View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text></View>
-          <Pressable style={[styles.resetBtn, { backgroundColor: theme.button }]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
-          <Text style={[styles.footer, { color: theme.muted }]}>Made by Tehmoor</Text>
+          <Pressable style={({ pressed }) => [[styles.resetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
         </View>
       </View>
     </ScrollView>
@@ -625,7 +634,7 @@ export default function App() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
-          <Text style={[styles.dayDate, { color: theme.muted }]}>{englishDateLong(displayDate)}</Text>
+          <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
           <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
@@ -646,9 +655,10 @@ export default function App() {
 
   const renderTerminal = () => (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
-      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#111111', borderColor: isDarkMode ? '#374151' : '#111111' }]}>
-        <Text style={[styles.terminalBannerTitle, { color: '#FFFFFF' }]}>Gebetsanwesenheit (عبادت حاضری)</Text>
-        <Text style={[styles.terminalBannerSubtitle, { color: '#D1D5DB' }]}>Local Amarat Frankfurt</Text>
+      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
+        <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>Gebetsanwesenheit</Text>
+        <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
+        <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
       </View>
 
       <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -656,15 +666,10 @@ export default function App() {
           <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
         ) : (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Derzeit kein Gebet</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 6 }]}>Nächstes Gebet: {prayerWindow.nextLabel}</Text>
-            <Pressable style={[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }]} onPress={async () => {
-              if (Platform.OS === 'web') {
-                window.location.reload();
-                return;
-              }
-              await Updates.reloadAsync();
-            }}>
+            <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
+            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, marginTop: 12 }], pressed && styles.buttonPressed]} onPress={() => setRefreshTick((v) => v + 1)}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Aktualisieren</Text>
             </Pressable>
           </>
@@ -677,12 +682,12 @@ export default function App() {
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
           <View style={styles.tanzeemRow}>
             {['ansar', 'khuddam', 'atfal'].map((tanzeem) => (
-              <Pressable key={tanzeem} style={[styles.tanzeemBtn, { backgroundColor: theme.button }]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
+              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
                 <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{tanzeem.charAt(0).toUpperCase() + tanzeem.slice(1)}</Text>
               </Pressable>
             ))}
           </View>
-          <Pressable onPress={() => countAttendance('guest')} style={styles.guestLinkWrap}>
+          <Pressable onPress={() => countAttendance('guest')} style={withPressEffect(styles.guestLinkWrap)}>
             <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
           </Pressable>
         </>
@@ -690,12 +695,12 @@ export default function App() {
         <>
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
-          <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
           <View style={styles.gridWrap}>
             {TERMINAL_LOCATIONS.map((loc) => (
-              <Pressable key={loc} style={[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }]} onPress={() => countAttendance('member', loc)}>
+              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', loc)}>
                 <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
               </Pressable>
             ))}
@@ -703,10 +708,8 @@ export default function App() {
         </>
       ) : (
         <>
-          <Text style={[styles.noteText, styles.attendanceWindowText, { color: theme.muted }]}>Anwesenheit kann nur im aktiven Gebetszeitfenster gezählt werden
-(30 Min vorher – 60 Min nach dem Gebet)</Text>
-          <Text style={[styles.urduText, styles.attendanceWindowUrdu, { color: theme.muted }]}>حاضری صرف نماز کے فعال وقت میں شمار کی جا سکتی ہے
-(نماز سے 30 منٹ پہلے اور 60 منٹ بعد تک)</Text>
+          <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).</Text>
+          <Text style={[styles.urduText, { color: theme.muted, marginTop: 6 }]}>حاضری صرف فعال نماز میں درج کی جا سکتی ہے (30 منٹ پہلے یا 60 منٹ بعد تک)</Text>
         </>
       )}
     </ScrollView>
@@ -806,10 +809,15 @@ export default function App() {
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Tasbeeh Goal</Text>
-        <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={[styles.presetBtn, { backgroundColor: theme.button }]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Dhikr Ziel</Text>
+        <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={({ pressed }) => [[styles.presetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
         <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-        <Pressable style={[styles.saveBtn, { backgroundColor: theme.button }]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
+        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
+      </View>
+
+      <View style={styles.appMetaWrap}>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.0</Text>
+        <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
   );
@@ -825,27 +833,20 @@ export default function App() {
           : renderSettings();
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+      <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
+      <View style={styles.logoWrap}>
+        <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
+      </View>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingHorizontal: tabBarPaddingHorizontal }]}>
-        {TAB_ITEMS.map((tab) => {
-          const isActive = activeTab === tab.key;
-          return (
-            <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={styles.tabItem}>
-              <Text style={[styles.tabIcon, { color: isActive ? theme.text : theme.muted, fontSize: tabIconSize }]}>{tab.icon}</Text>
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.85}
-                style={[styles.tabLabel, { color: isActive ? theme.text : theme.muted, fontWeight: isActive ? '700' : '500', fontSize: tabLabelSize }]}
-              >
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
+        {TAB_ITEMS.map((tab) => (
+          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
+            <Text numberOfLines={1} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
+          </Pressable>
+        ))}
       </View>
 
       {toast ? (
@@ -855,13 +856,27 @@ export default function App() {
   );
 }
 
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
+  basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
+  logoWrap: { alignItems: 'center', paddingBottom: 6 },
+  logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
-  title: { fontSize: 36, fontWeight: '800', textAlign: 'center', letterSpacing: 0.5 },
+  title: { fontSize: 31, fontWeight: '800', textAlign: 'center', letterSpacing: 0.4 },
   subtitle: { fontSize: 14, textAlign: 'center' },
+  titleArabic: { fontSize: 16, textAlign: 'center', marginTop: 0 },
+  tasbeehContent: { paddingTop: 8, gap: 8 },
   mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
   counterPressable: { flex: 1 },
   counter: { flex: 1, borderRadius: 26, borderWidth: 1, minHeight: 340, alignItems: 'center', justifyContent: 'center' },
@@ -883,6 +898,9 @@ const styles = StyleSheet.create({
   prayerValue: { fontSize: 20, fontWeight: '700' },
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
+  appMetaWrap: { marginTop: 6, marginBottom: 8, paddingHorizontal: 6, gap: 4 },
+  appMetaVersion: { textAlign: 'center', fontSize: 12, fontWeight: '700' },
+  appMetaCopyright: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -893,21 +911,25 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
   goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingTop: 6, paddingBottom: 8 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, minWidth: 0 },
-  tabIcon: { lineHeight: 18 },
-  tabLabel: { textAlign: 'center', maxWidth: '100%' },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
+  buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
+  tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
   terminalBanner: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   terminalBannerTitle: { textAlign: 'center', fontSize: 20, fontWeight: '800', letterSpacing: 0.2 },
+  terminalBannerArabic: { textAlign: 'center', marginTop: 2, fontSize: 16, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
+  noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, overflow: 'hidden' },
+  noPrayerTitleLight: { backgroundColor: '#FDE68A', color: '#1F2937' },
+  noPrayerTitleDark: { backgroundColor: '#78350F', color: '#FDE68A' },
+  nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
-  attendanceWindowText: { textAlign: 'center', lineHeight: 18 },
-  attendanceWindowUrdu: { fontSize: 11, marginTop: 4, lineHeight: 18, opacity: 0.95 },
+
   guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
