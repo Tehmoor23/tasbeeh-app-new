@@ -376,6 +376,39 @@ async function deleteDocData(collection, id) {
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
+async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanzeemKey, locationName, locationKey, member) {
+  const existing = (await getDocData('attendance_daily', dateISO)) || {};
+  const nextByPrayer = { ...(existing.byPrayer || {}) };
+
+  targetPrayers.forEach((prayerKey) => {
+    const prayerNode = { ...(nextByPrayer[prayerKey] || {}) };
+    const memberDetails = { ...(prayerNode.memberDetails || {}) };
+    const tanzeemNode = { ...(memberDetails[tanzeemKey] || {}) };
+    const majlisEntries = Array.isArray(tanzeemNode[locationKey]) ? [...tanzeemNode[locationKey]] : [];
+
+    const alreadyExists = majlisEntries.some((entry) => String(entry?.idNumber || '') === String(member?.idNumber || ''));
+    if (!alreadyExists) {
+      majlisEntries.push({
+        idNumber: String(member?.idNumber || ''),
+        name: member?.name || '',
+        majlis: locationName,
+        tanzeem: tanzeemKey,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    tanzeemNode[locationKey] = majlisEntries;
+    memberDetails[tanzeemKey] = tanzeemNode;
+    prayerNode.memberDetails = memberDetails;
+    nextByPrayer[prayerKey] = prayerNode;
+  });
+
+  await setDocData('attendance_daily', dateISO, {
+    ...existing,
+    byPrayer: nextByPrayer,
+  });
+}
+
 const toLocationKey = (name) => name
   .toLowerCase()
   .replace(/ä/g, 'ae')
@@ -1042,6 +1075,15 @@ function AppContent() {
             timestamp: new Date().toISOString(),
           });
         }));
+
+        await appendMemberDetailsToDailyAttendance(
+          runtimeISO,
+          targetPrayers,
+          selectedTanzeem,
+          locationName,
+          locationKey,
+          selectedMember,
+        );
       }
 
       visitorCounterRef.current += 1;
