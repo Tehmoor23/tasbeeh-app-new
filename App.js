@@ -21,13 +21,9 @@ import {
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STORAGE_KEYS = {
-  count: '@tasbeeh_count',
-  goal: '@tasbeeh_goal',
   darkMode: '@tasbeeh_darkmode',
 };
 
-const DEFAULT_GOAL = 100;
-const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
@@ -53,7 +49,6 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const TAB_ITEMS = [
-  { key: 'tasbeeh', label: 'Dhikr' },
   { key: 'gebetsplan', label: 'Gebetszeiten' },
   { key: 'terminal', label: 'Anwesenheit' },
   { key: 'stats', label: 'Stats' },
@@ -141,8 +136,8 @@ const RAMADAN_RAW = {
 };
 
 const THEME = {
-  light: { bg: '#F4F4F5', card: '#FFFFFF', border: '#E4E4E7', text: '#09090B', muted: '#71717A', button: '#111827', buttonText: '#FFFFFF', progressTrack: '#E4E4E7', progressFill: '#111827', rowActiveBg: '#ECFDF3', rowActiveBorder: '#86EFAC', chipBg: '#ECFDF3', chipText: '#166534' },
-  dark: { bg: '#09090B', card: '#111827', border: '#374151', text: '#F9FAFB', muted: '#9CA3AF', button: '#F9FAFB', buttonText: '#111827', progressTrack: '#1F2937', progressFill: '#93C5FD', rowActiveBg: '#052E1B', rowActiveBorder: '#22C55E', chipBg: '#14532D', chipText: '#BBF7D0' },
+  light: { bg: '#F4F4F5', card: '#FFFFFF', border: '#E4E4E7', text: '#09090B', muted: '#71717A', button: '#111827', buttonText: '#FFFFFF', rowActiveBg: '#ECFDF3', rowActiveBorder: '#86EFAC', chipBg: '#ECFDF3', chipText: '#166534' },
+  dark: { bg: '#09090B', card: '#111827', border: '#374151', text: '#F9FAFB', muted: '#9CA3AF', button: '#F9FAFB', buttonText: '#111827', rowActiveBg: '#052E1B', rowActiveBorder: '#22C55E', chipBg: '#14532D', chipText: '#BBF7D0' },
 };
 
 const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
@@ -373,11 +368,7 @@ const getDisplayPrayerLabel = (key, timesToday) => {
 
 
 function AppContent() {
-  const [activeTab, setActiveTab] = useState('tasbeeh');
-  const [count, setCount] = useState(0);
-  const [countLoaded, setCountLoaded] = useState(false);
-  const [goal, setGoal] = useState(DEFAULT_GOAL);
-  const [goalInput, setGoalInput] = useState(String(DEFAULT_GOAL));
+  const [activeTab, setActiveTab] = useState('gebetsplan');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [terminalMode, setTerminalMode] = useState('tanzeem');
   const [selectedTanzeem, setSelectedTanzeem] = useState('');
@@ -392,7 +383,6 @@ function AppContent() {
   const [overrideSoharAsrTime, setOverrideSoharAsrTime] = useState('');
   const [overrideMaghribIshaaTime, setOverrideMaghribIshaaTime] = useState('');
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
@@ -459,8 +449,6 @@ function AppContent() {
     });
     return active?.key || null;
   }, [now, timesToday]);
-
-  const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
 
   const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
   const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
@@ -656,13 +644,7 @@ function AppContent() {
   useEffect(() => {
     const loadLocal = async () => {
       try {
-        const [countRaw, goalRaw, darkRaw] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.count),
-          AsyncStorage.getItem(STORAGE_KEYS.goal),
-          AsyncStorage.getItem(STORAGE_KEYS.darkMode),
-        ]);
-        if (countRaw !== null) { const n = Number.parseInt(countRaw, 10); if (!Number.isNaN(n)) setCount(n); }
-        if (goalRaw) { const n = Number.parseInt(goalRaw, 10); if (!Number.isNaN(n) && n >= 1 && n <= 100000) { setGoal(n); setGoalInput(String(n)); } }
+        const darkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
         if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(isGermanNightDefault());
       } catch (e) {
         console.warn('Failed to load local settings:', e);
@@ -673,19 +655,6 @@ function AppContent() {
     loadLocal();
   }, []);
 
-  useEffect(() => { if (countLoaded) AsyncStorage.setItem(STORAGE_KEYS.count, String(count)).catch(() => {}); }, [count, countLoaded]);
-
-  const onPressIn = () => Animated.spring(scaleAnim, { toValue: 0.975, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
-  const onPressOut = () => Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 5 }).start();
-
-  const incrementCount = () => { setCount((prev) => prev + 1); Vibration.vibrate(4); };
-  const saveGoal = async () => {
-    const n = Number.parseInt(goalInput.trim(), 10);
-    if (Number.isNaN(n) || n < 1 || n > 100000) return;
-    setGoal(n);
-    await AsyncStorage.setItem(STORAGE_KEYS.goal, String(n));
-    setToast('Gespeichert ✓');
-  };
   const onToggleDarkMode = async (value) => {
     Animated.sequence([
       Animated.timing(themePulseAnim, { toValue: 0.96, duration: 140, useNativeDriver: true }),
@@ -929,23 +898,6 @@ function AppContent() {
       setToast('Datenbankfehler – bitte Internet prüfen');
     }
   };
-
-  const renderTasbeeh = () => (
-    <ScrollView contentContainerStyle={[styles.content, styles.tasbeehContent]} showsVerticalScrollIndicator={false}>
-      <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Dhikr</Text><Text style={[styles.titleArabic, { color: theme.muted }]}>ذِكر</Text></View></View>
-      <View style={styles.mainFlex}>
-        <Pressable style={withPressEffect(styles.counterPressable)} onPress={incrementCount} onPressIn={onPressIn} onPressOut={onPressOut}>
-          <Animated.View style={[styles.counter, { backgroundColor: theme.card, borderColor: theme.border, transform: [{ scale: scaleAnim }] }]}>
-            {!countLoaded ? <ActivityIndicator size="large" color={theme.text} /> : <Text style={[styles.counterText, { color: theme.text }]}>{count}</Text>}
-          </Animated.View>
-        </Pressable>
-        <View style={styles.bottomSticky}>
-          <View style={styles.progressWrap}><View style={[styles.progressTrack, { backgroundColor: theme.progressTrack }]}><View style={[styles.progressFill, { backgroundColor: theme.progressFill, width: `${progress}%` }]} /></View><Text style={[styles.progressText, { color: theme.muted }]}>Ziel: {goal} • {progress.toFixed(0)}%</Text></View>
-          <Pressable style={({ pressed }) => [[styles.resetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setCount(0)}><Text style={[styles.resetText, { color: theme.buttonText }]}>Reset</Text></Pressable>
-        </View>
-      </View>
-    </ScrollView>
-  );
 
   const renderPrayer = () => {
     const displayDate = selectedDate || now;
@@ -1192,13 +1144,6 @@ function AppContent() {
         </Pressable>
       </View>
 
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Dhikr Ziel</Text>
-        <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={({ pressed }) => [[styles.presetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
-        <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveGoal}><Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Goal speichern</Text></Pressable>
-      </View>
-
       <View style={styles.appMetaWrap}>
         <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.0</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
@@ -1206,15 +1151,13 @@ function AppContent() {
     </ScrollView>
   );
 
-  const body = activeTab === 'tasbeeh'
-    ? renderTasbeeh()
-    : activeTab === 'gebetsplan'
-      ? renderPrayer()
-      : activeTab === 'terminal'
-        ? renderTerminal()
-        : activeTab === 'stats'
-          ? renderStats()
-          : renderSettings();
+  const body = activeTab === 'gebetsplan'
+    ? renderPrayer()
+    : activeTab === 'terminal'
+      ? renderTerminal()
+      : activeTab === 'stats'
+        ? renderStats()
+        : renderSettings();
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
@@ -1260,17 +1203,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 31, fontWeight: '800', textAlign: 'center', letterSpacing: 0.4 },
   subtitle: { fontSize: 14, textAlign: 'center' },
   titleArabic: { fontSize: 16, textAlign: 'center', marginTop: 0 },
-  tasbeehContent: { paddingTop: 8, gap: 8 },
-  mainFlex: { flex: 1, justifyContent: 'space-between', gap: 10 },
-  counterPressable: { flex: 1 },
-  counter: { flex: 1, borderRadius: 26, borderWidth: 1, minHeight: 340, alignItems: 'center', justifyContent: 'center' },
-  counterText: { fontSize: 92, fontWeight: '800', lineHeight: 98 },
-  progressWrap: { gap: 8 },
-  progressTrack: { height: 8, borderRadius: 999, overflow: 'hidden' },
-  progressFill: { height: '100%' },
-  progressText: { textAlign: 'center', fontSize: 13, fontWeight: '600' },
-  resetBtn: { borderRadius: 14, paddingVertical: 13, alignItems: 'center' },
-  resetText: { fontSize: 17, fontWeight: '700' },
   dayCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
   dayName: { fontSize: 42, fontWeight: '800', textAlign: 'center' },
   dayDate: { fontSize: 20, textAlign: 'center' },
@@ -1288,8 +1220,6 @@ const styles = StyleSheet.create({
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  presetBtn: { borderRadius: 9, paddingHorizontal: 12, paddingVertical: 8 },
   presetBtnText: { fontSize: 13, fontWeight: '700' },
   saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   saveBtnText: { fontSize: 14, fontWeight: '700' },
