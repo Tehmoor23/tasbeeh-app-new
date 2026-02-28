@@ -582,6 +582,8 @@ function AppContent() {
   };
 
   const savePrayerOverride = async () => {
+    if (!overrideEnabled) return;
+
     const cleanSoharAsr = overrideSoharAsrTime.trim();
     const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
 
@@ -1234,7 +1236,7 @@ function AppContent() {
       </View>
 
       {toast ? (
-        <View style={[styles.toast, { backgroundColor: theme.button }]}><Text style={{ color: theme.buttonText, fontWeight: '700' }}>{toast}</Text></View>
+        <View style={[styles.toast, { backgroundColor: '#16A34A' }]}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{toast}</Text></View>
       ) : null}
     </SafeAreaView>
   );
