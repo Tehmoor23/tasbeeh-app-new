@@ -31,7 +31,7 @@ const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
-const FORCE_TIME = null; // set null for real time
+const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
@@ -106,6 +106,8 @@ const FIXED_TIMES = {
   jumma: '13:15',
 };
 
+const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+
 const RAMADAN_RAW = {
   '2026-02-19': { sehriEnd: '05:58', iftar: '17:49' },
   '2026-02-20': { sehriEnd: '05:56', iftar: '17:51' },
@@ -176,6 +178,20 @@ const buildPrayerTimes = (raw) => ({
   ishaa: FIXED_TIMES.ishaa,
   jumma: FIXED_TIMES.jumma,
 });
+
+const applyPrayerTimeOverride = (baseTimes, overrideConfig) => {
+  if (!overrideConfig?.enabled) return baseTimes;
+  const next = { ...baseTimes };
+  if (isValidTime(overrideConfig.soharAsrTime)) {
+    next.sohar = overrideConfig.soharAsrTime;
+    next.asr = overrideConfig.soharAsrTime;
+  }
+  if (isValidTime(overrideConfig.maghribIshaaTime)) {
+    next.maghrib = overrideConfig.maghribIshaaTime;
+    next.ishaa = overrideConfig.maghribIshaaTime;
+  }
+  return next;
+};
 
 const addDays = (date, days) => {
   const next = new Date(date);
@@ -259,6 +275,14 @@ const fromFirestoreValue = (v) => {
   return null;
 };
 
+const normalizePrayerOverride = (data) => ({
+  enabled: Boolean(data?.enabled),
+  soharAsrTime: isValidTime(data?.soharAsrTime) ? data.soharAsrTime : null,
+  maghribIshaaTime: isValidTime(data?.maghribIshaaTime) ? data.maghribIshaaTime : null,
+  updatedAt: data?.updatedAt || null,
+});
+
+
 const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}?key=${FIREBASE_CONFIG.apiKey}`;
 const commitUrl = () => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit?key=${FIREBASE_CONFIG.apiKey}`;
 const loadFirebaseRuntime = () => {
@@ -301,12 +325,17 @@ async function getDocData(collection, id) {
   return fromFirestoreValue({ mapValue: { fields: json.fields || {} } });
 }
 
-async function setDocData(collection, id, data, merge = true) {
+async function setDocData(collection, id, data) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const body = { fields: toFirestoreValue(data).mapValue.fields };
-  const url = merge ? `${docUrl(collection, id)}&currentDocument.exists=false` : docUrl(collection, id);
-  const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok && res.status !== 409) throw new Error('Firestore write failed');
+  const res = await fetch(docUrl(collection, id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error('Firestore write failed');
+}
+
+async function deleteDocData(collection, id) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const res = await fetch(docUrl(collection, id), { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
 const toLocationKey = (name) => name
@@ -332,6 +361,15 @@ const getNextPrayer = (now, timesToday) => {
   return (next || entries[0]).name;
 };
 
+const getDisplayPrayerLabel = (key, timesToday) => {
+  const soharAsrMerged = isValidTime(timesToday?.sohar) && timesToday?.sohar === timesToday?.asr;
+  const maghribIshaaMerged = isValidTime(timesToday?.maghrib) && timesToday?.maghrib === timesToday?.ishaa;
+  if (soharAsrMerged && (key === 'sohar' || key === 'asr')) return 'Sohar+Asr';
+  if (maghribIshaaMerged && (key === 'maghrib' || key === 'ishaa')) return 'Maghrib+Ishaa';
+  return PRAYER_LABELS[key] || key;
+};
+
+
 function AppContent() {
   const [activeTab, setActiveTab] = useState('tasbeeh');
   const [count, setCount] = useState(0);
@@ -345,6 +383,12 @@ function AppContent() {
   const [toast, setToast] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsAttendance, setStatsAttendance] = useState(null);
+  const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
+  const [overrideLoading, setOverrideLoading] = useState(false);
+  const [overrideSaving, setOverrideSaving] = useState(false);
+  const [overrideEnabled, setOverrideEnabled] = useState(false);
+  const [overrideSoharAsrTime, setOverrideSoharAsrTime] = useState('');
+  const [overrideMaghribIshaaTime, setOverrideMaghribIshaaTime] = useState('');
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const themePulseAnim = useRef(new Animated.Value(1)).current;
@@ -369,7 +413,8 @@ function AppContent() {
   const selectedRaw = selectedISO ? RAMADAN_RAW[selectedISO] : null;
   const hasTodayData = Boolean(RAMADAN_RAW[todayISO]);
 
-  const timesToday = useMemo(() => buildPrayerTimes(selectedRaw), [selectedRaw]);
+  const baseTimesToday = useMemo(() => buildPrayerTimes(selectedRaw), [selectedRaw]);
+  const timesToday = useMemo(() => applyPrayerTimeOverride(baseTimesToday, prayerOverride), [baseTimesToday, prayerOverride]);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
   const tomorrowRaw = useMemo(() => RAMADAN_RAW[tomorrowISO] || null, [tomorrowISO]);
   const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw), [tomorrowRaw]);
@@ -377,10 +422,10 @@ function AppContent() {
 
   const prayerRows = useMemo(() => [
     { key: 'fajr', label: 'Fajr (الفجر)', time: timesToday.fajr, activeCheck: true },
-    { key: 'sohar', label: 'Sohar (الظهر)', time: timesToday.sohar, activeCheck: true },
-    { key: 'asr', label: 'Asr (العصر)', time: timesToday.asr, activeCheck: true },
-    { key: 'maghrib', label: 'Maghrib (المغرب)', time: timesToday.maghrib, activeCheck: true },
-    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeCheck: true },
+    { key: 'sohar', label: (isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr) ? 'Sohar+Asr (الظهر + العصر)' : 'Sohar (الظهر)', time: timesToday.sohar, activeCheck: true },
+    { key: 'asr', label: (isValidTime(timesToday.asr) && timesToday.sohar === timesToday.asr) ? 'Asr (zusammengelegt)' : 'Asr (العصر)', time: timesToday.asr, activeCheck: true },
+    { key: 'maghrib', label: (isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa) ? 'Maghrib+Ishaa (المغرب + العشاء)' : 'Maghrib (المغرب)', time: timesToday.maghrib, activeCheck: true },
+    { key: 'ishaa', label: (isValidTime(timesToday.ishaa) && timesToday.maghrib === timesToday.ishaa) ? 'Ishaa (zusammengelegt)' : 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeCheck: true },
     { key: 'jumma', label: 'Jumma (الجمعة)', time: timesToday.jumma, activeCheck: false },
   ], [timesToday]);
 
@@ -404,11 +449,11 @@ function AppContent() {
   const resolvePrayerWindow = (referenceNow, referenceTimesToday, referenceTimesTomorrow) => {
     const nowMinutes = referenceNow.getHours() * 60 + referenceNow.getMinutes();
     const sequence = [
-      { key: 'fajr', label: 'Fajr', time: referenceTimesToday.fajr },
-      { key: 'sohar', label: 'Sohar', time: referenceTimesToday.sohar },
-      { key: 'asr', label: 'Asr', time: referenceTimesToday.asr },
-      { key: 'maghrib', label: 'Maghrib', time: referenceTimesToday.maghrib },
-      { key: 'ishaa', label: 'Ishaa & Taravih', time: referenceTimesToday.ishaa },
+      { key: 'fajr', label: getDisplayPrayerLabel('fajr', referenceTimesToday), time: referenceTimesToday.fajr },
+      { key: 'sohar', label: getDisplayPrayerLabel('sohar', referenceTimesToday), time: referenceTimesToday.sohar },
+      { key: 'asr', label: getDisplayPrayerLabel('asr', referenceTimesToday), time: referenceTimesToday.asr },
+      { key: 'maghrib', label: getDisplayPrayerLabel('maghrib', referenceTimesToday), time: referenceTimesToday.maghrib },
+      { key: 'ishaa', label: getDisplayPrayerLabel('ishaa', referenceTimesToday), time: referenceTimesToday.ishaa },
     ];
     const active = sequence.find((item) => {
       const base = getMinutes(item.time);
@@ -426,7 +471,7 @@ function AppContent() {
     const nextPrayerTime = todayHasUpcomingPrayer ? (nextToday?.time || '—') : (referenceTimesTomorrow.fajr || '—');
     const nextLabel = todayHasUpcomingPrayer
       ? `${nextToday?.label || '—'} - ${nextPrayerTime}`
-      : `${PRAYER_LABELS.fajr} - ${nextPrayerTime}`;
+      : `${getDisplayPrayerLabel('fajr', referenceTimesTomorrow)} - ${nextPrayerTime}`;
     const nextWindowStartMinutes = todayHasUpcomingPrayer
       ? ((getMinutes(nextPrayerTime) ?? 0) - 30)
       : (((getMinutes(nextPrayerTime) ?? 0) - 30) + 1440);
@@ -462,6 +507,112 @@ function AppContent() {
     return () => clearTimeout(t);
   }, [toast]);
 
+
+  useEffect(() => {
+    let cancelled = false;
+    setOverrideLoading(true);
+
+    const applyOverride = (data) => {
+      const normalized = normalizePrayerOverride(data);
+      if (cancelled) return;
+      setPrayerOverride(normalized);
+      setOverrideEnabled(normalized.enabled);
+      setOverrideSoharAsrTime(normalized.soharAsrTime || '');
+      setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
+      setOverrideLoading(false);
+    };
+
+    if (!firebaseRuntime || !hasFirebaseConfig()) {
+      getDocData(PRAYER_OVERRIDE_COLLECTION, todayISO)
+        .then((data) => applyOverride(data))
+        .catch(() => {
+          if (!cancelled) {
+            setOverrideLoading(false);
+            setToast('Override konnte nicht geladen werden');
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, PRAYER_OVERRIDE_COLLECTION, todayISO);
+    const unsubscribe = firebaseRuntime.onSnapshot(
+      overrideRef,
+      (snapshot) => applyOverride(snapshot.exists() ? snapshot.data() : null),
+      () => {
+        if (!cancelled) {
+          setOverrideLoading(false);
+          setToast('Override konnte nicht geladen werden');
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [todayISO]);
+
+  const savePrayerOverride = async () => {
+    const cleanSoharAsr = overrideSoharAsrTime.trim();
+    const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
+
+    if (cleanSoharAsr && !isValidTime(cleanSoharAsr)) {
+      Alert.alert('Ungültige Zeit', 'Sohar+Asr muss im Format HH:MM sein.');
+      return;
+    }
+    if (cleanMaghribIshaa && !isValidTime(cleanMaghribIshaa)) {
+      Alert.alert('Ungültige Zeit', 'Maghrib+Ishaa muss im Format HH:MM sein.');
+      return;
+    }
+
+    const payload = {
+      enabled: overrideEnabled,
+      soharAsrTime: cleanSoharAsr || null,
+      maghribIshaaTime: cleanMaghribIshaa || null,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      setOverrideSaving(true);
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, todayISO, payload);
+      setPrayerOverride(normalizePrayerOverride(payload));
+      setToast('Override gespeichert ✓');
+      setRefreshTick((v) => v + 1);
+    } catch {
+      Alert.alert('Fehler', 'Override konnte nicht gespeichert werden.');
+    } finally {
+      setOverrideSaving(false);
+    }
+  };
+
+  const resetPrayerOverride = async () => {
+    Alert.alert('Override zurücksetzen', 'Soll die heutige Override-Konfiguration gelöscht werden?', [
+      { text: 'Abbrechen', style: 'cancel' },
+      {
+        text: 'Zurücksetzen',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setOverrideSaving(true);
+            await deleteDocData(PRAYER_OVERRIDE_COLLECTION, todayISO);
+            const cleared = normalizePrayerOverride(null);
+            setPrayerOverride(cleared);
+            setOverrideEnabled(false);
+            setOverrideSoharAsrTime('');
+            setOverrideMaghribIshaaTime('');
+            setToast('Override gelöscht ✓');
+            setRefreshTick((v) => v + 1);
+          } catch {
+            Alert.alert('Fehler', 'Override konnte nicht gelöscht werden.');
+          } finally {
+            setOverrideSaving(false);
+          }
+        },
+      },
+    ]);
+  };
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -686,7 +837,9 @@ function AppContent() {
     const runtimeISO = toISO(runtimeNow);
     const runtimeSelectedISO = RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates);
     const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
-    const runtimeTimesToday = buildPrayerTimes(runtimeRaw);
+    const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw);
+    const runtimeOverride = runtimeISO === todayISO ? prayerOverride : null;
+    const runtimeTimesToday = applyPrayerTimeOverride(runtimeBaseTimesToday, runtimeOverride);
     const runtimeTomorrowRaw = RAMADAN_RAW[toISO(addDays(runtimeNow, 1))] || null;
     const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw);
     const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
@@ -936,6 +1089,38 @@ function AppContent() {
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Gebetszeiten Override (heute)</Text>
+        <Text style={[styles.noteText, { color: theme.muted }]}>Global in Firestore gespeichert · Gilt für alle Geräte ({todayISO})</Text>
+        {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+        <View style={styles.switchRow}>
+          <Text style={[styles.noteText, { color: theme.text }]}>Override aktivieren</Text>
+          <Switch value={overrideEnabled} onValueChange={setOverrideEnabled} />
+        </View>
+        <TextInput
+          value={overrideSoharAsrTime}
+          onChangeText={setOverrideSoharAsrTime}
+          placeholder="Sohar+Asr (HH:MM)"
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+        />
+        <TextInput
+          value={overrideMaghribIshaaTime}
+          onChangeText={setOverrideMaghribIshaaTime}
+          placeholder="Maghrib+Ishaa (HH:MM)"
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+        />
+        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={savePrayerOverride}>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Override speichern'}</Text>
+        </Pressable>
+        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: isDarkMode ? '#3F3F46' : '#E4E4E7' }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={resetPrayerOverride}>
+          <Text style={[styles.saveBtnText, { color: isDarkMode ? '#F4F4F5' : '#111111' }]}>Standardzeiten wiederherstellen</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Dhikr Ziel</Text>
         <View style={styles.presetRow}>{GOAL_PRESETS.map((preset) => <Pressable key={preset} style={({ pressed }) => [[styles.presetBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setGoalInput(String(preset))}><Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{preset}</Text></Pressable>)}</View>
         <TextInput value={goalInput} onChangeText={setGoalInput} keyboardType="number-pad" style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
@@ -1052,8 +1237,8 @@ const styles = StyleSheet.create({
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
   noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, overflow: 'hidden', letterSpacing: 0.2 },
-  noPrayerTitleLight: { backgroundColor: '#FDE689', color: '#111111' },
-  noPrayerTitleDark: { backgroundColor: '#FDE689', color: '#111111' },
+  noPrayerTitleLight: { backgroundColor: '#FFE866', color: '#111111' },
+  noPrayerTitleDark: { backgroundColor: '#FFE866', color: '#111111' },
   noPrayerCountdownChip: { alignSelf: 'center', marginTop: 12, borderRadius: 12, borderWidth: 2, paddingVertical: 8, paddingHorizontal: 12 },
   noPrayerCountdownText: { fontSize: 13, fontWeight: '600', letterSpacing: 0.1 },
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
