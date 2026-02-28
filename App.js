@@ -65,39 +65,31 @@ const MEMBER_DIRECTORY_DATA = (() => {
     name: String(entry.name || '').trim(),
   }));
 
+  if (normalized.length >= 1000) return normalized;
+
   const usedIds = new Set(normalized.map((entry) => entry.idNumber));
-  const pairCounts = new Map();
-  normalized.forEach((entry) => {
-    const key = `${entry.majlis}|${entry.tanzeem}`;
-    pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
-  });
+  let cursor = 0;
+  while (normalized.length < 1000) {
+    const template = normalized[cursor % normalized.length] || {
+      tanzeem: TANZEEM_OPTIONS[cursor % TANZEEM_OPTIONS.length],
+      majlis: TERMINAL_LOCATIONS[cursor % TERMINAL_LOCATIONS.length],
+      name: 'Test Person',
+    };
+    let idNumber = String(200000 + cursor);
+    while (usedIds.has(idNumber)) idNumber = String(Number(idNumber) + 1000);
+    usedIds.add(idNumber);
 
-  TERMINAL_LOCATIONS.forEach((majlis, majlisIndex) => {
-    TANZEEM_OPTIONS.forEach((tanzeem, tanzeemIndex) => {
-      const key = `${majlis}|${tanzeem}`;
-      let count = pairCounts.get(key) || 0;
-      let slot = count + 1;
-      while (count < 5) {
-        let fallbackId = `9${String(majlisIndex + 1).padStart(2, '0')}${tanzeemIndex + 1}${slot}`;
-        while (usedIds.has(fallbackId)) fallbackId = `${fallbackId}9`;
-        usedIds.add(fallbackId);
-
-        normalized.push({
-          tanzeem,
-          majlis,
-          idNumber: fallbackId,
-          name: `${TANZEEM_LABELS[tanzeem]} Mitglied ${slot}`,
-        });
-
-        count += 1;
-        slot += 1;
-      }
-      pairCounts.set(key, count);
+    normalized.push({
+      tanzeem: template.tanzeem,
+      majlis: template.majlis,
+      idNumber,
+      name: `${template.name} ${String(cursor + 1).padStart(3, '0')}`,
     });
-  });
+    cursor += 1;
+  }
 
   return normalized;
-})();
+})();;
 
 
 const TAB_ITEMS = [
