@@ -95,13 +95,16 @@ const FIREBASE_CONFIG = {
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
 
 const FIXED_TIMES = {
+  fajr: '05:30',
   sohar: '13:30',
   asr: '16:00',
+  maghrib: '18:45',
   ishaa: '20:00',
   jumma: '13:15',
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+const RAMADAN_END_ISO = '2026-03-19';
 
 const RAMADAN_RAW = {
   '2026-02-19': { sehriEnd: '05:58', iftar: '17:49' },
@@ -165,14 +168,23 @@ const findClosestISO = (targetISO, availableISOs) => {
   }, sorted[0]);
 };
 
-const buildPrayerTimes = (raw) => ({
-  fajr: addMinutes(raw?.sehriEnd, 20),
+const buildPrayerTimes = (raw, isRamadanWindow = false) => ({
+  fajr: isRamadanWindow ? addMinutes(raw?.sehriEnd, 20) : FIXED_TIMES.fajr,
   sohar: FIXED_TIMES.sohar,
   asr: FIXED_TIMES.asr,
-  maghrib: addMinutes(raw?.iftar, 10),
+  maghrib: isRamadanWindow ? addMinutes(raw?.iftar, 10) : FIXED_TIMES.maghrib,
   ishaa: FIXED_TIMES.ishaa,
   jumma: FIXED_TIMES.jumma,
 });
+
+const applyManualPrayerAdjustments = (baseTimes, overrideConfig) => {
+  const manual = overrideConfig?.manualTimes || {};
+  const next = { ...baseTimes };
+  ['fajr', 'sohar', 'asr', 'maghrib', 'ishaa', 'jumma'].forEach((key) => {
+    if (isValidTime(manual[key])) next[key] = manual[key];
+  });
+  return next;
+};
 
 const applyPrayerTimeOverride = (baseTimes, overrideConfig) => {
   if (!overrideConfig?.enabled) return baseTimes;
@@ -274,6 +286,13 @@ const normalizePrayerOverride = (data) => ({
   enabled: Boolean(data?.enabled),
   soharAsrTime: isValidTime(data?.soharAsrTime) ? data.soharAsrTime : null,
   maghribIshaaTime: isValidTime(data?.maghribIshaaTime) ? data.maghribIshaaTime : null,
+  manualTimes: {
+    fajr: isValidTime(data?.manualTimes?.fajr) ? data.manualTimes.fajr : '',
+    sohar: isValidTime(data?.manualTimes?.sohar) ? data.manualTimes.sohar : '',
+    asr: isValidTime(data?.manualTimes?.asr) ? data.manualTimes.asr : '',
+    maghrib: isValidTime(data?.manualTimes?.maghrib) ? data.manualTimes.maghrib : '',
+    ishaa: isValidTime(data?.manualTimes?.ishaa) ? data.manualTimes.ishaa : '',
+  },
   updatedAt: data?.updatedAt || null,
 });
 
@@ -382,6 +401,11 @@ function AppContent() {
   const [overrideEnabled, setOverrideEnabled] = useState(false);
   const [overrideSoharAsrTime, setOverrideSoharAsrTime] = useState('');
   const [overrideMaghribIshaaTime, setOverrideMaghribIshaaTime] = useState('');
+  const [manualFajrTime, setManualFajrTime] = useState('');
+  const [manualSoharTime, setManualSoharTime] = useState('');
+  const [manualAsrTime, setManualAsrTime] = useState('');
+  const [manualMaghribTime, setManualMaghribTime] = useState('');
+  const [manualIshaaTime, setManualIshaaTime] = useState('');
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
@@ -400,16 +424,21 @@ function AppContent() {
   }, [refreshTick]);
   const todayISO = toISO(now);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
-  const selectedISO = useMemo(() => RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates), [todayISO, availableDates]);
+  const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
+  const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
   const selectedDate = selectedISO ? parseISO(selectedISO) : now;
   const selectedRaw = selectedISO ? RAMADAN_RAW[selectedISO] : null;
-  const hasTodayData = Boolean(RAMADAN_RAW[todayISO]);
+  const hasTodayData = !isRamadanPeriodToday || Boolean(RAMADAN_RAW[todayISO]);
 
-  const baseTimesToday = useMemo(() => buildPrayerTimes(selectedRaw), [selectedRaw]);
-  const timesToday = useMemo(() => applyPrayerTimeOverride(baseTimesToday, prayerOverride), [baseTimesToday, prayerOverride]);
+  const baseTimesToday = useMemo(() => buildPrayerTimes(selectedRaw, isRamadanPeriodToday), [selectedRaw, isRamadanPeriodToday]);
+  const timesToday = useMemo(() => {
+    const withManual = applyManualPrayerAdjustments(baseTimesToday, prayerOverride);
+    return applyPrayerTimeOverride(withManual, prayerOverride);
+  }, [baseTimesToday, prayerOverride]);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
-  const tomorrowRaw = useMemo(() => RAMADAN_RAW[tomorrowISO] || null, [tomorrowISO]);
-  const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw), [tomorrowRaw]);
+  const isRamadanPeriodTomorrow = useMemo(() => tomorrowISO <= RAMADAN_END_ISO, [tomorrowISO]);
+  const tomorrowRaw = useMemo(() => (isRamadanPeriodTomorrow ? (RAMADAN_RAW[tomorrowISO] || null) : null), [tomorrowISO, isRamadanPeriodTomorrow]);
+  const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw, isRamadanPeriodTomorrow), [tomorrowRaw, isRamadanPeriodTomorrow]);
   const nextPrayer = useMemo(() => getNextPrayer(now, timesToday), [now, timesToday]);
 
   const soharAsrMergedToday = isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr;
@@ -526,6 +555,11 @@ function AppContent() {
       setOverrideEnabled(normalized.enabled);
       setOverrideSoharAsrTime(normalized.soharAsrTime || '');
       setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
+      setManualFajrTime(normalized.manualTimes.fajr || '');
+      setManualSoharTime(normalized.manualTimes.sohar || '');
+      setManualAsrTime(normalized.manualTimes.asr || '');
+      setManualMaghribTime(normalized.manualTimes.maghrib || '');
+      setManualIshaaTime(normalized.manualTimes.ishaa || '');
       setOverrideLoading(false);
     };
 
@@ -586,6 +620,13 @@ function AppContent() {
       enabled: overrideEnabled,
       soharAsrTime: cleanSoharAsr || null,
       maghribIshaaTime: cleanMaghribIshaa || null,
+      manualTimes: {
+        fajr: manualFajrTime.trim() || null,
+        sohar: manualSoharTime.trim() || null,
+        asr: manualAsrTime.trim() || null,
+        maghrib: manualMaghribTime.trim() || null,
+        ishaa: manualIshaaTime.trim() || null,
+      },
       updatedAt: new Date().toISOString(),
     };
 
@@ -597,6 +638,47 @@ function AppContent() {
       setRefreshTick((v) => v + 1);
     } catch {
       Alert.alert('Fehler', 'Override konnte nicht gespeichert werden.');
+    } finally {
+      setOverrideSaving(false);
+    }
+  };
+
+  const saveManualPrayerTimes = async () => {
+    const manualEntries = {
+      fajr: manualFajrTime.trim(),
+      sohar: manualSoharTime.trim(),
+      asr: manualAsrTime.trim(),
+      maghrib: manualMaghribTime.trim(),
+      ishaa: manualIshaaTime.trim(),
+    };
+    const invalid = Object.entries(manualEntries).find(([, value]) => value && !isValidTime(value));
+    if (invalid) {
+      Alert.alert('Ungültige Zeit', 'Bitte Zeiten im Format HH:MM eingeben.');
+      return;
+    }
+
+    const payload = {
+      enabled: overrideEnabled,
+      soharAsrTime: overrideSoharAsrTime.trim() || null,
+      maghribIshaaTime: overrideMaghribIshaaTime.trim() || null,
+      manualTimes: {
+        fajr: manualEntries.fajr || null,
+        sohar: manualEntries.sohar || null,
+        asr: manualEntries.asr || null,
+        maghrib: manualEntries.maghrib || null,
+        ishaa: manualEntries.ishaa || null,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      setOverrideSaving(true);
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, todayISO, payload);
+      setPrayerOverride(normalizePrayerOverride(payload));
+      setToast('Gespeichert ✓');
+      setRefreshTick((v) => v + 1);
+    } catch {
+      Alert.alert('Fehler', 'Zeiten konnten nicht gespeichert werden.');
     } finally {
       setOverrideSaving(false);
     }
@@ -648,8 +730,6 @@ function AppContent() {
         if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(isGermanNightDefault());
       } catch (e) {
         console.warn('Failed to load local settings:', e);
-      } finally {
-        setCountLoaded(true);
       }
     };
     loadLocal();
@@ -845,13 +925,17 @@ function AppContent() {
       runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
     const runtimeISO = toISO(runtimeNow);
-    const runtimeSelectedISO = RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates);
+    const runtimeIsRamadanToday = runtimeISO <= RAMADAN_END_ISO;
+    const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates)) : null;
     const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
-    const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw);
+    const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw, runtimeIsRamadanToday);
     const runtimeOverride = runtimeISO === todayISO ? prayerOverride : null;
-    const runtimeTimesToday = applyPrayerTimeOverride(runtimeBaseTimesToday, runtimeOverride);
-    const runtimeTomorrowRaw = RAMADAN_RAW[toISO(addDays(runtimeNow, 1))] || null;
-    const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw);
+    const runtimeWithManual = applyManualPrayerAdjustments(runtimeBaseTimesToday, runtimeOverride);
+    const runtimeTimesToday = applyPrayerTimeOverride(runtimeWithManual, runtimeOverride);
+    const runtimeTomorrowISO = toISO(addDays(runtimeNow, 1));
+    const runtimeIsRamadanTomorrow = runtimeTomorrowISO <= RAMADAN_END_ISO;
+    const runtimeTomorrowRaw = runtimeIsRamadanTomorrow ? (RAMADAN_RAW[runtimeTomorrowISO] || null) : null;
+    const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw, runtimeIsRamadanTomorrow);
     const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
 
     if (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey) {
@@ -917,8 +1001,8 @@ function AppContent() {
               </View>
             );
           })}
-          <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text>
-          <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text>
+          {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text> : null}
+          {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text> : null}
         </View>
       </ScrollView>
     );
@@ -1152,6 +1236,24 @@ function AppContent() {
         </View>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={savePrayerOverride}>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
+        </Pressable>
+      </View>
+
+
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
+
+        <View style={styles.mergeInputWrap}>
+          <TextInput value={manualFajrTime} onChangeText={setManualFajrTime} placeholder="Fajr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={manualSoharTime} onChangeText={setManualSoharTime} placeholder="Sohar (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={manualAsrTime} onChangeText={setManualAsrTime} placeholder="Asr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={manualMaghribTime} onChangeText={setManualMaghribTime} placeholder="Maghrib (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={manualIshaaTime} onChangeText={setManualIshaaTime} placeholder="Ishaa (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+        </View>
+
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={saveManualPrayerTimes}>
           <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
         </Pressable>
       </View>
