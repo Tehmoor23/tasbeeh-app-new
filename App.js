@@ -892,20 +892,21 @@ function AppContent() {
     }
 
     const prayer = runtimePrayerWindow.prayerKey;
-    const paths = [];
-    if (kind === 'guest') {
-      paths.push(`byPrayer.${prayer}.guest`);
-    } else if (locationName && selectedTanzeem) {
-      paths.push(`byPrayer.${prayer}.tanzeem.${selectedTanzeem}.majlis.${toLocationKey(locationName)}`);
-    }
-
     const runtimeSoharAsrMerged = isValidTime(runtimeTimesToday.sohar) && runtimeTimesToday.sohar === runtimeTimesToday.asr;
     const runtimeMaghribIshaaMerged = isValidTime(runtimeTimesToday.maghrib) && runtimeTimesToday.maghrib === runtimeTimesToday.ishaa;
-    if (runtimeSoharAsrMerged && ['sohar', 'asr'].includes(prayer)) {
-      paths.push('mergedCarry.soharAsr');
-    }
-    if (runtimeMaghribIshaaMerged && ['maghrib', 'ishaa'].includes(prayer)) {
-      paths.push('mergedCarry.maghribIshaa');
+
+    const targetPrayers = runtimeSoharAsrMerged && ['sohar', 'asr'].includes(prayer)
+      ? ['sohar', 'asr']
+      : runtimeMaghribIshaaMerged && ['maghrib', 'ishaa'].includes(prayer)
+        ? ['maghrib', 'ishaa']
+        : [prayer];
+
+    const paths = [];
+    if (kind === 'guest') {
+      targetPrayers.forEach((targetPrayer) => paths.push(`byPrayer.${targetPrayer}.guest`));
+    } else if (locationName && selectedTanzeem) {
+      const locationKey = toLocationKey(locationName);
+      targetPrayers.forEach((targetPrayer) => paths.push(`byPrayer.${targetPrayer}.tanzeem.${selectedTanzeem}.majlis.${locationKey}`));
     }
 
     try {
@@ -1129,13 +1130,13 @@ function AppContent() {
                   ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
                   : [
                     { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
-                    { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : (asrTotalRaw + (statsView.mergedCarrySoharAsr || 0)) },
+                    { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
                   ]),
                 ...(maghribIshaaMergedToday
                   ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
                   : [
                     { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
-                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : (ishaaTotalRaw + (statsView.mergedCarryMaghribIshaa || 0)) },
+                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
                   ]),
               ];
 
