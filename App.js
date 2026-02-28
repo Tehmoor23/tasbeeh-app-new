@@ -31,8 +31,8 @@ const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
-// const FORCE_TIME = null; // set null for real time
-const FORCE_TIME = '05:31'; // development override for testing
+const FORCE_TIME = null; // set null for real time
+// const FORCE_TIME = '05:31'; // development override for testing
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
