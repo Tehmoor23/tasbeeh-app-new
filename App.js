@@ -31,8 +31,8 @@ const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
-const FORCE_TIME = null;
-// const FORCE_TIME = '05:31'; // development override, set null for real time
+// const FORCE_TIME = null; // set null for real time
+const FORCE_TIME = '05:31'; // development override for testing
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -1052,8 +1052,8 @@ const styles = StyleSheet.create({
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
   noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, overflow: 'hidden', letterSpacing: 0.2 },
-  noPrayerTitleLight: { backgroundColor: '#FFF8CC', color: '#111111' },
-  noPrayerTitleDark: { backgroundColor: '#FFF8CC', color: '#111111' },
+  noPrayerTitleLight: { backgroundColor: '#FFE866', color: '#111111' },
+  noPrayerTitleDark: { backgroundColor: '#FFE866', color: '#111111' },
   noPrayerCountdownChip: { alignSelf: 'center', marginTop: 12, borderRadius: 12, borderWidth: 2, paddingVertical: 8, paddingHorizontal: 12 },
   noPrayerCountdownText: { fontSize: 13, fontWeight: '600', letterSpacing: 0.1 },
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
