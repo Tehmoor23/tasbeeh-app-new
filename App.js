@@ -60,7 +60,7 @@ const PRAYER_LABELS = {
   sohar: 'Sohar',
   asr: 'Asr',
   maghrib: 'Maghrib',
-  ishaa: 'Ishaa & Taravih',
+  ishaa: 'Ishaa',
 };
 
 const MAJLIS_LABELS = {
@@ -458,7 +458,7 @@ function AppContent() {
       ? [{ id: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', time: timesToday.maghrib, activeKeys: ['maghrib', 'ishaa'] }]
       : [
         { id: 'maghrib', label: 'Maghrib (المغرب)', time: timesToday.maghrib, activeKeys: ['maghrib'] },
-        { id: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeKeys: ['ishaa'] },
+        { id: 'ishaa', label: 'Ishaa (العشاء)', time: timesToday.ishaa, activeKeys: ['ishaa'] },
       ]),
     { id: 'jumma', label: 'Jumma (الجمعة)', time: timesToday.jumma, activeKeys: ['jumma'] },
   ], [timesToday, soharAsrMergedToday, maghribIshaaMergedToday]);
@@ -1172,7 +1172,7 @@ function AppContent() {
                   ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
                   : [
                     { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
-                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
+                    { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
                   ]),
               ];
 
@@ -1259,7 +1259,7 @@ function AppContent() {
       </View>
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.0</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.3</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
