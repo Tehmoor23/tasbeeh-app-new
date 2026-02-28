@@ -573,6 +573,14 @@ function AppContent() {
     };
   }, [todayISO]);
 
+  const onOverrideEnabledChange = (value) => {
+    setOverrideEnabled(value);
+    if (!value) {
+      setOverrideSoharAsrTime('');
+      setOverrideMaghribIshaaTime('');
+    }
+  };
+
   const savePrayerOverride = async () => {
     const cleanSoharAsr = overrideSoharAsrTime.trim();
     const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
@@ -604,37 +612,6 @@ function AppContent() {
     } finally {
       setOverrideSaving(false);
     }
-  };
-
-  const resetPrayerOverride = async () => {
-    Alert.alert('Override-Zeiten leeren', 'Sollen nur die Override-Zeitfelder geleert werden?', [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Leeren',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setOverrideSaving(true);
-            const payload = {
-              enabled: overrideEnabled,
-              soharAsrTime: null,
-              maghribIshaaTime: null,
-              updatedAt: new Date().toISOString(),
-            };
-            await setDocData(PRAYER_OVERRIDE_COLLECTION, todayISO, payload);
-            setPrayerOverride(normalizePrayerOverride(payload));
-            setOverrideSoharAsrTime('');
-            setOverrideMaghribIshaaTime('');
-            setToast('Override-Zeiten geleert ✓');
-            setRefreshTick((v) => v + 1);
-          } catch {
-            Alert.alert('Fehler', 'Override-Zeiten konnten nicht geleert werden.');
-          } finally {
-            setOverrideSaving(false);
-          }
-        },
-      },
-    ]);
   };
 
   useEffect(() => {
@@ -826,7 +803,7 @@ function AppContent() {
       const mergedMap = {};
       addMajlisMap(mergedMap, soharMajlis, 1);
       addMajlisMap(mergedMap, asrMajlis, 1);
-      addMajlisMap(topMajlisMap, mergedMap, 2);
+      addMajlisMap(topMajlisMap, mergedMap, 1);
     } else {
       addMajlisMap(topMajlisMap, soharMajlis, 1);
       addMajlisMap(topMajlisMap, asrMajlis, 1);
@@ -838,7 +815,7 @@ function AppContent() {
       const mergedMap = {};
       addMajlisMap(mergedMap, maghribMajlis, 1);
       addMajlisMap(mergedMap, ishaaMajlis, 1);
-      addMajlisMap(topMajlisMap, mergedMap, 2);
+      addMajlisMap(topMajlisMap, mergedMap, 1);
     } else {
       addMajlisMap(topMajlisMap, maghribMajlis, 1);
       addMajlisMap(topMajlisMap, ishaaMajlis, 1);
@@ -1177,7 +1154,7 @@ function AppContent() {
         {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
         <View style={styles.switchRow}>
           <Text style={[styles.noteText, { color: theme.text }]}>Override aktivieren</Text>
-          <Switch value={overrideEnabled} onValueChange={setOverrideEnabled} />
+          <Switch value={overrideEnabled} onValueChange={onOverrideEnabledChange} />
         </View>
         <TextInput
           value={overrideSoharAsrTime}
@@ -1197,9 +1174,6 @@ function AppContent() {
         />
         <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={savePrayerOverride}>
           <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Override speichern'}</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: isDarkMode ? '#3F3F46' : '#E4E4E7' }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={resetPrayerOverride}>
-          <Text style={[styles.saveBtnText, { color: isDarkMode ? '#F4F4F5' : '#111111' }]}>Standardzeiten wiederherstellen</Text>
         </Pressable>
       </View>
 
