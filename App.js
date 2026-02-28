@@ -55,7 +55,22 @@ const TANZEEM_LABELS = {
   atfal: 'Atfal',
 };
 const MEMBER_DIRECTORY_COLLECTION = 'attendance_member_entries';
-const MEMBER_CSV_CANDIDATE_PATHS = ['./assets/members_directory.csv', 'assets/members_directory.csv', '/assets/members_directory.csv'];
+const MEMBER_NAME_BY_TANZEEM = {
+  ansar: ['Ahmad Khan', 'Bilal Malik', 'Farid Hussain', 'Hassan Iqbal', 'Imran Sheikh'],
+  khuddam: ['Ayaan Raza', 'Danish Ali', 'Hamza Qureshi', 'Musa Ahmed', 'Zain Siddiqui'],
+  atfal: ['Ali Hasan', 'Yusuf Khan', 'Adam Malik', 'Omar Hussain', 'Ibrahim Ali'],
+};
+const MEMBER_DIRECTORY_DATA = TERMINAL_LOCATIONS.flatMap((majlis, index) => {
+  const majlisCode = String(index + 1).padStart(2, '0');
+  return TANZEEM_OPTIONS.flatMap((tanzeem, tanzeemIndex) => (
+    MEMBER_NAME_BY_TANZEEM[tanzeem].map((name, memberIndex) => ({
+      tanzeem,
+      majlis,
+      idNumber: `${tanzeemIndex + 1}${majlisCode}${String(memberIndex + 1).padStart(2, '0')}`,
+      name,
+    }))
+  ));
+});
 
 const TAB_ITEMS = [
   { key: 'gebetsplan', label: 'Gebetszeiten' },
@@ -755,128 +770,8 @@ function AppContent() {
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
-  const [membersDirectory, setMembersDirectory] = useState([]);
-  const [membersLoading, setMembersLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const normalizeTanzeemKey = (value) => {
-      const text = String(value || '').trim().toLowerCase();
-      if (text === 'ansar') return 'ansar';
-      if (text === 'khuddam') return 'khuddam';
-      if (text === 'atfal') return 'atfal';
-      return '';
-    };
-
-    const parseCsvRows = (csvText) => {
-      const rows = [];
-      let current = '';
-      let row = [];
-      let inQuotes = false;
-
-      const pushCell = () => {
-        row.push(current);
-        current = '';
-      };
-
-      const pushRow = () => {
-        rows.push(row);
-        row = [];
-      };
-
-      for (let i = 0; i < csvText.length; i += 1) {
-        const char = csvText[i];
-        const next = csvText[i + 1];
-
-        if (char === '"') {
-          if (inQuotes && next === '"') {
-            current += '"';
-            i += 1;
-          } else {
-            inQuotes = !inQuotes;
-          }
-        } else if (char === ',' && !inQuotes) {
-          pushCell();
-        } else if ((char === '\n' || char === '\r') && !inQuotes) {
-          if (char === '\r' && next === '\n') i += 1;
-          pushCell();
-          pushRow();
-        } else {
-          current += char;
-        }
-      }
-
-      if (current.length > 0 || row.length > 0) {
-        pushCell();
-        pushRow();
-      }
-
-      return rows;
-    };
-
-    const loadMembersFromCsv = async () => {
-      setMembersLoading(true);
-      try {
-        let csvText = '';
-        for (const filePath of MEMBER_CSV_CANDIDATE_PATHS) {
-          try {
-            const res = await fetch(filePath);
-            if (res.ok) {
-              csvText = await res.text();
-              break;
-            }
-          } catch {
-            // try next path
-          }
-        }
-
-        if (!csvText.trim()) throw new Error('csv_not_found');
-
-        const rawRows = parseCsvRows(csvText)
-          .map((cols) => cols.map((value) => String(value || '').trim()))
-          .filter((cols) => cols.some((value) => value !== ''));
-
-        if (rawRows.length < 2) throw new Error('csv_empty');
-
-        const header = rawRows[0].map((key) => key.toLowerCase());
-        const index = {
-          tanzeem: header.indexOf('tanzeem'),
-          majlis: header.indexOf('majlis'),
-          idNumber: header.indexOf('idnumber'),
-          name: header.indexOf('name'),
-        };
-
-        if (index.tanzeem < 0 || index.majlis < 0 || index.idNumber < 0 || index.name < 0) {
-          throw new Error('csv_header_invalid');
-        }
-
-        const cleaned = rawRows.slice(1)
-          .map((cols) => ({
-            tanzeem: normalizeTanzeemKey(cols[index.tanzeem]),
-            majlis: String(cols[index.majlis] || '').trim(),
-            idNumber: String(cols[index.idNumber] || '').trim(),
-            name: String(cols[index.name] || '').trim(),
-          }))
-          .filter((entry) => entry.tanzeem && entry.majlis && entry.idNumber);
-
-        if (!cancelled) setMembersDirectory(cleaned);
-      } catch {
-        if (!cancelled) {
-          setMembersDirectory([]);
-          setToast('Mitgliederliste konnte nicht geladen werden');
-        }
-      } finally {
-        if (!cancelled) setMembersLoading(false);
-      }
-    };
-
-    loadMembersFromCsv();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const membersDirectory = MEMBER_DIRECTORY_DATA;
+  const membersLoading = false;
 
   const majlisChoices = useMemo(() => {
     const available = new Set(
