@@ -365,9 +365,9 @@ const getDisplayPrayerLabel = (key, timesToday) => {
   const soharAsrMerged = isValidTime(timesToday?.sohar) && timesToday?.sohar === timesToday?.asr;
   const maghribIshaaMerged = isValidTime(timesToday?.maghrib) && timesToday?.maghrib === timesToday?.ishaa;
   if (soharAsrMerged && key === 'sohar') return 'Sohar/Asr';
-  if (soharAsrMerged && key === 'asr') return 'Asr/Sohar';
+  if (soharAsrMerged && key === 'asr') return 'Sohar/Asr';
   if (maghribIshaaMerged && key === 'maghrib') return 'Maghrib/Ishaa';
-  if (maghribIshaaMerged && key === 'ishaa') return 'Ishaa/Maghrib';
+  if (maghribIshaaMerged && key === 'ishaa') return 'Maghrib/Ishaa';
   return PRAYER_LABELS[key] || key;
 };
 
@@ -422,29 +422,43 @@ function AppContent() {
   const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw), [tomorrowRaw]);
   const nextPrayer = useMemo(() => getNextPrayer(now, timesToday), [now, timesToday]);
 
-  const prayerRows = useMemo(() => [
-    { key: 'fajr', label: 'Fajr (الفجر)', time: timesToday.fajr, activeCheck: true },
-    { key: 'sohar', label: (isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr) ? 'Sohar/Asr (الظهر/العصر)' : 'Sohar (الظهر)', time: timesToday.sohar, activeCheck: true },
-    { key: 'asr', label: (isValidTime(timesToday.asr) && timesToday.sohar === timesToday.asr) ? 'Asr/Sohar (العصر/الظهر)' : 'Asr (العصر)', time: timesToday.asr, activeCheck: true },
-    { key: 'maghrib', label: (isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa) ? 'Maghrib/Ishaa (المغرب/العشاء)' : 'Maghrib (المغرب)', time: timesToday.maghrib, activeCheck: true },
-    { key: 'ishaa', label: (isValidTime(timesToday.ishaa) && timesToday.maghrib === timesToday.ishaa) ? 'Ishaa/Maghrib (العشاء/المغرب)' : 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeCheck: true },
-    { key: 'jumma', label: 'Jumma (الجمعة)', time: timesToday.jumma, activeCheck: false },
-  ], [timesToday]);
-
   const soharAsrMergedToday = isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr;
   const maghribIshaaMergedToday = isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa;
+  const hasSoharAsrOverrideToday = isValidTime(prayerOverride.soharAsrTime);
+  const hasMaghribIshaaOverrideToday = isValidTime(prayerOverride.maghribIshaaTime);
+
+  const prayerRows = useMemo(() => [
+    { id: 'fajr', label: 'Fajr (الفجر)', time: timesToday.fajr, activeKeys: ['fajr'] },
+    ...(soharAsrMergedToday
+      ? [{ id: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', time: timesToday.sohar, activeKeys: ['sohar', 'asr'] }]
+      : [
+        { id: 'sohar', label: 'Sohar (الظهر)', time: timesToday.sohar, activeKeys: ['sohar'] },
+        { id: 'asr', label: 'Asr (العصر)', time: timesToday.asr, activeKeys: ['asr'] },
+      ]),
+    ...(maghribIshaaMergedToday
+      ? [{ id: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', time: timesToday.maghrib, activeKeys: ['maghrib', 'ishaa'] }]
+      : [
+        { id: 'maghrib', label: 'Maghrib (المغرب)', time: timesToday.maghrib, activeKeys: ['maghrib'] },
+        { id: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeKeys: ['ishaa'] },
+      ]),
+    { id: 'jumma', label: 'Jumma (الجمعة)', time: timesToday.jumma, activeKeys: ['jumma'] },
+  ], [timesToday, soharAsrMergedToday, maghribIshaaMergedToday]);
 
   const activePrayerKey = useMemo(() => {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const weekday = now.getDay();
-    const active = prayerRows.find((row) => {
-      if (!isValidTime(row.time)) return false;
-      if (row.key === 'jumma' && weekday !== 5) return false;
-      const mins = Number(row.time.slice(0, 2)) * 60 + Number(row.time.slice(3));
-      return nowMinutes >= mins - 30 && nowMinutes <= mins + 60;
+    const sequence = [
+      { key: 'fajr', time: timesToday.fajr },
+      { key: 'sohar', time: timesToday.sohar },
+      { key: 'asr', time: timesToday.asr },
+      { key: 'maghrib', time: timesToday.maghrib },
+      { key: 'ishaa', time: timesToday.ishaa },
+    ];
+    const active = sequence.find((item) => {
+      const mins = isValidTime(item.time) ? (Number(item.time.slice(0, 2)) * 60 + Number(item.time.slice(3))) : null;
+      return mins !== null && nowMinutes >= mins - 30 && nowMinutes <= mins + 60;
     });
     return active?.key || null;
-  }, [prayerRows, now]);
+  }, [now, timesToday]);
 
   const progress = useMemo(() => Math.min((count / goal) * 100, 100), [count, goal]);
 
@@ -593,24 +607,28 @@ function AppContent() {
   };
 
   const resetPrayerOverride = async () => {
-    Alert.alert('Override zurücksetzen', 'Soll die heutige Override-Konfiguration gelöscht werden?', [
+    Alert.alert('Override-Zeiten leeren', 'Sollen nur die Override-Zeitfelder geleert werden?', [
       { text: 'Abbrechen', style: 'cancel' },
       {
-        text: 'Zurücksetzen',
+        text: 'Leeren',
         style: 'destructive',
         onPress: async () => {
           try {
             setOverrideSaving(true);
-            await deleteDocData(PRAYER_OVERRIDE_COLLECTION, todayISO);
-            const cleared = normalizePrayerOverride(null);
-            setPrayerOverride(cleared);
-            setOverrideEnabled(false);
+            const payload = {
+              enabled: overrideEnabled,
+              soharAsrTime: null,
+              maghribIshaaTime: null,
+              updatedAt: new Date().toISOString(),
+            };
+            await setDocData(PRAYER_OVERRIDE_COLLECTION, todayISO, payload);
+            setPrayerOverride(normalizePrayerOverride(payload));
             setOverrideSoharAsrTime('');
             setOverrideMaghribIshaaTime('');
-            setToast('Override gelöscht ✓');
+            setToast('Override-Zeiten geleert ✓');
             setRefreshTick((v) => v + 1);
           } catch {
-            Alert.alert('Fehler', 'Override konnte nicht gelöscht werden.');
+            Alert.alert('Fehler', 'Override-Zeiten konnten nicht geleert werden.');
           } finally {
             setOverrideSaving(false);
           }
@@ -804,7 +822,7 @@ function AppContent() {
 
     const soharMajlis = getMajlisMapForPrayer('sohar');
     const asrMajlis = getMajlisMapForPrayer('asr');
-    if (soharAsrMergedToday) {
+    if (soharAsrMergedToday || hasSoharAsrOverrideToday) {
       const mergedMap = {};
       addMajlisMap(mergedMap, soharMajlis, 1);
       addMajlisMap(mergedMap, asrMajlis, 1);
@@ -816,7 +834,7 @@ function AppContent() {
 
     const maghribMajlis = getMajlisMapForPrayer('maghrib');
     const ishaaMajlis = getMajlisMapForPrayer('ishaa');
-    if (maghribIshaaMergedToday) {
+    if (maghribIshaaMergedToday || hasMaghribIshaaOverrideToday) {
       const mergedMap = {};
       addMajlisMap(mergedMap, maghribMajlis, 1);
       addMajlisMap(mergedMap, ishaaMajlis, 1);
@@ -850,7 +868,7 @@ function AppContent() {
       topMajlis,
       totalAttendance,
     };
-  }, [statsAttendance, statsPrayerKey, soharAsrMergedToday, maghribIshaaMergedToday]);
+  }, [statsAttendance, statsPrayerKey, soharAsrMergedToday, maghribIshaaMergedToday, hasSoharAsrOverrideToday, hasMaghribIshaaOverrideToday]);
 
   const formatMajlisName = (locationKey) => {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
@@ -947,11 +965,9 @@ function AppContent() {
           <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
-            const isActive = row.key === activePrayerKey
-              || (soharAsrMergedToday && ['sohar', 'asr'].includes(row.key) && ['sohar', 'asr'].includes(activePrayerKey || ''))
-              || (maghribIshaaMergedToday && ['maghrib', 'ishaa'].includes(row.key) && ['maghrib', 'ishaa'].includes(activePrayerKey || ''));
+            const isActive = row.activeKeys.includes(activePrayerKey || '');
             return (
-              <View key={row.key} style={[styles.prayerRow, { borderBottomColor: theme.border }, isActive && { backgroundColor: theme.rowActiveBg, borderColor: theme.rowActiveBorder, borderWidth: 1, borderRadius: 10 }]}>
+              <View key={row.id} style={[styles.prayerRow, { borderBottomColor: theme.border }, isActive && { backgroundColor: theme.rowActiveBg, borderColor: theme.rowActiveBorder, borderWidth: 1, borderRadius: 10 }]}>
                 <Text style={[styles.prayerLabel, { color: theme.text }]}>{row.label}</Text>
                 <Text style={[styles.prayerValue, { color: theme.text }]}>{row.time || '—'}</Text>
               </View>
@@ -1108,19 +1124,27 @@ function AppContent() {
                 return guest + members;
               };
 
+              const soharTotalRaw = getPrayerTotal('sohar');
+              const asrTotalRaw = getPrayerTotal('asr');
+              const maghribTotalRaw = getPrayerTotal('maghrib');
+              const ishaaTotalRaw = getPrayerTotal('ishaa');
+
+              const soharAsrCarryValue = soharTotalRaw + asrTotalRaw;
+              const maghribIshaaCarryValue = maghribTotalRaw + ishaaTotalRaw;
+
               const totals = [
                 { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
                 ...(soharAsrMergedToday
-                  ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: getPrayerTotal('sohar') + getPrayerTotal('asr') }]
+                  ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
                   : [
-                    { key: 'sohar', label: 'Sohar (الظهر)', total: getPrayerTotal('sohar') },
-                    { key: 'asr', label: 'Asr (العصر)', total: getPrayerTotal('asr') },
+                    { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
+                    { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
                   ]),
                 ...(maghribIshaaMergedToday
-                  ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: getPrayerTotal('maghrib') + getPrayerTotal('ishaa') }]
+                  ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
                   : [
-                    { key: 'maghrib', label: 'Maghrib (المغرب)', total: getPrayerTotal('maghrib') },
-                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: getPrayerTotal('ishaa') },
+                    { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
+                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
                   ]),
               ];
 
