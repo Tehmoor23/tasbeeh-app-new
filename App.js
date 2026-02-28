@@ -48,6 +48,28 @@ const TERMINAL_LOCATIONS = [
   'Rödelheim',
   'Zeilsheim',
 ];
+const TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal'];
+const TANZEEM_LABELS = {
+  ansar: 'Ansar',
+  khuddam: 'Khuddam',
+  atfal: 'Atfal',
+};
+const MEMBER_DIRECTORY_COLLECTION = 'attendance_member_entries';
+
+const MEMBER_DIRECTORY = TERMINAL_LOCATIONS.flatMap((majlisName, majlisIndex) => {
+  const majlisTag = String(majlisIndex + 1).padStart(2, '0');
+  return TANZEEM_OPTIONS.flatMap((tanzeem, tanzeemIndex) => (
+    Array.from({ length: 5 }, (_, i) => {
+      const memberNumber = String(i + 1).padStart(2, '0');
+      return {
+        tanzeem,
+        majlis: majlisName,
+        idNumber: `${tanzeemIndex + 1}${majlisTag}${memberNumber}`,
+        name: `${TANZEEM_LABELS[tanzeem]} Mitglied ${memberNumber}`,
+      };
+    })
+  ));
+});
 const TAB_ITEMS = [
   { key: 'gebetsplan', label: 'Gebetszeiten' },
   { key: 'terminal', label: 'Anwesenheit' },
@@ -391,6 +413,7 @@ function AppContent() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [terminalMode, setTerminalMode] = useState('tanzeem');
   const [selectedTanzeem, setSelectedTanzeem] = useState('');
+  const [selectedMajlis, setSelectedMajlis] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
@@ -745,6 +768,11 @@ function AppContent() {
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
+  const memberChoices = useMemo(() => (
+    MEMBER_DIRECTORY
+      .filter((entry) => entry.tanzeem === selectedTanzeem && entry.majlis === selectedMajlis)
+      .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)))
+  ), [selectedMajlis, selectedTanzeem]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return undefined;
@@ -910,7 +938,7 @@ function AppContent() {
       .join(' ');
   };
 
-  const countAttendance = async (kind, locationName) => {
+  const countAttendance = async (kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
     terminalLastCountRef.current = nowTs;
@@ -963,7 +991,40 @@ function AppContent() {
     }
 
     try {
+      if (kind === 'member' && selectedMember?.idNumber) {
+        const locationKey = toLocationKey(locationName);
+        const duplicateChecks = await Promise.all(targetPrayers.map((targetPrayer) => {
+          const memberEntryId = `${runtimeISO}_${targetPrayer}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+          return getDocData(MEMBER_DIRECTORY_COLLECTION, memberEntryId);
+        }));
+
+        if (duplicateChecks.some(Boolean)) {
+          setToast('Bereits gezählt');
+          setTerminalMode('tanzeem');
+          setSelectedTanzeem('');
+          setSelectedMajlis('');
+          return;
+        }
+      }
+
       await incrementDocCounters('attendance_daily', runtimeISO, paths);
+
+      if (kind === 'member' && selectedMember?.idNumber) {
+        const locationKey = toLocationKey(locationName);
+        await Promise.all(targetPrayers.map((targetPrayer) => {
+          const memberEntryId = `${runtimeISO}_${targetPrayer}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+          return setDocData(MEMBER_DIRECTORY_COLLECTION, memberEntryId, {
+            date: runtimeISO,
+            prayer: targetPrayer,
+            majlis: locationName,
+            tanzeem: selectedTanzeem,
+            idNumber: String(selectedMember.idNumber),
+            name: selectedMember.name || null,
+            timestamp: new Date().toISOString(),
+          });
+        }));
+      }
+
       visitorCounterRef.current += 1;
       console.log('ATTENDANCE LOG:', {
         visitorNumber: visitorCounterRef.current,
@@ -977,6 +1038,7 @@ function AppContent() {
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
       setSelectedTanzeem('');
+      setSelectedMajlis('');
     } catch {
       Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
       setToast('Datenbankfehler – bitte Internet prüfen');
@@ -1038,9 +1100,9 @@ function AppContent() {
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
           <View style={styles.tanzeemRow}>
-            {['ansar', 'khuddam', 'atfal'].map((tanzeem) => (
-              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
-                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{tanzeem.charAt(0).toUpperCase() + tanzeem.slice(1)}</Text>
+            {TANZEEM_OPTIONS.map((tanzeem) => (
+              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
+                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
               </Pressable>
             ))}
           </View>
@@ -1048,17 +1110,34 @@ function AppContent() {
             <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
           </Pressable>
         </>
-      ) : (
+      ) : terminalMode === 'majlis' ? (
         <>
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
-          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
           <View style={styles.gridWrap}>
             {TERMINAL_LOCATIONS.map((loc) => (
-              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', loc)}>
+              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
                 <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
+          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی آئی ڈی منتخب کریں</Text>
+          <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
+            <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+          </Pressable>
+          <View style={styles.gridWrap}>
+            {memberChoices.map((member) => (
+              <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', selectedMajlis, member)}>
+                <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
+                <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text>
               </Pressable>
             ))}
           </View>
@@ -1398,4 +1477,5 @@ const styles = StyleSheet.create({
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridText: { textAlign: 'center', fontWeight: '700' },
+  gridSubText: { textAlign: 'center', marginTop: 4, fontSize: 11, fontWeight: '500' },
 });
