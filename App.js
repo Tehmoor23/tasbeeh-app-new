@@ -1110,37 +1110,49 @@ function AppContent() {
   );
   };
 
-  const renderSettings = () => (
+  const renderSettings = () => {
+    const settingsDate = germanDateLong(now);
+
+    return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Gebetszeiten Override (heute)</Text>
-        <Text style={[styles.noteText, { color: theme.muted }]}>Global in Firestore gespeichert · Gilt für alle Geräte ({todayISO})</Text>
+
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
+
         {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-        <View style={styles.switchRow}>
-          <Text style={[styles.noteText, { color: theme.text }]}>Override aktivieren</Text>
+
+        <View style={styles.mergeSwitchWrap}>
+          <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Zusammenlegung aktivieren</Text>
           <Switch value={overrideEnabled} onValueChange={onOverrideEnabledChange} />
         </View>
-        <TextInput
-          value={overrideSoharAsrTime}
-          onChangeText={setOverrideSoharAsrTime}
-          placeholder="Sohar+Asr (HH:MM)"
-          placeholderTextColor={theme.muted}
-          autoCapitalize="none"
-          style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
-        />
-        <TextInput
-          value={overrideMaghribIshaaTime}
-          onChangeText={setOverrideMaghribIshaaTime}
-          placeholder="Maghrib+Ishaa (HH:MM)"
-          placeholderTextColor={theme.muted}
-          autoCapitalize="none"
-          style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
-        />
-        <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={savePrayerOverride}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Override speichern'}</Text>
+
+        <View style={[styles.mergeInputWrap, !overrideEnabled && styles.mergeInputDisabled]}>
+          <TextInput
+            value={overrideSoharAsrTime}
+            onChangeText={setOverrideSoharAsrTime}
+            placeholder="Sohar/Asr (HH:MM)"
+            placeholderTextColor={theme.muted}
+            autoCapitalize="none"
+            editable={overrideEnabled}
+            style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+          />
+          <TextInput
+            value={overrideMaghribIshaaTime}
+            onChangeText={setOverrideMaghribIshaaTime}
+            placeholder="Maghrib/Ishaa (HH:MM)"
+            placeholderTextColor={theme.muted}
+            autoCapitalize="none"
+            editable={overrideEnabled}
+            style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+          />
+        </View>
+
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={savePrayerOverride}>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
         </Pressable>
       </View>
 
@@ -1150,6 +1162,7 @@ function AppContent() {
       </View>
     </ScrollView>
   );
+  };
 
   const body = activeTab === 'gebetsplan'
     ? renderPrayer()
@@ -1218,13 +1231,21 @@ const styles = StyleSheet.create({
   appMetaVersion: { textAlign: 'center', fontSize: 12, fontWeight: '700' },
   appMetaCopyright: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
+  settingsHeroCard: { borderRadius: 18, paddingVertical: 22, paddingHorizontal: 18, gap: 16, marginTop: 8, marginBottom: 4 },
+  settingsHeroTitle: { textAlign: 'center', fontSize: 22, fontWeight: '700', letterSpacing: 0.2 },
+  settingsHeroMeta: { textAlign: 'center', fontSize: 13, fontWeight: '500' },
+  mergeSwitchWrap: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  mergeSwitchLabel: { fontSize: 14, fontWeight: '600' },
+  mergeInputWrap: { gap: 12, marginTop: 4 },
+  mergeInputDisabled: { opacity: 0.45 },
+  mergeInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, textAlign: 'center', fontSize: 15, fontWeight: '600' },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetBtnText: { fontSize: 13, fontWeight: '700' },
   saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
+  settingsSaveBtn: { marginTop: 4, alignSelf: 'center', width: '68%' },
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   noteText: { fontSize: 12, fontWeight: '600' },
-  goalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
