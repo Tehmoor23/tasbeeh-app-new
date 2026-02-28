@@ -636,7 +636,7 @@ function AppContent() {
 
     const topMajlis = Object.entries(topMajlisMap)
       .filter(([, count]) => count > 0)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
       .slice(0, 8);
 
     const tanzeemTotalsToday = { ansar: 0, khuddam: 0, atfal: 0 };
@@ -648,11 +648,11 @@ function AppContent() {
       });
     });
 
-    const guestTotal = Number(prayerData.guest) || 0;
-    const totalAttendance = Object.values(tanzeemTotalsToday).reduce((sum, value) => sum + value, 0);
+    const guestTotalToday = Object.values(statsAttendance.byPrayer || {}).reduce((sum, prayer) => sum + (Number(prayer?.guest) || 0), 0);
+    const totalAttendance = Object.values(tanzeemTotalsToday).reduce((sum, value) => sum + value, 0) + guestTotalToday;
 
     return {
-      guestTotal,
+      guestTotal: guestTotalToday,
       tanzeemTotals,
       tanzeemTotalsToday,
       topMajlis,
@@ -784,7 +784,7 @@ function AppContent() {
             <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
             <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
-            <View style={[styles.noPrayerCountdownChip, { backgroundColor: isDarkMode ? '#1F2937' : '#F3F4F6', borderColor: theme.border }]}>
+            <View style={[styles.noPrayerCountdownChip, { backgroundColor: isDarkMode ? '#2F2600' : '#FFFBE6', borderColor: isDarkMode ? '#F59E0B' : '#EAB308' }]}>
               <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
                 Zeitfenster öffnet sich in {Math.floor((prayerWindow.minutesUntilNextWindow || 0) / 60)}h {String((prayerWindow.minutesUntilNextWindow || 0) % 60).padStart(2, '0')}m
               </Text>
@@ -1052,9 +1052,9 @@ const styles = StyleSheet.create({
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
   noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, overflow: 'hidden', letterSpacing: 0.2 },
-  noPrayerTitleLight: { backgroundColor: '#F8FAFC', color: '#0F172A', borderWidth: 1, borderColor: '#CBD5E1' },
-  noPrayerTitleDark: { backgroundColor: '#111827', color: '#E5E7EB', borderWidth: 1, borderColor: '#374151' },
-  noPrayerCountdownChip: { alignSelf: 'center', marginTop: 12, borderRadius: 12, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12 },
+  noPrayerTitleLight: { backgroundColor: '#FFF8CC', color: '#7A5B00', borderWidth: 1, borderColor: '#EAB308' },
+  noPrayerTitleDark: { backgroundColor: '#3B2F00', color: '#FDE68A', borderWidth: 1, borderColor: '#F59E0B' },
+  noPrayerCountdownChip: { alignSelf: 'center', marginTop: 12, borderRadius: 12, borderWidth: 2, paddingVertical: 8, paddingHorizontal: 12 },
   noPrayerCountdownText: { fontSize: 13, fontWeight: '600', letterSpacing: 0.1 },
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
