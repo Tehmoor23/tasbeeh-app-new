@@ -847,6 +847,8 @@ function AppContent() {
       tanzeemTotalsToday,
       topMajlis,
       totalAttendance,
+      mergedCarrySoharAsr,
+      mergedCarryMaghribIshaa,
     };
   }, [statsAttendance, statsPrayerKey, soharAsrMergedToday, maghribIshaaMergedToday, hasSoharAsrOverrideToday, hasMaghribIshaaOverrideToday]);
 
@@ -1127,13 +1129,13 @@ function AppContent() {
                   ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
                   : [
                     { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
-                    { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : (asrTotalRaw + mergedCarrySoharAsr) },
+                    { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : (asrTotalRaw + (statsView.mergedCarrySoharAsr || 0)) },
                   ]),
                 ...(maghribIshaaMergedToday
                   ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
                   : [
                     { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
-                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : (ishaaTotalRaw + mergedCarryMaghribIshaa) },
+                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : (ishaaTotalRaw + (statsView.mergedCarryMaghribIshaa || 0)) },
                   ]),
               ];
 
