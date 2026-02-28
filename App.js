@@ -582,8 +582,6 @@ function AppContent() {
   };
 
   const savePrayerOverride = async () => {
-    if (!overrideEnabled) return;
-
     const cleanSoharAsr = overrideSoharAsrTime.trim();
     const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
 
