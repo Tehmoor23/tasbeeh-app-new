@@ -48,6 +48,15 @@ const TERMINAL_LOCATIONS = [
   'Rödelheim',
   'Zeilsheim',
 ];
+const TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal'];
+const TANZEEM_LABELS = {
+  ansar: 'Ansar',
+  khuddam: 'Khuddam',
+  atfal: 'Atfal',
+};
+const MEMBER_DIRECTORY_COLLECTION = 'attendance_member_entries';
+const MEMBER_CSV_CANDIDATE_PATHS = ['./assets/members_directory.csv', 'assets/members_directory.csv', '/assets/members_directory.csv'];
+
 const TAB_ITEMS = [
   { key: 'gebetsplan', label: 'Gebetszeiten' },
   { key: 'terminal', label: 'Anwesenheit' },
@@ -391,6 +400,7 @@ function AppContent() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [terminalMode, setTerminalMode] = useState('tanzeem');
   const [selectedTanzeem, setSelectedTanzeem] = useState('');
+  const [selectedMajlis, setSelectedMajlis] = useState('');
   const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
@@ -745,6 +755,143 @@ function AppContent() {
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
+  const [membersDirectory, setMembersDirectory] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const normalizeTanzeemKey = (value) => {
+      const text = String(value || '').trim().toLowerCase();
+      if (text === 'ansar') return 'ansar';
+      if (text === 'khuddam') return 'khuddam';
+      if (text === 'atfal') return 'atfal';
+      return '';
+    };
+
+    const parseCsvRows = (csvText) => {
+      const rows = [];
+      let current = '';
+      let row = [];
+      let inQuotes = false;
+
+      const pushCell = () => {
+        row.push(current);
+        current = '';
+      };
+
+      const pushRow = () => {
+        rows.push(row);
+        row = [];
+      };
+
+      for (let i = 0; i < csvText.length; i += 1) {
+        const char = csvText[i];
+        const next = csvText[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && next === '"') {
+            current += '"';
+            i += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          pushCell();
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+          if (char === '\r' && next === '\n') i += 1;
+          pushCell();
+          pushRow();
+        } else {
+          current += char;
+        }
+      }
+
+      if (current.length > 0 || row.length > 0) {
+        pushCell();
+        pushRow();
+      }
+
+      return rows;
+    };
+
+    const loadMembersFromCsv = async () => {
+      setMembersLoading(true);
+      try {
+        let csvText = '';
+        for (const filePath of MEMBER_CSV_CANDIDATE_PATHS) {
+          try {
+            const res = await fetch(filePath);
+            if (res.ok) {
+              csvText = await res.text();
+              break;
+            }
+          } catch {
+            // try next path
+          }
+        }
+
+        if (!csvText.trim()) throw new Error('csv_not_found');
+
+        const rawRows = parseCsvRows(csvText)
+          .map((cols) => cols.map((value) => String(value || '').trim()))
+          .filter((cols) => cols.some((value) => value !== ''));
+
+        if (rawRows.length < 2) throw new Error('csv_empty');
+
+        const header = rawRows[0].map((key) => key.toLowerCase());
+        const index = {
+          tanzeem: header.indexOf('tanzeem'),
+          majlis: header.indexOf('majlis'),
+          idNumber: header.indexOf('idnumber'),
+          name: header.indexOf('name'),
+        };
+
+        if (index.tanzeem < 0 || index.majlis < 0 || index.idNumber < 0 || index.name < 0) {
+          throw new Error('csv_header_invalid');
+        }
+
+        const cleaned = rawRows.slice(1)
+          .map((cols) => ({
+            tanzeem: normalizeTanzeemKey(cols[index.tanzeem]),
+            majlis: String(cols[index.majlis] || '').trim(),
+            idNumber: String(cols[index.idNumber] || '').trim(),
+            name: String(cols[index.name] || '').trim(),
+          }))
+          .filter((entry) => entry.tanzeem && entry.majlis && entry.idNumber);
+
+        if (!cancelled) setMembersDirectory(cleaned);
+      } catch {
+        if (!cancelled) {
+          setMembersDirectory([]);
+          setToast('Mitgliederliste konnte nicht geladen werden');
+        }
+      } finally {
+        if (!cancelled) setMembersLoading(false);
+      }
+    };
+
+    loadMembersFromCsv();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const majlisChoices = useMemo(() => {
+    const available = new Set(
+      membersDirectory
+        .filter((entry) => entry.tanzeem === selectedTanzeem)
+        .map((entry) => entry.majlis),
+    );
+    return TERMINAL_LOCATIONS.filter((majlisName) => available.has(majlisName));
+  }, [membersDirectory, selectedTanzeem]);
+
+  const memberChoices = useMemo(() => (
+    membersDirectory
+      .filter((entry) => entry.tanzeem === selectedTanzeem && entry.majlis === selectedMajlis)
+      .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)))
+  ), [membersDirectory, selectedMajlis, selectedTanzeem]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return undefined;
@@ -910,7 +1057,7 @@ function AppContent() {
       .join(' ');
   };
 
-  const countAttendance = async (kind, locationName) => {
+  const countAttendance = async (kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
     terminalLastCountRef.current = nowTs;
@@ -954,6 +1101,11 @@ function AppContent() {
         ? ['maghrib', 'ishaa']
         : [prayer];
 
+    if (kind === 'member' && (!selectedMember || !selectedMember.idNumber)) {
+      setToast('Bitte erst ID auswählen');
+      return;
+    }
+
     const paths = [];
     if (kind === 'guest') {
       targetPrayers.forEach((targetPrayer) => paths.push(`byPrayer.${targetPrayer}.guest`));
@@ -963,7 +1115,40 @@ function AppContent() {
     }
 
     try {
+      if (kind === 'member' && selectedMember?.idNumber) {
+        const locationKey = toLocationKey(locationName);
+        const duplicateChecks = await Promise.all(targetPrayers.map((targetPrayer) => {
+          const memberEntryId = `${runtimeISO}_${targetPrayer}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+          return getDocData(MEMBER_DIRECTORY_COLLECTION, memberEntryId);
+        }));
+
+        if (duplicateChecks.some(Boolean)) {
+          setToast('Bereits gezählt');
+          setTerminalMode('tanzeem');
+          setSelectedTanzeem('');
+          setSelectedMajlis('');
+          return;
+        }
+      }
+
       await incrementDocCounters('attendance_daily', runtimeISO, paths);
+
+      if (kind === 'member' && selectedMember?.idNumber) {
+        const locationKey = toLocationKey(locationName);
+        await Promise.all(targetPrayers.map((targetPrayer) => {
+          const memberEntryId = `${runtimeISO}_${targetPrayer}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+          return setDocData(MEMBER_DIRECTORY_COLLECTION, memberEntryId, {
+            date: runtimeISO,
+            prayer: targetPrayer,
+            majlis: locationName,
+            tanzeem: selectedTanzeem,
+            idNumber: String(selectedMember.idNumber),
+            name: selectedMember.name || null,
+            timestamp: new Date().toISOString(),
+          });
+        }));
+      }
+
       visitorCounterRef.current += 1;
       console.log('ATTENDANCE LOG:', {
         visitorNumber: visitorCounterRef.current,
@@ -977,6 +1162,7 @@ function AppContent() {
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
       setSelectedTanzeem('');
+      setSelectedMajlis('');
     } catch {
       Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
       setToast('Datenbankfehler – bitte Internet prüfen');
@@ -1038,9 +1224,9 @@ function AppContent() {
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
           <View style={styles.tanzeemRow}>
-            {['ansar', 'khuddam', 'atfal'].map((tanzeem) => (
-              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setTerminalMode('majlis'); }}>
-                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{tanzeem.charAt(0).toUpperCase() + tanzeem.slice(1)}</Text>
+            {TANZEEM_OPTIONS.map((tanzeem) => (
+              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
+                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
               </Pressable>
             ))}
           </View>
@@ -1048,17 +1234,38 @@ function AppContent() {
             <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
           </Pressable>
         </>
-      ) : (
+      ) : terminalMode === 'majlis' ? (
         <>
           <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
           <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
-          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
+          {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+          {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
           <View style={styles.gridWrap}>
-            {TERMINAL_LOCATIONS.map((loc) => (
-              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', loc)}>
+            {majlisChoices.map((loc) => (
+              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
                 <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
+          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی آئی ڈی منتخب کریں</Text>
+          <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
+            <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+          </Pressable>
+          {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+          {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
+          <View style={styles.gridWrap}>
+            {memberChoices.map((member) => (
+              <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', selectedMajlis, member)}>
+                <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
+                <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text>
               </Pressable>
             ))}
           </View>
@@ -1398,4 +1605,5 @@ const styles = StyleSheet.create({
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridText: { textAlign: 'center', fontWeight: '700' },
+  gridSubText: { textAlign: 'center', marginTop: 4, fontSize: 11, fontWeight: '500' },
 });
