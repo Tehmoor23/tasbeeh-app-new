@@ -55,21 +55,8 @@ const TANZEEM_LABELS = {
   atfal: 'Atfal',
 };
 const MEMBER_DIRECTORY_COLLECTION = 'attendance_member_entries';
+const MEMBER_EXCEL_CANDIDATE_PATHS = ['./assets/members_test.xlsx', 'assets/members_test.xlsx', '/assets/members_test.xlsx'];
 
-const MEMBER_DIRECTORY = TERMINAL_LOCATIONS.flatMap((majlisName, majlisIndex) => {
-  const majlisTag = String(majlisIndex + 1).padStart(2, '0');
-  return TANZEEM_OPTIONS.flatMap((tanzeem, tanzeemIndex) => (
-    Array.from({ length: 5 }, (_, i) => {
-      const memberNumber = String(i + 1).padStart(2, '0');
-      return {
-        tanzeem,
-        majlis: majlisName,
-        idNumber: `${tanzeemIndex + 1}${majlisTag}${memberNumber}`,
-        name: `${TANZEEM_LABELS[tanzeem]} Mitglied ${memberNumber}`,
-      };
-    })
-  ));
-});
 const TAB_ITEMS = [
   { key: 'gebetsplan', label: 'Gebetszeiten' },
   { key: 'terminal', label: 'Anwesenheit' },
@@ -768,11 +755,91 @@ function AppContent() {
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
+  const [membersDirectory, setMembersDirectory] = useState([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const normalizeTanzeemKey = (value) => {
+      const text = String(value || '').trim().toLowerCase();
+      if (text === 'ansar') return 'ansar';
+      if (text === 'khuddam') return 'khuddam';
+      if (text === 'atfal') return 'atfal';
+      return '';
+    };
+
+    const loadMembersFromExcel = async () => {
+      setMembersLoading(true);
+      try {
+        let XLSX = null;
+        try {
+          XLSX = require('xlsx');
+        } catch {
+          throw new Error('xlsx_missing');
+        }
+
+        let fileBuffer = null;
+        for (const filePath of MEMBER_EXCEL_CANDIDATE_PATHS) {
+          try {
+            const res = await fetch(filePath);
+            if (res.ok) {
+              fileBuffer = await res.arrayBuffer();
+              break;
+            }
+          } catch {
+            // try next path
+          }
+        }
+
+        if (!fileBuffer) throw new Error('file_not_found');
+
+        const workbook = XLSX.read(fileBuffer, { type: 'array' });
+        const sheet = workbook.Sheets.members || workbook.Sheets[workbook.SheetNames[0]];
+        if (!sheet) throw new Error('sheet_missing');
+
+        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+        const cleaned = rows
+          .map((row) => ({
+            tanzeem: normalizeTanzeemKey(row?.tanzeem),
+            majlis: String(row?.majlis || '').trim(),
+            idNumber: String(row?.idNumber || '').trim(),
+            name: String(row?.name || '').trim(),
+          }))
+          .filter((entry) => entry.tanzeem && entry.majlis && entry.idNumber);
+
+        if (!cancelled) setMembersDirectory(cleaned);
+      } catch (e) {
+        if (!cancelled) {
+          setMembersDirectory([]);
+          setToast('Mitgliederliste konnte nicht geladen werden');
+        }
+      } finally {
+        if (!cancelled) setMembersLoading(false);
+      }
+    };
+
+    loadMembersFromExcel();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const majlisChoices = useMemo(() => {
+    const available = new Set(
+      membersDirectory
+        .filter((entry) => entry.tanzeem === selectedTanzeem)
+        .map((entry) => entry.majlis),
+    );
+    return TERMINAL_LOCATIONS.filter((majlisName) => available.has(majlisName));
+  }, [membersDirectory, selectedTanzeem]);
+
   const memberChoices = useMemo(() => (
-    MEMBER_DIRECTORY
+    membersDirectory
       .filter((entry) => entry.tanzeem === selectedTanzeem && entry.majlis === selectedMajlis)
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)))
-  ), [selectedMajlis, selectedTanzeem]);
+  ), [membersDirectory, selectedMajlis, selectedTanzeem]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return undefined;
@@ -982,6 +1049,11 @@ function AppContent() {
         ? ['maghrib', 'ishaa']
         : [prayer];
 
+    if (kind === 'member' && (!selectedMember || !selectedMember.idNumber)) {
+      setToast('Bitte erst ID auswählen');
+      return;
+    }
+
     const paths = [];
     if (kind === 'guest') {
       targetPrayers.forEach((targetPrayer) => paths.push(`byPrayer.${targetPrayer}.guest`));
@@ -1117,8 +1189,10 @@ function AppContent() {
           <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
+          {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+          {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
           <View style={styles.gridWrap}>
-            {TERMINAL_LOCATIONS.map((loc) => (
+            {majlisChoices.map((loc) => (
               <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
                 <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
               </Pressable>
@@ -1133,6 +1207,8 @@ function AppContent() {
           <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
+          {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+          {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
           <View style={styles.gridWrap}>
             {memberChoices.map((member) => (
               <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', selectedMajlis, member)}>
