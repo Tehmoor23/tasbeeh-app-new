@@ -6,7 +6,6 @@ import {
   AppState,
   Alert,
   Animated,
-  LayoutAnimation,
   Image,
   Platform,
   Pressable,
@@ -16,7 +15,6 @@ import {
   Switch,
   Text,
   TextInput,
-  UIManager,
   View,
   Vibration,
 } from 'react-native';
@@ -352,6 +350,7 @@ function AppContent() {
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
+  const statsPayloadRef = useRef('');
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const insets = useSafeAreaInsets();
@@ -548,22 +547,44 @@ function AppContent() {
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
 
   useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
-  useEffect(() => {
     if (activeTab !== 'stats') return undefined;
 
-    setStatsLoading(true);
+    statsPayloadRef.current = '';
+    let cancelled = false;
+    const shouldShowInitialLoader = !statsAttendance;
+    if (shouldShowInitialLoader) setStatsLoading(true);
+
+    const applyIncomingAttendance = (nextData) => {
+      const serialized = JSON.stringify(nextData || null);
+      if (serialized === statsPayloadRef.current) {
+        if (shouldShowInitialLoader && !cancelled) setStatsLoading(false);
+        return;
+      }
+      statsPayloadRef.current = serialized;
+      if (!cancelled) {
+        setStatsAttendance(nextData);
+        setStatsLoading(false);
+      }
+    };
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
-      getDocData('attendance_daily', todayISO)
-        .then((attendance) => setStatsAttendance(attendance))
-        .catch(() => setToast('Datenbankfehler – bitte Internet prüfen'))
-        .finally(() => setStatsLoading(false));
-      return undefined;
+      const fetchAttendance = () => {
+        getDocData('attendance_daily', todayISO)
+          .then((attendance) => applyIncomingAttendance(attendance))
+          .catch(() => {
+            if (!cancelled) {
+              setStatsLoading(false);
+              setToast('Datenbankfehler – bitte Internet prüfen');
+            }
+          });
+      };
+
+      fetchAttendance();
+      const pollTimer = setInterval(fetchAttendance, 5000);
+      return () => {
+        cancelled = true;
+        clearInterval(pollTimer);
+      };
     }
 
     const attendanceRef = firebaseRuntime.doc(firebaseRuntime.db, 'attendance_daily', todayISO);
@@ -571,17 +592,20 @@ function AppContent() {
       attendanceRef,
       (snapshot) => {
         const nextData = snapshot.exists() ? snapshot.data() : null;
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setStatsAttendance(nextData);
-        setStatsLoading(false);
+        applyIncomingAttendance(nextData);
       },
       () => {
-        setStatsLoading(false);
-        setToast('Datenbankfehler – bitte Internet prüfen');
+        if (!cancelled) {
+          setStatsLoading(false);
+          setToast('Datenbankfehler – bitte Internet prüfen');
+        }
       },
     );
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [activeTab, todayISO]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
