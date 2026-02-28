@@ -55,7 +55,7 @@ const TANZEEM_LABELS = {
   atfal: 'Atfal',
 };
 const MEMBER_DIRECTORY_COLLECTION = 'attendance_member_entries';
-const MEMBER_EXCEL_CANDIDATE_PATHS = ['./assets/members_test.xlsx', 'assets/members_test.xlsx', '/assets/members_test.xlsx'];
+const MEMBER_CSV_CANDIDATE_PATHS = ['./assets/members_directory.csv', 'assets/members_directory.csv', '/assets/members_directory.csv'];
 
 const TAB_ITEMS = [
   { key: 'gebetsplan', label: 'Gebetszeiten' },
@@ -769,22 +769,61 @@ function AppContent() {
       return '';
     };
 
-    const loadMembersFromExcel = async () => {
+    const parseCsvRows = (csvText) => {
+      const rows = [];
+      let current = '';
+      let row = [];
+      let inQuotes = false;
+
+      const pushCell = () => {
+        row.push(current);
+        current = '';
+      };
+
+      const pushRow = () => {
+        rows.push(row);
+        row = [];
+      };
+
+      for (let i = 0; i < csvText.length; i += 1) {
+        const char = csvText[i];
+        const next = csvText[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && next === '"') {
+            current += '"';
+            i += 1;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          pushCell();
+        } else if ((char === '\n' || char === '\r') && !inQuotes) {
+          if (char === '\r' && next === '\n') i += 1;
+          pushCell();
+          pushRow();
+        } else {
+          current += char;
+        }
+      }
+
+      if (current.length > 0 || row.length > 0) {
+        pushCell();
+        pushRow();
+      }
+
+      return rows;
+    };
+
+    const loadMembersFromCsv = async () => {
       setMembersLoading(true);
       try {
-        let XLSX = null;
-        try {
-          XLSX = require('xlsx');
-        } catch {
-          throw new Error('xlsx_missing');
-        }
-
-        let fileBuffer = null;
-        for (const filePath of MEMBER_EXCEL_CANDIDATE_PATHS) {
+        let csvText = '';
+        for (const filePath of MEMBER_CSV_CANDIDATE_PATHS) {
           try {
             const res = await fetch(filePath);
             if (res.ok) {
-              fileBuffer = await res.arrayBuffer();
+              csvText = await res.text();
               break;
             }
           } catch {
@@ -792,24 +831,37 @@ function AppContent() {
           }
         }
 
-        if (!fileBuffer) throw new Error('file_not_found');
+        if (!csvText.trim()) throw new Error('csv_not_found');
 
-        const workbook = XLSX.read(fileBuffer, { type: 'array' });
-        const sheet = workbook.Sheets.members || workbook.Sheets[workbook.SheetNames[0]];
-        if (!sheet) throw new Error('sheet_missing');
+        const rawRows = parseCsvRows(csvText)
+          .map((cols) => cols.map((value) => String(value || '').trim()))
+          .filter((cols) => cols.some((value) => value !== ''));
 
-        const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-        const cleaned = rows
-          .map((row) => ({
-            tanzeem: normalizeTanzeemKey(row?.tanzeem),
-            majlis: String(row?.majlis || '').trim(),
-            idNumber: String(row?.idNumber || '').trim(),
-            name: String(row?.name || '').trim(),
+        if (rawRows.length < 2) throw new Error('csv_empty');
+
+        const header = rawRows[0].map((key) => key.toLowerCase());
+        const index = {
+          tanzeem: header.indexOf('tanzeem'),
+          majlis: header.indexOf('majlis'),
+          idNumber: header.indexOf('idnumber'),
+          name: header.indexOf('name'),
+        };
+
+        if (index.tanzeem < 0 || index.majlis < 0 || index.idNumber < 0 || index.name < 0) {
+          throw new Error('csv_header_invalid');
+        }
+
+        const cleaned = rawRows.slice(1)
+          .map((cols) => ({
+            tanzeem: normalizeTanzeemKey(cols[index.tanzeem]),
+            majlis: String(cols[index.majlis] || '').trim(),
+            idNumber: String(cols[index.idNumber] || '').trim(),
+            name: String(cols[index.name] || '').trim(),
           }))
           .filter((entry) => entry.tanzeem && entry.majlis && entry.idNumber);
 
         if (!cancelled) setMembersDirectory(cleaned);
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setMembersDirectory([]);
           setToast('Mitgliederliste konnte nicht geladen werden');
@@ -819,7 +871,7 @@ function AppContent() {
       }
     };
 
-    loadMembersFromExcel();
+    loadMembersFromCsv();
 
     return () => {
       cancelled = true;
