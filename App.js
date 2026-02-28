@@ -31,8 +31,8 @@ const GOAL_PRESETS = [33, 99, 100, 1000];
 const CITY = 'Bait-Us-Sabuh';
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
-// const FORCE_TIME = null;
-const FORCE_TIME = '14:31'; // development override for testing
+const FORCE_TIME = null;
+// const FORCE_TIME = '05:31'; // development override for testing
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -364,8 +364,10 @@ const getNextPrayer = (now, timesToday) => {
 const getDisplayPrayerLabel = (key, timesToday) => {
   const soharAsrMerged = isValidTime(timesToday?.sohar) && timesToday?.sohar === timesToday?.asr;
   const maghribIshaaMerged = isValidTime(timesToday?.maghrib) && timesToday?.maghrib === timesToday?.ishaa;
-  if (soharAsrMerged && (key === 'sohar' || key === 'asr')) return 'Sohar+Asr';
-  if (maghribIshaaMerged && (key === 'maghrib' || key === 'ishaa')) return 'Maghrib+Ishaa';
+  if (soharAsrMerged && key === 'sohar') return 'Sohar/Asr';
+  if (soharAsrMerged && key === 'asr') return 'Asr/Sohar';
+  if (maghribIshaaMerged && key === 'maghrib') return 'Maghrib/Ishaa';
+  if (maghribIshaaMerged && key === 'ishaa') return 'Ishaa/Maghrib';
   return PRAYER_LABELS[key] || key;
 };
 
@@ -422,12 +424,15 @@ function AppContent() {
 
   const prayerRows = useMemo(() => [
     { key: 'fajr', label: 'Fajr (الفجر)', time: timesToday.fajr, activeCheck: true },
-    { key: 'sohar', label: (isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr) ? 'Sohar+Asr (الظهر + العصر)' : 'Sohar (الظهر)', time: timesToday.sohar, activeCheck: true },
-    { key: 'asr', label: (isValidTime(timesToday.asr) && timesToday.sohar === timesToday.asr) ? 'Asr (zusammengelegt)' : 'Asr (العصر)', time: timesToday.asr, activeCheck: true },
-    { key: 'maghrib', label: (isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa) ? 'Maghrib+Ishaa (المغرب + العشاء)' : 'Maghrib (المغرب)', time: timesToday.maghrib, activeCheck: true },
-    { key: 'ishaa', label: (isValidTime(timesToday.ishaa) && timesToday.maghrib === timesToday.ishaa) ? 'Ishaa (zusammengelegt)' : 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeCheck: true },
+    { key: 'sohar', label: (isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr) ? 'Sohar/Asr (الظهر/العصر)' : 'Sohar (الظهر)', time: timesToday.sohar, activeCheck: true },
+    { key: 'asr', label: (isValidTime(timesToday.asr) && timesToday.sohar === timesToday.asr) ? 'Asr/Sohar (العصر/الظهر)' : 'Asr (العصر)', time: timesToday.asr, activeCheck: true },
+    { key: 'maghrib', label: (isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa) ? 'Maghrib/Ishaa (المغرب/العشاء)' : 'Maghrib (المغرب)', time: timesToday.maghrib, activeCheck: true },
+    { key: 'ishaa', label: (isValidTime(timesToday.ishaa) && timesToday.maghrib === timesToday.ishaa) ? 'Ishaa/Maghrib (العشاء/المغرب)' : 'Ishaa & Taravih (العشاء / التراويح)', time: timesToday.ishaa, activeCheck: true },
     { key: 'jumma', label: 'Jumma (الجمعة)', time: timesToday.jumma, activeCheck: false },
   ], [timesToday]);
+
+  const soharAsrMergedToday = isValidTime(timesToday.sohar) && timesToday.sohar === timesToday.asr;
+  const maghribIshaaMergedToday = isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa;
 
   const activePrayerKey = useMemo(() => {
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
@@ -774,16 +779,52 @@ function AppContent() {
       return acc;
     }, {});
 
-    const topMajlisMap = {};
-    Object.values(statsAttendance.byPrayer || {}).forEach((prayer) => {
+    const getMajlisMapForPrayer = (prayerKey) => {
+      const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
       const prayerTanzeem = prayer?.tanzeem || {};
+      const out = {};
       tanzeemKeys.forEach((tanzeem) => {
         const majlisMap = prayerTanzeem[tanzeem]?.majlis || {};
         Object.entries(majlisMap).forEach(([locationKey, value]) => {
-          topMajlisMap[locationKey] = (topMajlisMap[locationKey] || 0) + (Number(value) || 0);
+          out[locationKey] = (out[locationKey] || 0) + (Number(value) || 0);
         });
       });
-    });
+      return out;
+    };
+
+    const addMajlisMap = (target, source, multiplier = 1) => {
+      Object.entries(source || {}).forEach(([locationKey, value]) => {
+        target[locationKey] = (target[locationKey] || 0) + ((Number(value) || 0) * multiplier);
+      });
+    };
+
+    const topMajlisMap = {};
+    const fajrMajlis = getMajlisMapForPrayer('fajr');
+    addMajlisMap(topMajlisMap, fajrMajlis, 1);
+
+    const soharMajlis = getMajlisMapForPrayer('sohar');
+    const asrMajlis = getMajlisMapForPrayer('asr');
+    if (soharAsrMergedToday) {
+      const mergedMap = {};
+      addMajlisMap(mergedMap, soharMajlis, 1);
+      addMajlisMap(mergedMap, asrMajlis, 1);
+      addMajlisMap(topMajlisMap, mergedMap, 2);
+    } else {
+      addMajlisMap(topMajlisMap, soharMajlis, 1);
+      addMajlisMap(topMajlisMap, asrMajlis, 1);
+    }
+
+    const maghribMajlis = getMajlisMapForPrayer('maghrib');
+    const ishaaMajlis = getMajlisMapForPrayer('ishaa');
+    if (maghribIshaaMergedToday) {
+      const mergedMap = {};
+      addMajlisMap(mergedMap, maghribMajlis, 1);
+      addMajlisMap(mergedMap, ishaaMajlis, 1);
+      addMajlisMap(topMajlisMap, mergedMap, 2);
+    } else {
+      addMajlisMap(topMajlisMap, maghribMajlis, 1);
+      addMajlisMap(topMajlisMap, ishaaMajlis, 1);
+    }
 
     const topMajlis = Object.entries(topMajlisMap)
       .filter(([, count]) => count > 0)
@@ -809,7 +850,7 @@ function AppContent() {
       topMajlis,
       totalAttendance,
     };
-  }, [statsAttendance, statsPrayerKey]);
+  }, [statsAttendance, statsPrayerKey, soharAsrMergedToday, maghribIshaaMergedToday]);
 
   const formatMajlisName = (locationKey) => {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
@@ -906,7 +947,9 @@ function AppContent() {
           <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
-            const isActive = row.key === activePrayerKey;
+            const isActive = row.key === activePrayerKey
+              || (soharAsrMergedToday && ['sohar', 'asr'].includes(row.key) && ['sohar', 'asr'].includes(activePrayerKey || ''))
+              || (maghribIshaaMergedToday && ['maghrib', 'ishaa'].includes(row.key) && ['maghrib', 'ishaa'].includes(activePrayerKey || ''));
             return (
               <View key={row.key} style={[styles.prayerRow, { borderBottomColor: theme.border }, isActive && { backgroundColor: theme.rowActiveBg, borderColor: theme.rowActiveBorder, borderWidth: 1, borderRadius: 10 }]}>
                 <Text style={[styles.prayerLabel, { color: theme.text }]}>{row.label}</Text>
@@ -1054,8 +1097,7 @@ function AppContent() {
           <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
             {(() => {
-              const prayerKeys = ['fajr', 'sohar', 'asr', 'maghrib', 'ishaa'];
-              const totals = prayerKeys.map((prayerKey) => {
+              const getPrayerTotal = (prayerKey) => {
                 const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
                 const guest = Number(prayer.guest) || 0;
                 const tanzeem = prayer.tanzeem || {};
@@ -1063,13 +1105,30 @@ function AppContent() {
                   const majlis = tanzeem[tanzeemKey]?.majlis || {};
                   return sum + Object.values(majlis).reduce((x, y) => x + (Number(y) || 0), 0);
                 }, 0);
-                return { prayerKey, total: guest + members };
-              });
+                return guest + members;
+              };
+
+              const totals = [
+                { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
+                ...(soharAsrMergedToday
+                  ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: getPrayerTotal('sohar') + getPrayerTotal('asr') }]
+                  : [
+                    { key: 'sohar', label: 'Sohar (الظهر)', total: getPrayerTotal('sohar') },
+                    { key: 'asr', label: 'Asr (العصر)', total: getPrayerTotal('asr') },
+                  ]),
+                ...(maghribIshaaMergedToday
+                  ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: getPrayerTotal('maghrib') + getPrayerTotal('ishaa') }]
+                  : [
+                    { key: 'maghrib', label: 'Maghrib (المغرب)', total: getPrayerTotal('maghrib') },
+                    { key: 'ishaa', label: 'Ishaa & Taravih (العشاء / التراويح)', total: getPrayerTotal('ishaa') },
+                  ]),
+              ];
+
               const maxTotal = Math.max(1, ...totals.map((item) => item.total));
-              return totals.map(({ prayerKey, total }) => (
-                <View key={prayerKey} style={styles.barRow}>
-                  <Text style={[styles.barLabel, { color: theme.text }]}>{PRAYER_LABELS[prayerKey]}</Text>
-                  <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
+              return totals.map(({ key, label, total }) => (
+                <View key={key} style={styles.barRow}>
+                  <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
+                  <View style={[styles.barTrack, { backgroundColor: theme.border }]}> 
                     <View style={[styles.barFill, { backgroundColor: theme.button, width: `${(total / maxTotal) * 100}%` }]} />
                   </View>
                   <Text style={[styles.barValue, { color: theme.text }]}>{total}</Text>
@@ -1266,7 +1325,7 @@ const styles = StyleSheet.create({
   majlisBarFill: { height: '100%', borderRadius: 999 },
   majlisBarValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   barRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barLabel: { width: 76, fontSize: 12, fontWeight: '700' },
+  barLabel: { width: 148, fontSize: 11, fontWeight: '700' },
   barTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 999 },
   barValue: { width: 30, textAlign: 'right', fontSize: 12, fontWeight: '700' },
