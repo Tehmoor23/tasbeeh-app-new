@@ -1551,6 +1551,15 @@ function AppContent() {
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
+            {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+            {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
+            <View style={styles.gridWrap}>
+              {majlisChoices.map((loc) => (
+                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
+                  <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+                </Pressable>
+              ))}
+            </View>
             <View style={styles.guestButtonRow}>
               <View style={styles.guestButtonSpacer} />
               <Pressable
@@ -1560,15 +1569,6 @@ function AppContent() {
                 <Text style={[styles.presetBtnText, styles.majlisGuestButtonText]}>Gast</Text>
               </Pressable>
               <View style={styles.guestButtonSpacer} />
-            </View>
-            {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-            {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
-            <View style={styles.gridWrap}>
-              {majlisChoices.map((loc) => (
-                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
-                  <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
-                </Pressable>
-              ))}
             </View>
           </>
         ) : (
