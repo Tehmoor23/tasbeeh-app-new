@@ -49,6 +49,7 @@ const TERMINAL_LOCATIONS = [
   'Rödelheim',
   'Zeilsheim',
 ];
+const DISABLED_MAJLIS = new Set(['Bad Vilbel']);
 const TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal'];
 const TANZEEM_LABELS = {
   ansar: 'Ansar',
@@ -1285,11 +1286,23 @@ function AppContent() {
           {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
           {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
           <View style={styles.gridWrap}>
-            {majlisChoices.map((loc) => (
-              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
-                <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
-              </Pressable>
-            ))}
+            {majlisChoices.map((loc) => {
+              const isDisabledMajlis = DISABLED_MAJLIS.has(loc);
+              return (
+                <Pressable
+                  key={loc}
+                  disabled={isDisabledMajlis}
+                  style={({ pressed }) => [[styles.gridItem, { backgroundColor: isDisabledMajlis ? theme.bg : theme.card, borderColor: theme.border, opacity: isDisabledMajlis ? 0.55 : 1 }], pressed && !isDisabledMajlis && styles.buttonPressed]}
+                  onPress={() => {
+                    if (isDisabledMajlis) return;
+                    setSelectedMajlis(loc);
+                    setTerminalMode('idSelection');
+                  }}
+                >
+                  <Text style={[styles.gridText, { color: isDisabledMajlis ? theme.muted : theme.text }]}>{loc}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </>
       ) : (
