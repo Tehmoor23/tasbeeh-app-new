@@ -151,7 +151,6 @@ const PRIVACY_POLICY_SECTIONS = [
       'Es werden angemessene technische und organisatorische Maßnahmen gemäß Art. 32 DSGVO getroffen, um die Sicherheit der Daten zu gewährleisten.',
       'Es werden ausschließlich diejenigen personenbezogenen Daten verarbeitet, die für die jeweilige Funktion zwingend erforderlich sind. Eine weitergehende Profilbildung oder automatisierte Entscheidungsfindung findet nicht statt.',
       'Die Daten werden nur so lange gespeichert, wie dies für den jeweiligen Verarbeitungszweck erforderlich ist. Nicht mehr benötigte Daten werden regelmäßig gelöscht oder anonymisiert.',
-      '(⚠ Hier kannst du später noch eine konkrete Frist einsetzen, z. B. „maximal 12 Monate“.)',
     ],
   },
   {
@@ -1543,7 +1542,7 @@ function AppContent() {
 
       <Modal visible={isPrivacyModalVisible} animationType="slide" transparent onRequestClose={() => setPrivacyModalVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
-          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.card }]}> 
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}> 
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datenschutzerklärung</Text>
               <Pressable onPress={() => setPrivacyModalVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
@@ -1647,8 +1646,8 @@ const styles = StyleSheet.create({
   privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
   privacyNoticeLinkWrap: { marginTop: 8, paddingVertical: 2, paddingHorizontal: 4 },
   privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
-  privacyModalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.28)', justifyContent: 'center', padding: 0 },
-  privacyModalCard: { flex: 1 },
+  privacyModalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.35)', justifyContent: 'center', padding: 16 },
+  privacyModalCard: { flex: 1, borderRadius: 16, overflow: 'hidden' },
   privacyModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
   privacyModalTitle: { fontSize: 24, fontWeight: '700', letterSpacing: 0.2 },
   privacyModalCloseBtn: { paddingVertical: 6, paddingHorizontal: 4 },
