@@ -194,6 +194,7 @@ const FIXED_TIMES = {
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
+const PROGRAM_CONFIG_COLLECTION = 'program_configs';
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 const RAMADAN_END_ISO = '2026-03-19';
@@ -942,23 +943,48 @@ function AppContent() {
   };
 
   useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(STORAGE_KEYS.programConfigsByDate)
-      .then((raw) => {
-        if (!mounted) return;
-        if (!raw) return;
-        try {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object') {
-            setProgramConfigByDate(parsed);
-          }
-        } catch {
-          // ignore corrupt local data
+    let cancelled = false;
+
+    const applyProgramConfig = (data) => {
+      if (cancelled) return;
+      setProgramConfigByDate((prev) => {
+        const next = { ...prev };
+        if (data && typeof data === 'object') {
+          next[todayISO] = {
+            name: String(data.name || '').trim(),
+            startTime: String(data.startTime || '').trim(),
+            updatedAt: data.updatedAt || null,
+          };
+        } else {
+          delete next[todayISO];
         }
-      })
-      .catch(() => {});
-    return () => { mounted = false; };
-  }, []);
+        return next;
+      });
+    };
+
+    if (!firebaseRuntime || !hasFirebaseConfig()) {
+      getDocData(PROGRAM_CONFIG_COLLECTION, todayISO)
+        .then((data) => applyProgramConfig(data))
+        .catch(() => {
+          if (!cancelled) setToast('Programm konnte nicht geladen werden');
+        });
+      return () => { cancelled = true; };
+    }
+
+    const programRef = firebaseRuntime.doc(firebaseRuntime.db, PROGRAM_CONFIG_COLLECTION, todayISO);
+    const unsubscribe = firebaseRuntime.onSnapshot(
+      programRef,
+      (snapshot) => applyProgramConfig(snapshot.exists() ? snapshot.data() : null),
+      () => {
+        if (!cancelled) setToast('Programm konnte nicht geladen werden');
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [todayISO]);
 
   useEffect(() => {
     const todayConfig = programConfigByDate[todayISO] || null;
@@ -982,7 +1008,11 @@ function AppContent() {
       },
     };
     setProgramConfigByDate(next);
-    await AsyncStorage.setItem(STORAGE_KEYS.programConfigsByDate, JSON.stringify(next));
+    await setDocData(PROGRAM_CONFIG_COLLECTION, todayISO, {
+      name,
+      startTime,
+      updatedAt: new Date().toISOString(),
+    });
     setToast('Programm für heute gespeichert');
   };
 
@@ -990,7 +1020,7 @@ function AppContent() {
     const next = { ...programConfigByDate };
     delete next[todayISO];
     setProgramConfigByDate(next);
-    await AsyncStorage.setItem(STORAGE_KEYS.programConfigsByDate, JSON.stringify(next));
+    await deleteDocData(PROGRAM_CONFIG_COLLECTION, todayISO);
     setToast('Programm für heute entfernt');
   };
 
@@ -1269,7 +1299,8 @@ function AppContent() {
       return;
     }
 
-    const locationKey = toLocationKey(locationName);
+    const resolvedLocationName = String(locationName || selectedMajlis || 'Gast').trim();
+    const locationKey = toLocationKey(resolvedLocationName || 'gast');
     const targetKeys = [];
 
     if (modeType === 'program') {
@@ -1340,7 +1371,7 @@ function AppContent() {
             type: modeType,
             date: runtimeISO,
             ...(modeType === 'program' ? { programName: runtimeProgramWindow.label } : { prayer: targetKey }),
-            majlis: locationName,
+            majlis: resolvedLocationName,
             tanzeem: selectedTanzeem,
             idNumber: String(selectedMember.idNumber),
             ...(STORE_MEMBER_NAMES_IN_DB ? { name: selectedMember.name || null } : {}),
@@ -1353,10 +1384,35 @@ function AppContent() {
             runtimeISO,
             targetKeys,
             selectedTanzeem,
-            locationName,
+            resolvedLocationName,
             locationKey,
             selectedMember,
           );
+        }
+      }
+
+      if (kind === 'guest') {
+        const guestEntryId = `${runtimeISO}_${modeType}_guest_${nowTs}_${visitorCounterRef.current + 1}`;
+        if (modeType === 'program') {
+          await setDocData(PROGRAM_ATTENDANCE_COLLECTION, guestEntryId, {
+            type: 'program',
+            date: runtimeISO,
+            programName: runtimeProgramWindow.label,
+            tanzeem: 'guest',
+            majlis: resolvedLocationName,
+            idNumber: 'guest',
+            timestamp: new Date().toISOString(),
+          });
+        } else {
+          await setDocData(MEMBER_DIRECTORY_COLLECTION, guestEntryId, {
+            type: 'prayer',
+            date: runtimeISO,
+            prayer: targetKeys[0],
+            tanzeem: 'guest',
+            majlis: resolvedLocationName,
+            idNumber: 'guest',
+            timestamp: new Date().toISOString(),
+          });
         }
       }
 
