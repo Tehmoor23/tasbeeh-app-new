@@ -1423,6 +1423,11 @@ function AppContent() {
                 <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
                 <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+                <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
+                  <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
+                    Gebet beginnt in {Math.max(0, Number(prayerWindow.minutesUntilNextWindow) || 0)} min
+                  </Text>
+                </View>
               </>
             )
           ) : (
