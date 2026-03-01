@@ -49,6 +49,7 @@ const TERMINAL_LOCATIONS = [
   'Rödelheim',
   'Zeilsheim',
 ];
+const DISABLED_MAJLIS = new Set(['Bad Vilbel']);
 const TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal'];
 const TANZEEM_LABELS = {
   ansar: 'Ansar',
@@ -1286,11 +1287,23 @@ function AppContent() {
           {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
           {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
           <View style={styles.gridWrap}>
-            {majlisChoices.map((loc) => (
-              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
-                <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
-              </Pressable>
-            ))}
+            {majlisChoices.map((loc) => {
+              const isDisabledMajlis = DISABLED_MAJLIS.has(loc);
+              return (
+                <Pressable
+                  key={loc}
+                  disabled={isDisabledMajlis}
+                  style={({ pressed }) => [[styles.gridItem, { backgroundColor: isDisabledMajlis ? theme.bg : theme.card, borderColor: theme.border, opacity: isDisabledMajlis ? 0.55 : 1 }], pressed && !isDisabledMajlis && styles.buttonPressed]}
+                  onPress={() => {
+                    if (isDisabledMajlis) return;
+                    setSelectedMajlis(loc);
+                    setTerminalMode('idSelection');
+                  }}
+                >
+                  <Text style={[styles.gridText, { color: isDisabledMajlis ? theme.muted : theme.text }]}>{loc}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         </>
       ) : (
@@ -1515,7 +1528,7 @@ function AppContent() {
       </View>
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.4</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.3</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
@@ -1590,8 +1603,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }), transform: [{ translateY: 6 }] },
-  logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 6 }] },
+  basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }), transform: [{ translateY: 8 }] },
+  logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 8 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
