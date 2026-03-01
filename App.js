@@ -238,47 +238,6 @@ const THEME = {
 const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 const pad = (n) => String(n).padStart(2, '0');
 const toISO = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-const toLegacyGermanDate = (date) => `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`;
-const toLegacySlashDate = (date) => `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
-const parseDateKeyToISO = (rawKey) => {
-  const key = String(rawKey || '').trim();
-  if (!key) return null;
-
-  const isoMatch = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-
-  const deMatch = key.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
-  if (deMatch) return `${deMatch[3]}-${pad(Number(deMatch[2]))}-${pad(Number(deMatch[1]))}`;
-
-  return null;
-};
-const getProgramConfigForDate = (configsByDate, date) => {
-  if (!configsByDate || typeof configsByDate !== 'object') return null;
-
-  const lookupKeys = [
-    toISO(date),
-    toLegacyGermanDate(date),
-    toLegacySlashDate(date),
-  ];
-
-  for (const key of lookupKeys) {
-    const found = configsByDate[key];
-    if (found && typeof found === 'object') return found;
-  }
-  return null;
-};
-const normalizeProgramConfigMap = (rawValue) => {
-  if (!rawValue || typeof rawValue !== 'object') return {};
-  const normalized = {};
-
-  Object.entries(rawValue).forEach(([key, value]) => {
-    if (!value || typeof value !== 'object') return;
-    const normalizedKey = parseDateKeyToISO(key) || key;
-    normalized[normalizedKey] = value;
-  });
-
-  return normalized;
-};
 const parseISO = (iso) => (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? null : new Date(`${iso}T00:00:00`));
 const isValidTime = (value) => /^\d{2}:\d{2}$/.test(value || '') && Number(value.slice(0, 2)) <= 23 && Number(value.slice(3)) <= 59;
 const addMinutes = (time, minutes) => {
@@ -630,7 +589,7 @@ function AppContent() {
     return d;
   }, [refreshTick]);
   const todayISO = toISO(now);
-  const programConfigToday = getProgramConfigForDate(programConfigByDate, now);
+  const programConfigToday = programConfigByDate[todayISO] || null;
   const programWindow = useMemo(() => {
     if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
       return { isConfigured: false, isActive: false, label: null, minutesUntilOpen: null };
@@ -991,11 +950,7 @@ function AppContent() {
         try {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
-            const normalized = normalizeProgramConfigMap(parsed);
-            setProgramConfigByDate(normalized);
-            if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
-              AsyncStorage.setItem(STORAGE_KEYS.programConfigsByDate, JSON.stringify(normalized)).catch(() => {});
-            }
+            setProgramConfigByDate(parsed);
           }
         } catch {
           // ignore corrupt local data
@@ -1006,10 +961,10 @@ function AppContent() {
   }, []);
 
   useEffect(() => {
-    const todayConfig = getProgramConfigForDate(programConfigByDate, now);
+    const todayConfig = programConfigByDate[todayISO] || null;
     setProgramNameInput(todayConfig?.name || '');
     setProgramStartInput(todayConfig?.startTime || '');
-  }, [programConfigByDate, now]);
+  }, [programConfigByDate, todayISO]);
 
   const saveProgramForToday = async () => {
     const name = String(programNameInput || '').trim();
