@@ -18,6 +18,7 @@ import {
   TextInput,
   View,
   Vibration,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -590,6 +591,9 @@ function AppContent() {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const isTablet = width >= 900;
+  const contentContainerStyle = [styles.content, isTablet && styles.contentTablet];
   const logoSource = isDarkMode ? APP_LOGO_DARK : APP_LOGO_LIGHT;
   const now = useMemo(() => {
     const d = getBerlinNow();
@@ -1447,7 +1451,7 @@ function AppContent() {
   const renderPrayer = () => {
     const displayDate = selectedDate || now;
     return (
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
           <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
@@ -1475,10 +1479,10 @@ function AppContent() {
     const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : 'Programmanwesenheit';
 
     return (
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
+      <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
         <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
-            <Text style={[styles.modeSwitchText, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
+            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
           </Pressable>
           <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
           <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
@@ -1524,12 +1528,12 @@ function AppContent() {
 
         {hasActiveAttendanceWindow ? terminalMode === 'tanzeem' ? (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
             <View style={styles.tanzeemRow}>
               {TANZEEM_OPTIONS.map((tanzeem) => (
-                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
-                  <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
+                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
+                  <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                 </Pressable>
               ))}
             </View>
@@ -1537,26 +1541,26 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
               <Pressable
                 onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, styles.guestButton, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
               >
-                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>Gast</Text>
+                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Gast</Text>
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
           </>
         ) : terminalMode === 'majlis' ? (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
-              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+              <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
             {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
             {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
             <View style={styles.gridWrap}>
               {majlisChoices.map((loc) => (
-                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
-                  <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
+                  <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{loc}</Text>
                 </Pressable>
               ))}
             </View>
@@ -1564,27 +1568,27 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
               <Pressable
                 onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, styles.majlisGuestButton], pressed && styles.buttonPressed]}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.majlisGuestButton], pressed && styles.buttonPressed]}
               >
-                <Text style={[styles.presetBtnText, styles.majlisGuestButtonText]}>Gast</Text>
+                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, styles.majlisGuestButtonText]}>Gast</Text>
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
           </>
         ) : (
           <>
-            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی آئی ڈی منتخب کریں</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
-              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+              <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
             {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
             {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
             <View style={styles.gridWrap}>
               {memberChoices.map((member) => (
-                <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}>
-                  <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
+                <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}>
+                  <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
                   {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
                 </Pressable>
               ))}
@@ -1623,10 +1627,10 @@ function AppContent() {
       .slice(0, 8);
 
     return (
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => setStatsMode(isProgramStatsMode ? 'prayer' : 'program')}>
-            <Text style={[styles.modeSwitchText, { color: theme.text }]}>{isProgramStatsMode ? '<< Programmstatistik >>' : '<< Gebetsstatistik >>'}</Text>
+            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: theme.text }]}>{isProgramStatsMode ? '<< Programmstatistik >>' : '<< Gebetsstatistik >>'}</Text>
           </Pressable>
           <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
           <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
@@ -1793,9 +1797,9 @@ function AppContent() {
     const settingsDate = germanDateLong(now);
 
     return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-        <View style={styles.switchRow}><Text style={[styles.sectionTitle, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
+        <View style={styles.switchRow}><Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
@@ -1831,7 +1835,7 @@ function AppContent() {
         </View>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={savePrayerOverride}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
         </Pressable>
       </View>
 
@@ -1849,7 +1853,7 @@ function AppContent() {
         </View>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={saveManualPrayerTimes}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
         </Pressable>
       </View>
 
@@ -1863,10 +1867,10 @@ function AppContent() {
         </View>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveProgramForToday}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Programm speichern</Text>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Programm speichern</Text>
         </Pressable>
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearProgramForToday}>
-          <Text style={[styles.saveBtnText, { color: theme.text }]}>Programm deaktivieren</Text>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Programm deaktivieren</Text>
         </Pressable>
       </View>
 
@@ -1895,10 +1899,10 @@ function AppContent() {
       </Pressable>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
+      <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
         {TAB_ITEMS.map((tab) => (
           <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
-            <Text numberOfLines={1} style={[styles.tabLabel, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
+            <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
           </Pressable>
         ))}
       </View>
@@ -1950,6 +1954,7 @@ const styles = StyleSheet.create({
   logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 8 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
+  contentTablet: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26, gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 31, fontWeight: '800', textAlign: 'center', letterSpacing: 0.4 },
@@ -1979,18 +1984,24 @@ const styles = StyleSheet.create({
   mergeInputDisabled: { opacity: 0.45 },
   mergeInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, textAlign: 'center', fontSize: 15, fontWeight: '600' },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
+  sectionTitleTablet: { fontSize: 22 },
   modeSwitch: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
   modeSwitchText: { fontSize: 14, fontWeight: '700' },
+  modeSwitchTextTablet: { fontSize: 20 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetBtnText: { fontSize: 13, fontWeight: '700' },
+  presetBtnTextTablet: { fontSize: 18 },
   saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   settingsSaveBtn: { marginTop: 4, alignSelf: 'center', width: '68%' },
   saveBtnText: { fontSize: 14, fontWeight: '700' },
+  saveBtnTextTablet: { fontSize: 18 },
   noteText: { fontSize: 12, fontWeight: '600' },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
+  tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
   tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
+  tabLabelTablet: { fontSize: 14 },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
@@ -2039,6 +2050,7 @@ const styles = StyleSheet.create({
   majlisGuestButtonText: { color: '#FFFFFF' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  tanzeemBtnTablet: { minHeight: 72, justifyContent: 'center' },
   statsHeaderCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   statsHeaderTitle: { fontSize: 28, fontWeight: '800', letterSpacing: 0.2, textAlign: 'center' },
   statsHeaderDate: { marginTop: 2, fontSize: 16, fontWeight: '600', textTransform: 'capitalize', textAlign: 'center' },
@@ -2063,6 +2075,8 @@ const styles = StyleSheet.create({
   barValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
+  gridItemTablet: { width: '31.8%', paddingVertical: 24 },
   gridText: { textAlign: 'center', fontWeight: '700' },
+  gridTextTablet: { fontSize: 18 },
   gridSubText: { textAlign: 'center', marginTop: 4, fontSize: 11, fontWeight: '500' },
 });
