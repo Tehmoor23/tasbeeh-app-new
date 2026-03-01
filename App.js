@@ -23,6 +23,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 
 const STORAGE_KEYS = {
   darkMode: '@tasbeeh_darkmode',
+  programConfigsByDate: '@tasbeeh_program_configs_by_date',
 };
 
 const CITY = 'Bait-Us-Sabuh';
@@ -191,6 +192,9 @@ const FIXED_TIMES = {
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
+const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
+const PROGRAM_ACTIVE_WINDOW_MINUTES = 180;
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 const RAMADAN_END_ISO = '2026-03-19';
@@ -563,6 +567,12 @@ function AppContent() {
   const [manualMaghribTime, setManualMaghribTime] = useState('');
   const [manualIshaaTime, setManualIshaaTime] = useState('');
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
+  const [attendanceMode, setAttendanceMode] = useState('prayer');
+  const [statsMode, setStatsMode] = useState('prayer');
+  const [programNameInput, setProgramNameInput] = useState('');
+  const [programStartInput, setProgramStartInput] = useState('');
+  const [programConfigByDate, setProgramConfigByDate] = useState({});
+  const [programStats, setProgramStats] = useState(null);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
@@ -580,6 +590,26 @@ function AppContent() {
     return d;
   }, [refreshTick]);
   const todayISO = toISO(now);
+  const programConfigToday = programConfigByDate[todayISO] || null;
+  const programWindow = useMemo(() => {
+    if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
+      return { isConfigured: false, isActive: false, label: null, minutesUntilStart: null };
+    }
+
+    const startMinutes = Number(programConfigToday.startTime.slice(0, 2)) * 60 + Number(programConfigToday.startTime.slice(3));
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    const endMinutes = startMinutes + PROGRAM_ACTIVE_WINDOW_MINUTES;
+    const isActive = nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+
+    return {
+      isConfigured: true,
+      isActive,
+      label: String(programConfigToday.name || '').trim(),
+      startTime: programConfigToday.startTime,
+      endTime: `${pad(Math.floor((((endMinutes % 1440) + 1440) % 1440) / 60))}:${pad((((endMinutes % 1440) + 1440) % 1440) % 60)}`,
+      minutesUntilStart: isActive ? 0 : Math.max(0, startMinutes - nowMinutes),
+    };
+  }, [now, programConfigToday]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
   const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
@@ -901,6 +931,59 @@ function AppContent() {
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
   };
 
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(STORAGE_KEYS.programConfigsByDate)
+      .then((raw) => {
+        if (!mounted) return;
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            setProgramConfigByDate(parsed);
+          }
+        } catch {
+          // ignore corrupt local data
+        }
+      })
+      .catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    const todayConfig = programConfigByDate[todayISO] || null;
+    setProgramNameInput(todayConfig?.name || '');
+    setProgramStartInput(todayConfig?.startTime || '');
+  }, [programConfigByDate, todayISO]);
+
+  const saveProgramForToday = async () => {
+    const name = String(programNameInput || '').trim();
+    const startTime = String(programStartInput || '').trim();
+    if (!name || !isValidTime(startTime)) {
+      setToast('Bitte Programmname und gültige Startzeit eingeben');
+      return;
+    }
+    const next = {
+      ...programConfigByDate,
+      [todayISO]: {
+        name,
+        startTime,
+        updatedAt: new Date().toISOString(),
+      },
+    };
+    setProgramConfigByDate(next);
+    await AsyncStorage.setItem(STORAGE_KEYS.programConfigsByDate, JSON.stringify(next));
+    setToast('Programm für heute gespeichert');
+  };
+
+  const clearProgramForToday = async () => {
+    const next = { ...programConfigByDate };
+    delete next[todayISO];
+    setProgramConfigByDate(next);
+    await AsyncStorage.setItem(STORAGE_KEYS.programConfigsByDate, JSON.stringify(next));
+    setToast('Programm für heute entfernt');
+  };
+
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
   const membersDirectory = MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
@@ -986,6 +1069,36 @@ function AppContent() {
       unsubscribe();
     };
   }, [activeTab, todayISO]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
+    const programName = String(programConfigToday?.name || '').trim();
+    if (!programName) {
+      setProgramStats(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const programKey = toLocationKey(programName);
+    const docId = `${todayISO}_${programKey}`;
+
+    const fetchProgramStats = () => {
+      getDocData(PROGRAM_DAILY_COLLECTION, docId)
+        .then((data) => {
+          if (!cancelled) setProgramStats(data || null);
+        })
+        .catch(() => {
+          if (!cancelled) setToast('Datenbankfehler – bitte Internet prüfen');
+        });
+    };
+
+    fetchProgramStats();
+    const timer = setInterval(fetchProgramStats, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeTab, statsMode, todayISO, programConfigToday]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
@@ -1089,7 +1202,7 @@ function AppContent() {
       .join(' ');
   };
 
-  const countAttendance = async (kind, locationName, selectedMember = null) => {
+  const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
     terminalLastCountRef.current = nowTs;
@@ -1099,10 +1212,16 @@ function AppContent() {
       return;
     }
 
+    if (kind === 'member' && (!selectedMember || !selectedMember.idNumber)) {
+      setToast('Bitte erst ID auswählen');
+      return;
+    }
+
     const runtimeNow = getBerlinNow();
     if (isValidTime(FORCE_TIME)) {
       runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
+
     const runtimeISO = toISO(runtimeNow);
     const runtimeIsRamadanToday = runtimeISO <= RAMADAN_END_ISO;
     const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates)) : null;
@@ -1117,41 +1236,74 @@ function AppContent() {
     const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw, runtimeIsRamadanTomorrow);
     const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
 
-    if (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey) {
+    const runtimeProgramConfig = (programConfigByDate || {})[runtimeISO] || null;
+    let runtimeProgramWindow = { isConfigured: false, isActive: false, label: null };
+    if (runtimeProgramConfig && isValidTime(runtimeProgramConfig.startTime) && String(runtimeProgramConfig.name || '').trim()) {
+      const startMinutes = Number(runtimeProgramConfig.startTime.slice(0, 2)) * 60 + Number(runtimeProgramConfig.startTime.slice(3));
+      const nowMinutes = runtimeNow.getHours() * 60 + runtimeNow.getMinutes();
+      runtimeProgramWindow = {
+        isConfigured: true,
+        isActive: nowMinutes >= startMinutes && nowMinutes <= (startMinutes + PROGRAM_ACTIVE_WINDOW_MINUTES),
+        label: String(runtimeProgramConfig.name || '').trim(),
+      };
+    }
+
+    if (modeType === 'prayer' && (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey)) {
       setToast('Derzeit kein aktives Gebetszeitfenster');
       setRefreshTick((v) => v + 1);
       return;
     }
 
-    const prayer = runtimePrayerWindow.prayerKey;
-    const runtimeSoharAsrMerged = isValidTime(runtimeTimesToday.sohar) && runtimeTimesToday.sohar === runtimeTimesToday.asr;
-    const runtimeMaghribIshaaMerged = isValidTime(runtimeTimesToday.maghrib) && runtimeTimesToday.maghrib === runtimeTimesToday.ishaa;
-
-    const targetPrayers = runtimeSoharAsrMerged && ['sohar', 'asr'].includes(prayer)
-      ? ['sohar', 'asr']
-      : runtimeMaghribIshaaMerged && ['maghrib', 'ishaa'].includes(prayer)
-        ? ['maghrib', 'ishaa']
-        : [prayer];
-
-    if (kind === 'member' && (!selectedMember || !selectedMember.idNumber)) {
-      setToast('Bitte erst ID auswählen');
+    if (modeType === 'program' && !runtimeProgramWindow.isActive) {
+      setToast('Aktuell kein Programm vorhanden');
       return;
     }
 
-    const paths = [];
-    if (kind === 'guest') {
-      targetPrayers.forEach((targetPrayer) => paths.push(`byPrayer.${targetPrayer}.guest`));
-    } else if (locationName && selectedTanzeem) {
-      const locationKey = toLocationKey(locationName);
-      targetPrayers.forEach((targetPrayer) => paths.push(`byPrayer.${targetPrayer}.tanzeem.${selectedTanzeem}.majlis.${locationKey}`));
+    const locationKey = toLocationKey(locationName);
+    const targetKeys = [];
+
+    if (modeType === 'program') {
+      targetKeys.push(toLocationKey(runtimeProgramWindow.label || 'programm'));
+    } else {
+      const prayer = runtimePrayerWindow.prayerKey;
+      const runtimeSoharAsrMerged = isValidTime(runtimeTimesToday.sohar) && runtimeTimesToday.sohar === runtimeTimesToday.asr;
+      const runtimeMaghribIshaaMerged = isValidTime(runtimeTimesToday.maghrib) && runtimeTimesToday.maghrib === runtimeTimesToday.ishaa;
+      if (runtimeSoharAsrMerged && ['sohar', 'asr'].includes(prayer)) {
+        targetKeys.push('sohar', 'asr');
+      } else if (runtimeMaghribIshaaMerged && ['maghrib', 'ishaa'].includes(prayer)) {
+        targetKeys.push('maghrib', 'ishaa');
+      } else {
+        targetKeys.push(prayer);
+      }
     }
 
+    const paths = [];
+    targetKeys.forEach((targetKey) => {
+      if (modeType === 'program') {
+        if (kind === 'guest') {
+          paths.push('guestTotal');
+          paths.push('total');
+        } else {
+          paths.push(`byTanzeem.${selectedTanzeem}`);
+          paths.push(`byMajlis.${locationKey}`);
+          paths.push('total');
+        }
+      } else if (kind === 'guest') {
+        paths.push(`byPrayer.${targetKey}.guest`);
+      } else {
+        paths.push(`byPrayer.${targetKey}.tanzeem.${selectedTanzeem}.majlis.${locationKey}`);
+      }
+    });
+
     try {
+      const programKey = modeType === 'program' ? targetKeys[0] : null;
+
       if (kind === 'member' && selectedMember?.idNumber) {
-        const locationKey = toLocationKey(locationName);
-        const duplicateChecks = await Promise.all(targetPrayers.map((targetPrayer) => {
-          const memberEntryId = `${runtimeISO}_${targetPrayer}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
-          return getDocData(MEMBER_DIRECTORY_COLLECTION, memberEntryId);
+        const duplicateChecks = await Promise.all(targetKeys.map((targetKey) => {
+          const memberEntryId = modeType === 'program'
+            ? `${runtimeISO}_${programKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
+            : `${runtimeISO}_${targetKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+          return getDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION, memberEntryId);
         }));
 
         if (duplicateChecks.some(Boolean)) {
@@ -1163,15 +1315,21 @@ function AppContent() {
         }
       }
 
-      await incrementDocCounters('attendance_daily', runtimeISO, paths);
+      if (modeType === 'program') {
+        await incrementDocCounters(PROGRAM_DAILY_COLLECTION, `${runtimeISO}_${programKey}`, paths);
+      } else {
+        await incrementDocCounters('attendance_daily', runtimeISO, paths);
+      }
 
       if (kind === 'member' && selectedMember?.idNumber) {
-        const locationKey = toLocationKey(locationName);
-        await Promise.all(targetPrayers.map((targetPrayer) => {
-          const memberEntryId = `${runtimeISO}_${targetPrayer}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
-          return setDocData(MEMBER_DIRECTORY_COLLECTION, memberEntryId, {
+        await Promise.all(targetKeys.map((targetKey) => {
+          const memberEntryId = modeType === 'program'
+            ? `${runtimeISO}_${programKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
+            : `${runtimeISO}_${targetKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+          return setDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION, memberEntryId, {
+            type: modeType,
             date: runtimeISO,
-            prayer: targetPrayer,
+            ...(modeType === 'program' ? { programName: runtimeProgramWindow.label } : { prayer: targetKey }),
             majlis: locationName,
             tanzeem: selectedTanzeem,
             idNumber: String(selectedMember.idNumber),
@@ -1180,25 +1338,19 @@ function AppContent() {
           });
         }));
 
-        await appendMemberDetailsToDailyAttendance(
-          runtimeISO,
-          targetPrayers,
-          selectedTanzeem,
-          locationName,
-          locationKey,
-          selectedMember,
-        );
+        if (modeType === 'prayer') {
+          await appendMemberDetailsToDailyAttendance(
+            runtimeISO,
+            targetKeys,
+            selectedTanzeem,
+            locationName,
+            locationKey,
+            selectedMember,
+          );
+        }
       }
 
       visitorCounterRef.current += 1;
-      console.log('ATTENDANCE LOG:', {
-        visitorNumber: visitorCounterRef.current,
-        timestamp: new Date().toISOString(),
-        prayer: runtimePrayerWindow.prayerKey,
-        tanzeem: kind === 'guest' ? 'guest' : selectedTanzeem,
-        majlis: kind === 'guest' ? null : toLocationKey(locationName),
-        platform: Platform.OS,
-      });
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
       setTerminalMode('tanzeem');
@@ -1209,6 +1361,7 @@ function AppContent() {
       setToast('Datenbankfehler – bitte Internet prüfen');
     }
   };
+
 
   const renderPrayer = () => {
     const displayDate = selectedDate || now;
@@ -1235,218 +1388,220 @@ function AppContent() {
     );
   };
 
-  const renderTerminal = () => (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
-      <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
-        <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>Gebetsanwesenheit</Text>
-        <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
-        <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
-      </View>
+  const renderTerminal = () => {
+    const isPrayerMode = attendanceMode === 'prayer';
+    const hasActiveAttendanceWindow = isPrayerMode ? prayerWindow.isActive : programWindow.isActive;
+    const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : 'Programmanwesenheit';
 
-      <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        {prayerWindow.isActive ? (
-          <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
-        ) : (
+    return (
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
+        <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
+          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
+            <Text style={[styles.modeSwitchText, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
+          </Pressable>
+          <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
+          <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
+          <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
+        </View>
+
+        <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+          {isPrayerMode ? (
+            prayerWindow.isActive ? (
+              <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
+            ) : (
+              <>
+                <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
+                <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+              </>
+            )
+          ) : (
+            programWindow.isActive ? (
+              <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Programm: {programWindow.label}</Text>
+            ) : (
+              <>
+                <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Aktuell kein Programm vorhanden</Text>
+                {programWindow.isConfigured ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Start heute: {programWindow.startTime}</Text> : <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Bitte in den Einstellungen ein Programm für heute setzen.</Text>}
+              </>
+            )
+          )}
+        </View>
+
+        {hasActiveAttendanceWindow ? terminalMode === 'tanzeem' ? (
           <>
-            <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
-            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
-            <View style={[styles.noPrayerCountdownChip, { backgroundColor: '#FFFFFF', borderColor: '#111111' }]}>
-              <Text style={[styles.noPrayerCountdownText, { color: '#111111' }]}>
-                Zeitfenster öffnet sich in {Math.floor((prayerWindow.minutesUntilNextWindow || 0) / 60)}h {String((prayerWindow.minutesUntilNextWindow || 0) % 60).padStart(2, '0')}m
-              </Text>
+            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
+            <View style={styles.tanzeemRow}>
+              {TANZEEM_OPTIONS.map((tanzeem) => (
+                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
+                  <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Pressable onPress={() => countAttendance(attendanceMode, 'guest')} style={withPressEffect(styles.guestLinkWrap)}>
+              <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
+            </Pressable>
+          </>
+        ) : terminalMode === 'majlis' ? (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
+            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
+              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+            </Pressable>
+            {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+            {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
+            <View style={styles.gridWrap}>
+              {majlisChoices.map((loc) => (
+                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
+                  <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
+                </Pressable>
+              ))}
             </View>
           </>
+        ) : (
+          <>
+            <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی آئی ڈی منتخب کریں</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
+            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
+              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+            </Pressable>
+            {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+            {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
+            <View style={styles.gridWrap}>
+              {memberChoices.map((member) => (
+                <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}>
+                  <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
+                  {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
+                </Pressable>
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isPrayerMode ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).' : 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'}</Text>
+          </>
         )}
-      </View>
 
-      {prayerWindow.isActive ? terminalMode === 'tanzeem' ? (
-        <>
-          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
-          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
-          <View style={styles.tanzeemRow}>
-            {TANZEEM_OPTIONS.map((tanzeem) => (
-              <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
-                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Pressable onPress={() => countAttendance('guest')} style={withPressEffect(styles.guestLinkWrap)}>
-            <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
+        <View style={styles.privacyNoticeWrap}>
+          <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
+          <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
+            <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
-        </>
-      ) : terminalMode === 'majlis' ? (
-        <>
-          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
-          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
-          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
-            <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
-          </Pressable>
-          {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-          {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
-          <View style={styles.gridWrap}>
-            {majlisChoices.map((loc) => (
-              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
-                <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </>
-      ) : (
-        <>
-          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
-          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی آئی ڈی منتخب کریں</Text>
-          <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
-          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
-            <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
-          </Pressable>
-          {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-          {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
-          <View style={styles.gridWrap}>
-            {memberChoices.map((member) => (
-              <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', selectedMajlis, member)}>
-                <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
-                {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
-              </Pressable>
-            ))}
-          </View>
-        </>
-      ) : (
-        <>
-          <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).</Text>
-          <Text style={[styles.urduText, { color: theme.muted, marginTop: 6 }]}>حاضری صرف فعال نماز میں درج کی جا سکتی ہے (30 منٹ پہلے یا 60 منٹ بعد تک)</Text>
-        </>
-      )}
-
-      <View style={styles.privacyNoticeWrap}>
-        <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
-        <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
-          <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
-  );
+        </View>
+      </ScrollView>
+    );
+  };
 
   const renderStats = () => {
     const statsHeaderDate = germanWeekdayDateLong(now);
+    const isProgramStatsMode = statsMode === 'program';
+    const tanzeemProgramTotals = {
+      ansar: Number(programStats?.byTanzeem?.ansar) || 0,
+      khuddam: Number(programStats?.byTanzeem?.khuddam) || 0,
+      atfal: Number(programStats?.byTanzeem?.atfal) || 0,
+    };
+    const programTotal = Number(programStats?.total) || 0;
+    const topProgramMajlis = Object.entries(programStats?.byMajlis || {})
+      .filter(([, count]) => Number(count) > 0)
+      .sort((a, b) => (Number(b[1]) - Number(a[1])) || a[0].localeCompare(b[0]))
+      .slice(0, 8);
+
     return (
-    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
-        <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
-        <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
-        <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
-      </View>
-
-      {statsLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-
-      {!statsAttendance?.byPrayer || !statsView ? (
-        <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => setStatsMode(isProgramStatsMode ? 'prayer' : 'program')}>
+            <Text style={[styles.modeSwitchText, { color: theme.text }]}>{isProgramStatsMode ? '<< Programmstatistik >>' : '<< Gebetsstatistik >>'}</Text>
+          </Pressable>
+          <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
+          <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
+          <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
+          <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
         </View>
-      ) : (
-        <>
-          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
-            <Text style={[styles.statsBigValue, { color: theme.text }]}>{statsView.totalAttendance}</Text>
-          </View>
 
-          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
-            <View style={styles.tanzeemStatsRow}>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.ansar}</Text>
-                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Ansar</Text>
-              </View>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.khuddam}</Text>
-                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Khuddam</Text>
-              </View>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday.atfal}</Text>
-                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Atfal</Text>
-              </View>
-              <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.guestTotal}</Text>
-                <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
-              </View>
+        {isProgramStatsMode ? (
+          !programWindow.isConfigured ? (
+            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
             </View>
-          </View>
+          ) : (
+            <>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm heute</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{programWindow.label}</Text>
+              </View>
 
-          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises heute (alle Gebete)</Text>
-            {statsView.topMajlis.length === 0 ? (
-              <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
-            ) : (
-              (() => {
-                const maxTop = Math.max(1, ...statsView.topMajlis.map(([, count]) => count));
-                return statsView.topMajlis.map(([locationKey, count]) => (
-                  <View key={locationKey} style={styles.majlisBarRow}>
-                    <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
-                    <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
-                      <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Programmanwesenheit heute</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{programTotal}</Text>
+              </View>
+
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (Programm)</Text>
+                <View style={styles.tanzeemStatsRow}>
+                  {['ansar','khuddam','atfal'].map((key) => (
+                    <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                      <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{tanzeemProgramTotals[key]}</Text>
+                      <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{TANZEEM_LABELS[key]}</Text>
                     </View>
-                    <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
-                  </View>
-                ));
-              })()
-            )}
-          </View>
-
-          <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
-            {(() => {
-              const getPrayerTotal = (prayerKey) => {
-                const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
-                const guest = Number(prayer.guest) || 0;
-                const tanzeem = prayer.tanzeem || {};
-                const members = ['ansar', 'khuddam', 'atfal'].reduce((sum, tanzeemKey) => {
-                  const majlis = tanzeem[tanzeemKey]?.majlis || {};
-                  return sum + Object.values(majlis).reduce((x, y) => x + (Number(y) || 0), 0);
-                }, 0);
-                return guest + members;
-              };
-
-              const soharTotalRaw = getPrayerTotal('sohar');
-              const asrTotalRaw = getPrayerTotal('asr');
-              const maghribTotalRaw = getPrayerTotal('maghrib');
-              const ishaaTotalRaw = getPrayerTotal('ishaa');
-
-              const soharAsrCarryValue = soharTotalRaw + asrTotalRaw;
-              const maghribIshaaCarryValue = maghribTotalRaw + ishaaTotalRaw;
-
-              const totals = [
-                { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
-                ...(soharAsrMergedToday
-                  ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
-                  : [
-                    { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
-                    { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
-                  ]),
-                ...(maghribIshaaMergedToday
-                  ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
-                  : [
-                    { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
-                    { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
-                  ]),
-              ];
-
-              const maxTotal = Math.max(1, ...totals.map((item) => item.total));
-              return totals.map(({ key, label, total }) => (
-                <View key={key} style={styles.barRow}>
-                  <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
-                  <View style={[styles.barTrack, { backgroundColor: theme.border }]}> 
-                    <View style={[styles.barFill, { backgroundColor: theme.button, width: `${(total / maxTotal) * 100}%` }]} />
-                  </View>
-                  <Text style={[styles.barValue, { color: theme.text }]}>{total}</Text>
+                  ))}
                 </View>
-              ));
-            })()}
-          </View>
-        </>
-      )}
-    </ScrollView>
-  );
+              </View>
+
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (Programm)</Text>
+                {topProgramMajlis.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
+                ) : (
+                  (() => {
+                    const maxTop = Math.max(1, ...topProgramMajlis.map(([, count]) => Number(count) || 0));
+                    return topProgramMajlis.map(([locationKey, count]) => (
+                      <View key={locationKey} style={styles.majlisBarRow}>
+                        <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
+                        <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                          <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(count) || 0) / maxTop) * 100}%` }]} />
+                        </View>
+                        <Text style={[styles.majlisBarValue, { color: theme.text }]}>{Number(count) || 0}</Text>
+                      </View>
+                    ));
+                  })()
+                )}
+              </View>
+            </>
+          )
+        ) : (
+          (!statsAttendance?.byPrayer || !statsView) ? (
+            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+            </View>
+          ) : (
+            <>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{statsView.totalAttendance}</Text>
+              </View>
+
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
+                <View style={styles.tanzeemStatsRow}>
+                  {['ansar','khuddam','atfal'].map((key) => (
+                    <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                      <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday[key]}</Text>
+                      <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{TANZEEM_LABELS[key]}</Text>
+                    </View>
+                  ))}
+                  <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                    <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.guestTotal}</Text>
+                    <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
+                  </View>
+                </View>
+              </View>
+            </>
+          )
+        )}
+      </ScrollView>
+    );
   };
 
   const renderSettings = () => {
@@ -1510,6 +1665,23 @@ function AppContent() {
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={saveManualPrayerTimes}>
           <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>{overrideSaving ? 'Speichert…' : 'Speichern'}</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Programme</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Heute</Text>
+
+        <View style={styles.mergeInputWrap}>
+          <TextInput value={programNameInput} onChangeText={setProgramNameInput} placeholder="Programmname (z. B. Programm 1)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={programStartInput} onChangeText={setProgramStartInput} placeholder="Programmanfang (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+        </View>
+
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveProgramForToday}>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Programm speichern/aktivieren für heute</Text>
+        </Pressable>
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearProgramForToday}>
+          <Text style={[styles.saveBtnText, { color: theme.text }]}>Programm deaktivieren</Text>
         </Pressable>
       </View>
 
@@ -1622,6 +1794,8 @@ const styles = StyleSheet.create({
   mergeInputDisabled: { opacity: 0.45 },
   mergeInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, textAlign: 'center', fontSize: 15, fontWeight: '600' },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
+  modeSwitch: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
+  modeSwitchText: { fontSize: 14, fontWeight: '700' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetBtnText: { fontSize: 13, fontWeight: '700' },
   saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
