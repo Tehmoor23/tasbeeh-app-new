@@ -1452,22 +1452,22 @@ function AppContent() {
     const displayDate = selectedDate || now;
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
-        <View style={[styles.dayCard, isTablet && styles.dayCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.dayName, isTablet && styles.dayNameTablet, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
-          <Text style={[styles.dayDate, isTablet && styles.dayDateTablet, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
-          <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, isTablet && styles.cityBadgeTextTablet, { color: theme.chipText }]}>{CITY}</Text></View>
+        <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
+          <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
+          <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
             const isActive = row.activeKeys.includes(activePrayerKey || '');
             return (
               <View key={row.id} style={[styles.prayerRow, { borderBottomColor: theme.border }, isActive && { backgroundColor: theme.rowActiveBg, borderColor: theme.rowActiveBorder, borderWidth: 1, borderRadius: 10 }]}>
-                <Text style={[styles.prayerLabel, isTablet && styles.prayerLabelTablet, { color: theme.text }]}>{row.label}</Text>
-                <Text style={[styles.prayerValue, isTablet && styles.prayerValueTablet, { color: theme.text }]}>{row.time || '—'}</Text>
+                <Text style={[styles.prayerLabel, { color: theme.text }]}>{row.label}</Text>
+                <Text style={[styles.prayerValue, { color: theme.text }]}>{row.time || '—'}</Text>
               </View>
             );
           })}
-          {isRamadanPeriodToday ? <Text style={[styles.noteText, isTablet && styles.noteTextTablet, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text> : null}
-          {isRamadanPeriodToday ? <Text style={[styles.noteText, isTablet && styles.noteTextTablet, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text> : null}
+          {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text> : null}
+          {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text> : null}
         </View>
       </ScrollView>
     );
@@ -1480,24 +1480,24 @@ function AppContent() {
 
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
-        <View style={[styles.terminalBanner, isTablet && styles.terminalBannerTablet, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
+        <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
           </Pressable>
-          <Text style={[styles.terminalBannerTitle, isTablet && styles.terminalBannerTitleTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
-          <Text style={[styles.terminalBannerArabic, isTablet && styles.terminalBannerArabicTablet, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
-          <Text style={[styles.terminalBannerSubtitle, isTablet && styles.terminalBannerSubtitleTablet, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
+          <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
+          <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
+          <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
         </View>
 
-        <View style={[styles.currentPrayerCard, isTablet && styles.currentPrayerCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
           {isPrayerMode ? (
             prayerWindow.isActive ? (
-              <Text style={[styles.currentPrayerText, isTablet && styles.currentPrayerTextTablet, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
+              <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
             ) : (
               <>
-                <Text style={[styles.noPrayerTitle, isTablet && styles.noPrayerTitleTablet, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
+                <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
-                <Text style={[styles.nextPrayerValue, isTablet && styles.nextPrayerValueTablet, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+                <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
                 <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                   <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
                     Das Zeitfenster öffnet sich in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}
@@ -1507,14 +1507,14 @@ function AppContent() {
             )
           ) : (
             programWindow.isActive ? (
-              <Text style={[styles.currentPrayerText, isTablet && styles.currentPrayerTextTablet, { color: theme.text }]}>Aktuelles Programm: {programWindow.label}</Text>
+              <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Programm: {programWindow.label}</Text>
             ) : (
               <>
-                <Text style={[styles.noPrayerTitle, isTablet && styles.noPrayerTitleTablet, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Aktuell kein Programm vorhanden</Text>
+                <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Aktuell kein Programm vorhanden</Text>
                 {programWindow.isConfigured ? (
                   <View style={[styles.programScheduledHint, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                     <Text style={[styles.programScheduledLabel, { color: theme.text }]}>Programm geplant:</Text>
-                    <Text style={[styles.programScheduledValue, isTablet && styles.programScheduledValueTablet, { color: theme.text }]}>
+                    <Text style={[styles.programScheduledValue, { color: theme.text }]}>
                       {programWindow.label} beginnt in {Math.floor((programWindow.minutesUntilStart || 0) / 60)}h {String((programWindow.minutesUntilStart || 0) % 60).padStart(2, '0')}m
                     </Text>
                   </View>
@@ -1628,7 +1628,7 @@ function AppContent() {
 
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
-        <View style={[styles.statsHeaderCard, isTablet && styles.statsHeaderCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => setStatsMode(isProgramStatsMode ? 'prayer' : 'program')}>
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: theme.text }]}>{isProgramStatsMode ? '<< Programmstatistik >>' : '<< Gebetsstatistik >>'}</Text>
           </Pressable>
@@ -1640,23 +1640,23 @@ function AppContent() {
 
         {isProgramStatsMode ? (
           !programWindow.isConfigured ? (
-            <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-              <Text style={[styles.noteText, isTablet && styles.noteTextTablet, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
+            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
             </View>
           ) : (
             <>
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Programm heute</Text>
-                <Text style={[styles.statsBigValue, isTablet && styles.statsBigValueTablet, { color: theme.text }]}>{programWindow.label}</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm heute</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{programWindow.label}</Text>
               </View>
 
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Gesamt Programmanwesenheit heute</Text>
-                <Text style={[styles.statsBigValue, isTablet && styles.statsBigValueTablet, { color: theme.text }]}>{programTotal}</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Programmanwesenheit heute</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{programTotal}</Text>
               </View>
 
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Tanzeem Aufteilung (Programm)</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (Programm)</Text>
                 <View style={styles.tanzeemStatsRow}>
                   {['ansar','khuddam','atfal','guest'].map((key) => (
                     <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
@@ -1667,10 +1667,10 @@ function AppContent() {
                 </View>
               </View>
 
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Top Majlises (Programm)</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (Programm)</Text>
                 {topProgramMajlis.length === 0 ? (
-                  <Text style={[styles.noteText, isTablet && styles.noteTextTablet, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
+                  <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
                 ) : (
                   (() => {
                     const maxTop = Math.max(1, ...topProgramMajlis.map(([, count]) => Number(count) || 0));
@@ -1690,18 +1690,18 @@ function AppContent() {
           )
         ) : (
           (!statsAttendance?.byPrayer || !statsView) ? (
-            <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-              <Text style={[styles.noteText, isTablet && styles.noteTextTablet, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
             </View>
           ) : (
             <>
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
-                <Text style={[styles.statsBigValue, isTablet && styles.statsBigValueTablet, { color: theme.text }]}>{statsView.totalAttendance}</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{statsView.totalAttendance}</Text>
               </View>
 
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
                 <View style={styles.tanzeemStatsRow}>
                   {['ansar','khuddam','atfal'].map((key) => (
                     <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
@@ -1716,10 +1716,10 @@ function AppContent() {
                 </View>
               </View>
 
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Top Majlises heute (alle Gebete)</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises heute (alle Gebete)</Text>
                 {statsView.topMajlis.length === 0 ? (
-                  <Text style={[styles.noteText, isTablet && styles.noteTextTablet, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+                  <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
                 ) : (
                   (() => {
                     const maxTop = Math.max(1, ...statsView.topMajlis.map(([, count]) => count));
@@ -1736,8 +1736,8 @@ function AppContent() {
                 )}
               </View>
 
-              <View style={[styles.statsCard, isTablet && styles.statsCardTablet, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, isTablet && styles.statsCardTitleTablet, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
                 {(() => {
                   const getPrayerTotal = (prayerKey) => {
                     const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
@@ -1802,7 +1802,7 @@ function AppContent() {
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
 
-      <View style={[styles.settingsHeroCard, isTablet && styles.settingsHeroCardTablet, { backgroundColor: theme.card }]}> 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
 
@@ -1840,7 +1840,7 @@ function AppContent() {
       </View>
 
 
-      <View style={[styles.settingsHeroCard, isTablet && styles.settingsHeroCardTablet, { backgroundColor: theme.card }]}> 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
 
@@ -1857,7 +1857,7 @@ function AppContent() {
         </Pressable>
       </View>
 
-      <View style={[styles.settingsHeroCard, isTablet && styles.settingsHeroCardTablet, { backgroundColor: theme.card }]}> 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Programme</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Heute</Text>
 
@@ -1954,27 +1954,21 @@ const styles = StyleSheet.create({
   logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 8 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
-  contentTablet: { width: '100%', maxWidth: 1320, alignSelf: 'center', paddingHorizontal: 12, gap: 16 },
+  contentTablet: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26, gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { fontSize: 31, fontWeight: '800', textAlign: 'center', letterSpacing: 0.4 },
   subtitle: { fontSize: 14, textAlign: 'center' },
   titleArabic: { fontSize: 16, textAlign: 'center', marginTop: 0 },
   dayCard: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
-  dayCardTablet: { padding: 22, gap: 12 },
   dayName: { fontSize: 42, fontWeight: '800', textAlign: 'center' },
-  dayNameTablet: { fontSize: 56 },
   dayDate: { fontSize: 20, textAlign: 'center' },
-  dayDateTablet: { fontSize: 28 },
   cityBadge: { alignSelf: 'center', borderRadius: 12, paddingVertical: 8, paddingHorizontal: 14, marginBottom: 4 },
   cityBadgeText: { fontSize: 18, fontWeight: '700' },
-  cityBadgeTextTablet: { fontSize: 22 },
   syncStatus: { textAlign: 'center', fontSize: 12, fontWeight: '700', marginBottom: 6 },
   prayerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1 },
   prayerLabel: { fontSize: 17, fontWeight: '500', flex: 1, marginRight: 10 },
-  prayerLabelTablet: { fontSize: 22 },
   prayerValue: { fontSize: 20, fontWeight: '700' },
-  prayerValueTablet: { fontSize: 28 },
   bottomSticky: { gap: 10 },
   footer: { textAlign: 'center', fontSize: 12, fontWeight: '500', marginTop: 2 },
   appMetaWrap: { marginTop: 6, marginBottom: 8, paddingHorizontal: 6, gap: 4 },
@@ -1982,7 +1976,6 @@ const styles = StyleSheet.create({
   appMetaCopyright: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   settingsHeroCard: { borderRadius: 18, paddingVertical: 22, paddingHorizontal: 18, gap: 16, marginTop: 8, marginBottom: 4 },
-  settingsHeroCardTablet: { paddingVertical: 30, paddingHorizontal: 24, gap: 20 },
   settingsHeroTitle: { textAlign: 'center', fontSize: 22, fontWeight: '700', letterSpacing: 0.2 },
   settingsHeroMeta: { textAlign: 'center', fontSize: 13, fontWeight: '500' },
   mergeSwitchWrap: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
@@ -1991,52 +1984,42 @@ const styles = StyleSheet.create({
   mergeInputDisabled: { opacity: 0.45 },
   mergeInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, textAlign: 'center', fontSize: 15, fontWeight: '600' },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
-  sectionTitleTablet: { fontSize: 24 },
+  sectionTitleTablet: { fontSize: 22 },
   modeSwitch: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
   modeSwitchText: { fontSize: 14, fontWeight: '700' },
-  modeSwitchTextTablet: { fontSize: 22 },
+  modeSwitchTextTablet: { fontSize: 20 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   presetBtnText: { fontSize: 13, fontWeight: '700' },
-  presetBtnTextTablet: { fontSize: 20 },
+  presetBtnTextTablet: { fontSize: 18 },
   saveBtn: { borderRadius: 10, paddingVertical: 11, alignItems: 'center' },
   settingsSaveBtn: { marginTop: 4, alignSelf: 'center', width: '68%' },
   saveBtnText: { fontSize: 14, fontWeight: '700' },
-  saveBtnTextTablet: { fontSize: 20 },
+  saveBtnTextTablet: { fontSize: 18 },
   noteText: { fontSize: 12, fontWeight: '600' },
-  noteTextTablet: { fontSize: 16 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
-  tabBarTablet: { minHeight: 90, paddingHorizontal: 14 },
+  tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
   tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
-  tabLabelTablet: { fontSize: 16 },
+  tabLabelTablet: { fontSize: 14 },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
   terminalBanner: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  terminalBannerTablet: { paddingVertical: 22, paddingHorizontal: 20 },
   terminalBannerTitle: { textAlign: 'center', fontSize: 20, fontWeight: '800', letterSpacing: 0.2 },
-  terminalBannerTitleTablet: { fontSize: 28 },
   terminalBannerArabic: { textAlign: 'center', marginTop: 2, fontSize: 16, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
-  terminalBannerArabicTablet: { fontSize: 22, marginTop: 6 },
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
-  terminalBannerSubtitleTablet: { fontSize: 18, marginTop: 8 },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  currentPrayerCardTablet: { paddingVertical: 24, paddingHorizontal: 20 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
-  currentPrayerTextTablet: { fontSize: 30 },
   noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, overflow: 'hidden', letterSpacing: 0.2 },
-  noPrayerTitleTablet: { fontSize: 24, paddingVertical: 10, paddingHorizontal: 20 },
   noPrayerTitleLight: { backgroundColor: '#FFF4A3', color: '#111111' },
   noPrayerTitleDark: { backgroundColor: '#FFF4A3', color: '#111111' },
   noPrayerCountdownChip: { alignSelf: 'center', marginTop: 12, borderRadius: 12, borderWidth: 2, paddingVertical: 8, paddingHorizontal: 12 },
   noPrayerCountdownText: { fontSize: 13, fontWeight: '600', letterSpacing: 0.1 },
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
-  nextPrayerValueTablet: { fontSize: 30, marginTop: 8 },
   programScheduledHint: { marginTop: 10, borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', gap: 4 },
   programScheduledLabel: { fontSize: 14, fontWeight: '800', textAlign: 'center' },
   programScheduledValue: { fontSize: 16, fontWeight: '700', textAlign: 'center', lineHeight: 22 },
-  programScheduledValueTablet: { fontSize: 22, lineHeight: 30 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
 
   privacyNoticeWrap: { marginTop: 26, paddingHorizontal: 6, alignItems: 'center' },
@@ -2067,19 +2050,15 @@ const styles = StyleSheet.create({
   majlisGuestButtonText: { color: '#FFFFFF' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  tanzeemBtnTablet: { minHeight: 98, justifyContent: 'center' },
+  tanzeemBtnTablet: { minHeight: 72, justifyContent: 'center' },
   statsHeaderCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  statsHeaderCardTablet: { paddingVertical: 22, paddingHorizontal: 24 },
   statsHeaderTitle: { fontSize: 28, fontWeight: '800', letterSpacing: 0.2, textAlign: 'center' },
   statsHeaderDate: { marginTop: 2, fontSize: 16, fontWeight: '600', textTransform: 'capitalize', textAlign: 'center' },
   statsHeaderSubline: { marginTop: 3, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   statsHeaderDivider: { marginTop: 10, height: 1, width: '100%' },
   statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
-  statsCardTablet: { padding: 22 },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
-  statsCardTitleTablet: { fontSize: 18 },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
-  statsBigValueTablet: { fontSize: 54, marginTop: 8 },
   tanzeemStatsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   tanzeemStatBox: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
   tanzeemStatValue: { fontSize: 26, fontWeight: '800', lineHeight: 30 },
@@ -2096,8 +2075,8 @@ const styles = StyleSheet.create({
   barValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
-  gridItemTablet: { width: '32.5%', paddingVertical: 34 },
+  gridItemTablet: { width: '31.8%', paddingVertical: 24 },
   gridText: { textAlign: 'center', fontWeight: '700' },
-  gridTextTablet: { fontSize: 20 },
+  gridTextTablet: { fontSize: 18 },
   gridSubText: { textAlign: 'center', marginTop: 4, fontSize: 11, fontWeight: '500' },
 });
