@@ -670,6 +670,12 @@ function AppContent() {
 
   const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
   const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
+  const formatMinutesUntil = (mins) => {
+    const safe = Math.max(0, Number(mins) || 0);
+    const hours = Math.floor(safe / 60);
+    const minutes = safe % 60;
+    return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+  };
 
   const resolvePrayerWindow = (referenceNow, referenceTimesToday, referenceTimesTomorrow) => {
     const nowMinutes = referenceNow.getHours() * 60 + referenceNow.getMinutes();
@@ -1482,7 +1488,7 @@ function AppContent() {
                 <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
                 <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                   <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
-                    Das Zeitfenster öffnet sich in {Math.max(0, Number(prayerWindow.minutesUntilNextWindow) || 0)} min
+                    Das Zeitfenster öffnet sich in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}
                   </Text>
                 </View>
               </>
@@ -1562,6 +1568,7 @@ function AppContent() {
         ) : (
           <>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isPrayerMode ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).' : 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'}</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>{isPrayerMode ? 'حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک).' : 'پروگرام حاضری صرف فعال پروگرام کے دوران درج کی جا سکتی ہے۔'}</Text>
           </>
         )}
 
@@ -1584,6 +1591,7 @@ function AppContent() {
       atfal: Number(programStats?.byTanzeem?.atfal) || 0,
     };
     const programTotal = Number(programStats?.total) || 0;
+    const programGuestTotal = Number(programStats?.guestTotal) || 0;
     const topProgramMajlis = Object.entries(programStats?.byMajlis || {})
       .filter(([, count]) => Number(count) > 0)
       .sort((a, b) => (Number(b[1]) - Number(a[1])) || a[0].localeCompare(b[0]))
@@ -1621,10 +1629,10 @@ function AppContent() {
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (Programm)</Text>
                 <View style={styles.tanzeemStatsRow}>
-                  {['ansar','khuddam','atfal'].map((key) => (
+                  {['ansar','khuddam','atfal','guest'].map((key) => (
                     <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                      <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{tanzeemProgramTotals[key]}</Text>
-                      <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{TANZEEM_LABELS[key]}</Text>
+                      <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{key === 'guest' ? programGuestTotal : tanzeemProgramTotals[key]}</Text>
+                      <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{key === 'guest' ? 'Gäste' : TANZEEM_LABELS[key]}</Text>
                     </View>
                   ))}
                 </View>
@@ -1830,7 +1838,7 @@ function AppContent() {
         </View>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveProgramForToday}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Programm speichern/aktivieren für heute</Text>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Programm speichern</Text>
         </Pressable>
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearProgramForToday}>
           <Text style={[styles.saveBtnText, { color: theme.text }]}>Programm deaktivieren</Text>
@@ -1838,7 +1846,7 @@ function AppContent() {
       </View>
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.3</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.4</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
