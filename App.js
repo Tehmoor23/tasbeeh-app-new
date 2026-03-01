@@ -50,6 +50,23 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const DISABLED_MAJLIS = new Set(['Bad Vilbel']);
+const MAJLIS_SELECTION_ORDER = [
+  'Baitus Sabuh Süd',
+  'Bornheim',
+  'Eschersheim',
+  'Griesheim',
+  'Berg',
+  'Ginnheim',
+  'Goldstein',
+  'Hausen',
+  'Höchst',
+  'Nied',
+  'Nordweststadt',
+  'Nuur Moschee',
+  'Rödelheim',
+  'Zeilsheim',
+  'Bad Vilbel',
+];
 const TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal'];
 const TANZEEM_LABELS = {
   ansar: 'Ansar',
@@ -913,7 +930,23 @@ function AppContent() {
         .filter((entry) => entry.tanzeem === selectedTanzeem)
         .map((entry) => entry.majlis),
     );
-    return TERMINAL_LOCATIONS.filter((majlisName) => available.has(majlisName));
+
+    const orderedIndex = new Map(MAJLIS_SELECTION_ORDER.map((name, index) => [name, index]));
+    const fallbackIndex = MAJLIS_SELECTION_ORDER.length + 1;
+    const badVilbelIndex = MAJLIS_SELECTION_ORDER.length;
+
+    return TERMINAL_LOCATIONS
+      .filter((majlisName) => available.has(majlisName))
+      .sort((a, b) => {
+        const ai = orderedIndex.has(a) ? orderedIndex.get(a) : fallbackIndex;
+        const bi = orderedIndex.has(b) ? orderedIndex.get(b) : fallbackIndex;
+
+        const aScore = a === 'Bad Vilbel' ? badVilbelIndex : ai;
+        const bScore = b === 'Bad Vilbel' ? badVilbelIndex : bi;
+
+        if (aScore !== bScore) return aScore - bScore;
+        return a.localeCompare(b, 'de');
+      });
   }, [membersDirectory, selectedTanzeem]);
 
   const memberChoices = useMemo(() => (
