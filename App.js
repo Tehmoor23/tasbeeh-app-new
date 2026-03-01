@@ -192,6 +192,7 @@ const FIXED_TIMES = {
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
+const STORE_MEMBER_NAMES_IN_DB = false;
 const RAMADAN_END_ISO = '2026-03-19';
 
 const RAMADAN_RAW = {
@@ -454,7 +455,7 @@ async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanz
     if (!alreadyExists) {
       majlisEntries.push({
         idNumber: String(member?.idNumber || ''),
-        name: member?.name || '',
+        ...(STORE_MEMBER_NAMES_IN_DB ? { name: member?.name || '' } : {}),
         majlis: locationName,
         tanzeem: tanzeemKey,
         timestamp: new Date().toISOString(),
@@ -1174,7 +1175,7 @@ function AppContent() {
             majlis: locationName,
             tanzeem: selectedTanzeem,
             idNumber: String(selectedMember.idNumber),
-            name: selectedMember.name || null,
+            ...(STORE_MEMBER_NAMES_IN_DB ? { name: selectedMember.name || null } : {}),
             timestamp: new Date().toISOString(),
           });
         }));
@@ -1690,11 +1691,11 @@ const styles = StyleSheet.create({
   majlisBarTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
   majlisBarFill: { height: '100%', borderRadius: 999 },
   majlisBarValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
-  barRow: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  barLabel: { width: 148, fontSize: 11, fontWeight: '700' },
+  barRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  barLabel: { width: 120, fontSize: 12, fontWeight: '600' },
   barTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 999 },
-  barValue: { width: 30, textAlign: 'right', fontSize: 12, fontWeight: '700' },
+  barValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridText: { textAlign: 'center', fontWeight: '700' },
