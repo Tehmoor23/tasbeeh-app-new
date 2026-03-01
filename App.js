@@ -1597,6 +1597,77 @@ function AppContent() {
                   </View>
                 </View>
               </View>
+
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises heute (alle Gebete)</Text>
+                {statsView.topMajlis.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+                ) : (
+                  (() => {
+                    const maxTop = Math.max(1, ...statsView.topMajlis.map(([, count]) => count));
+                    return statsView.topMajlis.map(([locationKey, count]) => (
+                      <View key={locationKey} style={styles.majlisBarRow}>
+                        <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
+                        <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                          <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
+                        </View>
+                        <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
+                      </View>
+                    ));
+                  })()
+                )}
+              </View>
+
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
+                {(() => {
+                  const getPrayerTotal = (prayerKey) => {
+                    const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
+                    const guest = Number(prayer.guest) || 0;
+                    const tanzeem = prayer.tanzeem || {};
+                    const members = ['ansar', 'khuddam', 'atfal'].reduce((sum, tanzeemKey) => {
+                      const majlis = tanzeem[tanzeemKey]?.majlis || {};
+                      return sum + Object.values(majlis).reduce((x, y) => x + (Number(y) || 0), 0);
+                    }, 0);
+                    return guest + members;
+                  };
+
+                  const soharTotalRaw = getPrayerTotal('sohar');
+                  const asrTotalRaw = getPrayerTotal('asr');
+                  const maghribTotalRaw = getPrayerTotal('maghrib');
+                  const ishaaTotalRaw = getPrayerTotal('ishaa');
+
+                  const soharAsrCarryValue = soharTotalRaw + asrTotalRaw;
+                  const maghribIshaaCarryValue = maghribTotalRaw + ishaaTotalRaw;
+
+                  const totals = [
+                    { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
+                    ...(soharAsrMergedToday
+                      ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
+                      : [
+                        { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
+                        { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
+                      ]),
+                    ...(maghribIshaaMergedToday
+                      ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
+                      : [
+                        { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
+                        { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
+                      ]),
+                  ];
+
+                  const maxTotal = Math.max(1, ...totals.map((item) => item.total));
+                  return totals.map(({ key, label, total }) => (
+                    <View key={key} style={styles.barRow}>
+                      <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
+                      <View style={[styles.barTrack, { backgroundColor: theme.border }]}> 
+                        <View style={[styles.barFill, { backgroundColor: theme.button, width: `${(total / maxTotal) * 100}%` }]} />
+                      </View>
+                      <Text style={[styles.barValue, { color: theme.text }]}>{total}</Text>
+                    </View>
+                  ));
+                })()}
+              </View>
             </>
           )
         )}
