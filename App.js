@@ -1582,8 +1582,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
-  logoWrap: { alignItems: 'center', paddingBottom: 6 },
+  basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }), transform: [{ translateY: 6 }] },
+  logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 6 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
