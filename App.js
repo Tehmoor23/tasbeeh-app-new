@@ -99,84 +99,77 @@ const MAJLIS_LABELS = {
   zeilsheim: 'Zeilsheim',
 };
 
-const PRIVACY_POLICY_TEXT = `Datenschutzerklärung – Verarbeitung von Mitgliedsdaten
-
-1. Gegenstand der Verarbeitung
-
-Im Rahmen der Nutzung dieser App werden bereits bestehende Mitgliedsdaten verarbeitet. Hierzu gehören insbesondere:
-
-• Mitglieds-ID (bereits bestehende Registrierungsnummer)
-• Name (sofern im System hinterlegt)
-• Zuordnung zu Majlis und Tanzeem
-• Anwesenheits- bzw. Teilnahmeeinträge
-
-Die Mitglieds-IDs bestehen unabhängig von dieser App und wurden nicht durch diese neu erzeugt.
-
-2. Zweck der Datenverarbeitung
-
-Die Verarbeitung erfolgt ausschließlich zur:
-
-• eindeutigen Zuordnung von Mitgliedern
-• Vermeidung von Doppeleinträgen
-• internen organisatorischen Dokumentation (z. B. Anwesenheit)
-• statistischen Auswertung im Rahmen der jeweiligen Veranstaltung oder Funktion
-
-Eine Nutzung der Daten zu anderen Zwecken erfolgt nicht.
-
-3. Rechtsgrundlage
-
-Die Verarbeitung erfolgt auf Grundlage von:
-
-Art. 6 Abs. 1 lit. a DSGVO (Einwilligung),
-da die Nutzung der App sowie die Eingabe der Daten freiwillig erfolgt.
-
-Alternativ – sofern organisatorisch einschlägig – kann die Verarbeitung auch auf Grundlage von:
-
-Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse) erfolgen,
-wobei das berechtigte Interesse in der strukturierten und effizienten internen Organisation besteht.
-
-4. Freiwilligkeit
-
-Die Nutzung der App und die Eingabe der Mitgliedsdaten erfolgen freiwillig.
-Es entstehen keine Nachteile bei Nichtnutzung.
-
-5. Speicherung und technische Umsetzung
-
-Die Daten werden in einer Cloud-Datenbank gespeichert, konkret in Firestore (Google Firebase).
-
-Die Speicherung erfolgt auf Servern von:
-
-Google
-(im Rahmen von Google Firebase)
-
-Die Datenübertragung erfolgt verschlüsselt (HTTPS/TLS).
-
-Es werden angemessene technische und organisatorische Maßnahmen gemäß Art. 32 DSGVO getroffen, um die Sicherheit der Daten zu gewährleisten.
-
-6. Datenminimierung
-
-Es werden ausschließlich diejenigen personenbezogenen Daten verarbeitet, die für die jeweilige Funktion zwingend erforderlich sind.
-Eine weitergehende Profilbildung oder automatisierte Entscheidungsfindung findet nicht statt.
-
-7. Speicherdauer
-
-Die Daten werden nur so lange gespeichert, wie dies für den jeweiligen Verarbeitungszweck erforderlich ist.
-Nicht mehr benötigte Daten werden regelmäßig gelöscht oder anonymisiert.
-
-(⚠ Hier kannst du später noch eine konkrete Frist einsetzen, z. B. „maximal 12 Monate“.)
-
-8. Betroffenenrechte
-
-Betroffene Personen haben das Recht auf:
-
-• Auskunft (Art. 15 DSGVO)
-• Berichtigung (Art. 16 DSGVO)
-• Löschung (Art. 17 DSGVO)
-• Einschränkung der Verarbeitung (Art. 18 DSGVO)
-• Widerspruch (Art. 21 DSGVO)
-• Datenübertragbarkeit (Art. 20 DSGVO)
-
-Ein Widerruf einer erteilten Einwilligung ist jederzeit möglich.`;
+const PRIVACY_POLICY_SECTIONS = [
+  {
+    title: '1. Gegenstand der Verarbeitung',
+    paragraphs: [
+      'Im Rahmen der Nutzung dieser App werden bereits bestehende Mitgliedsdaten verarbeitet. Hierzu gehören insbesondere:',
+      'Die Mitglieds-IDs bestehen unabhängig von dieser App und wurden nicht durch diese neu erzeugt.',
+    ],
+    bullets: [
+      '**Mitglieds-ID** (bereits bestehende Registrierungsnummer)',
+      'Name (sofern im System hinterlegt)',
+      'Zuordnung zu Majlis und Tanzeem',
+      'Anwesenheits- bzw. Teilnahmeeinträge',
+    ],
+  },
+  {
+    title: '2. Zweck der Datenverarbeitung',
+    paragraphs: [
+      'Die Verarbeitung erfolgt ausschließlich zur:',
+      'Eine Nutzung der Daten zu anderen Zwecken erfolgt nicht.',
+    ],
+    bullets: [
+      'eindeutigen Zuordnung von Mitgliedern',
+      'Vermeidung von Doppeleinträgen',
+      'internen organisatorischen Dokumentation (z. B. Anwesenheit)',
+      'statistischen Auswertung im Rahmen der jeweiligen Veranstaltung oder Funktion',
+    ],
+  },
+  {
+    title: '3. Rechtsgrundlage',
+    paragraphs: [
+      'Die Verarbeitung erfolgt auf Grundlage von:',
+      '**Art. 6 Abs. 1 lit. a DSGVO** (**Einwilligung**), da die Nutzung der App sowie die Eingabe der Daten freiwillig erfolgt.',
+      'Alternativ – sofern organisatorisch einschlägig – kann die Verarbeitung auch auf Grundlage von:',
+      '**Art. 6 Abs. 1 lit. f DSGVO** (**berechtigtes Interesse**) erfolgen, wobei das berechtigte Interesse in der strukturierten und effizienten internen Organisation besteht.',
+    ],
+  },
+  {
+    title: '4. Freiwilligkeit',
+    paragraphs: [
+      'Die Nutzung der App und die Eingabe der Mitgliedsdaten erfolgen freiwillig.',
+      'Es entstehen keine Nachteile bei Nichtnutzung.',
+    ],
+  },
+  {
+    title: '5. Speicherung und Sicherheit',
+    paragraphs: [
+      'Die Daten werden in einer Cloud-Datenbank gespeichert, konkret in Firestore (Google Firebase).',
+      'Die Speicherung erfolgt auf Servern von Google (im Rahmen von Google Firebase).',
+      'Die Datenübertragung erfolgt verschlüsselt (**HTTPS/TLS**).',
+      'Es werden angemessene technische und organisatorische Maßnahmen gemäß Art. 32 DSGVO getroffen, um die Sicherheit der Daten zu gewährleisten.',
+      'Es werden ausschließlich diejenigen personenbezogenen Daten verarbeitet, die für die jeweilige Funktion zwingend erforderlich sind. Eine weitergehende Profilbildung oder automatisierte Entscheidungsfindung findet nicht statt.',
+      'Die Daten werden nur so lange gespeichert, wie dies für den jeweiligen Verarbeitungszweck erforderlich ist. Nicht mehr benötigte Daten werden regelmäßig gelöscht oder anonymisiert.',
+      '(⚠ Hier kannst du später noch eine konkrete Frist einsetzen, z. B. „maximal 12 Monate“.)',
+    ],
+  },
+  {
+    title: '6. Betroffenenrechte',
+    paragraphs: [
+      'Betroffene Personen haben das Recht auf:',
+      'Ein Widerruf einer erteilten Einwilligung ist jederzeit möglich.',
+    ],
+    bullets: [
+      'Auskunft (Art. 15 DSGVO)',
+      'Berichtigung (Art. 16 DSGVO)',
+      'Löschung (Art. 17 DSGVO)',
+      'Einschränkung der Verarbeitung (Art. 18 DSGVO)',
+      'Widerspruch (Art. 21 DSGVO)',
+      'Datenübertragbarkeit (Art. 20 DSGVO)',
+    ],
+  },
+];
 
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyC_Kz1Cxs-HQ5G994mBztV_ADlAHYsgDKs',
@@ -512,6 +505,39 @@ const getDisplayPrayerLabel = (key, timesToday) => {
   if (maghribIshaaMerged && key === 'ishaa') return 'Maghrib/Ishaa';
   return PRAYER_LABELS[key] || key;
 };
+
+
+function renderInlineBoldSegments(text, textStyle, boldStyle) {
+  const parts = String(text || '').split(/(\*\*[^*]+\*\*)/g).filter(Boolean);
+  return parts.map((part, idx) => {
+    if (part.startsWith('**') && part.endsWith('**')) {
+      return <Text key={`b_${idx}`} style={boldStyle}>{part.slice(2, -2)}</Text>;
+    }
+    return <Text key={`t_${idx}`} style={textStyle}>{part}</Text>;
+  });
+}
+
+function PrivacySection({ section, theme, isLast }) {
+  return (
+    <View style={[styles.privacySection, isLast && styles.privacySectionLast]}>
+      <Text style={[styles.privacySectionTitle, { color: theme.text }]}>{section.title}</Text>
+      {(section.paragraphs || []).map((paragraph, index) => (
+        <Text key={`${section.title}_p_${index}`} style={[styles.privacyParagraph, { color: theme.text }]}>
+          {renderInlineBoldSegments(paragraph, null, styles.privacyParagraphBold)}
+        </Text>
+      ))}
+      {(section.bullets || []).map((bullet, index) => (
+        <View key={`${section.title}_b_${index}`} style={styles.privacyBulletRow}>
+          <Text style={[styles.privacyBulletDot, { color: theme.text }]}>•</Text>
+          <Text style={[styles.privacyBulletText, { color: theme.text }]}>
+            {renderInlineBoldSegments(bullet, null, styles.privacyParagraphBold)}
+          </Text>
+        </View>
+      ))}
+      {!isLast ? <View style={[styles.privacyDivider, { backgroundColor: theme.border }]} /> : null}
+    </View>
+  );
+}
 
 
 function AppContent() {
@@ -1525,7 +1551,15 @@ function AppContent() {
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.privacyModalBody}>
-              <Text style={[styles.privacyModalBodyText, { color: theme.text }]}>{PRIVACY_POLICY_TEXT}</Text>
+              <Text style={[styles.privacyModalHeroTitle, { color: theme.text }]}>Datenschutzerklärung – Verarbeitung von Mitgliedsdaten</Text>
+              {PRIVACY_POLICY_SECTIONS.map((section, index) => (
+                <PrivacySection
+                  key={section.title}
+                  section={section}
+                  theme={theme}
+                  isLast={index === PRIVACY_POLICY_SECTIONS.length - 1}
+                />
+              ))}
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -1613,14 +1647,23 @@ const styles = StyleSheet.create({
   privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
   privacyNoticeLinkWrap: { marginTop: 8, paddingVertical: 2, paddingHorizontal: 4 },
   privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
-  privacyModalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.35)', justifyContent: 'center', padding: 16 },
-  privacyModalCard: { flex: 1, borderRadius: 16, overflow: 'hidden' },
-  privacyModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8 },
-  privacyModalTitle: { fontSize: 20, fontWeight: '700' },
+  privacyModalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.28)', justifyContent: 'center', padding: 0 },
+  privacyModalCard: { flex: 1 },
+  privacyModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
+  privacyModalTitle: { fontSize: 24, fontWeight: '700', letterSpacing: 0.2 },
   privacyModalCloseBtn: { paddingVertical: 6, paddingHorizontal: 4 },
   privacyModalCloseText: { fontSize: 14, fontWeight: '500' },
-  privacyModalBody: { paddingHorizontal: 18, paddingBottom: 24, paddingTop: 6 },
-  privacyModalBodyText: { fontSize: 14, lineHeight: 22, fontWeight: '400' },
+  privacyModalBody: { paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 },
+  privacyModalHeroTitle: { fontSize: 23, fontWeight: '700', lineHeight: 30, marginTop: 4, marginBottom: 8 },
+  privacySection: { marginTop: 18 },
+  privacySectionLast: { marginBottom: 10 },
+  privacySectionTitle: { fontSize: 17, fontWeight: '600', lineHeight: 24, marginBottom: 10 },
+  privacyParagraph: { fontSize: 15, lineHeight: 24, fontWeight: '400', marginBottom: 10 },
+  privacyParagraphBold: { fontWeight: '700' },
+  privacyBulletRow: { flexDirection: 'row', alignItems: 'flex-start', paddingLeft: 4, marginBottom: 8 },
+  privacyBulletDot: { width: 16, fontSize: 15, lineHeight: 24, fontWeight: '500' },
+  privacyBulletText: { flex: 1, fontSize: 15, lineHeight: 24, fontWeight: '400' },
+  privacyDivider: { height: 1, marginTop: 10, opacity: 0.45 },
   guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
