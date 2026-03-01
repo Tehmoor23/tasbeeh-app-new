@@ -194,7 +194,6 @@ const FIXED_TIMES = {
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
-const PROGRAM_ACTIVE_WINDOW_MINUTES = 180;
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 const RAMADAN_END_ISO = '2026-03-19';
@@ -593,21 +592,22 @@ function AppContent() {
   const programConfigToday = programConfigByDate[todayISO] || null;
   const programWindow = useMemo(() => {
     if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
-      return { isConfigured: false, isActive: false, label: null, minutesUntilStart: null };
+      return { isConfigured: false, isActive: false, label: null, minutesUntilOpen: null };
     }
 
     const startMinutes = Number(programConfigToday.startTime.slice(0, 2)) * 60 + Number(programConfigToday.startTime.slice(3));
+    const openMinutes = startMinutes - 30;
     const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    const endMinutes = startMinutes + PROGRAM_ACTIVE_WINDOW_MINUTES;
-    const isActive = nowMinutes >= startMinutes && nowMinutes <= endMinutes;
+    const isActive = nowMinutes >= openMinutes;
 
     return {
       isConfigured: true,
       isActive,
       label: String(programConfigToday.name || '').trim(),
       startTime: programConfigToday.startTime,
-      endTime: `${pad(Math.floor((((endMinutes % 1440) + 1440) % 1440) / 60))}:${pad((((endMinutes % 1440) + 1440) % 1440) % 60)}`,
-      minutesUntilStart: isActive ? 0 : Math.max(0, startMinutes - nowMinutes),
+      opensAt: `${pad(Math.floor((((openMinutes % 1440) + 1440) % 1440) / 60))}:${pad((((openMinutes % 1440) + 1440) % 1440) % 60)}`,
+      minutesUntilOpen: isActive ? 0 : Math.max(0, openMinutes - nowMinutes),
+      minutesUntilStart: Math.max(0, startMinutes - nowMinutes),
     };
   }, [now, programConfigToday]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
@@ -664,7 +664,7 @@ function AppContent() {
       return mins !== null && nowMinutes >= mins - 30 && nowMinutes <= mins + 60;
     });
     return active?.key || null;
-  }, [now, timesToday]);
+  }, [now, timesToday, programConfigToday, programWindow.isActive]);
 
   const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
   const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
@@ -902,13 +902,23 @@ function AppContent() {
       const nextMinuteTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0).getTime();
       if (nextMinuteTs > nowTs) candidates.push(nextMinuteTs);
     }
+    if (programConfigToday && isValidTime(programConfigToday.startTime)) {
+      const startMins = Number(programConfigToday.startTime.slice(0, 2)) * 60 + Number(programConfigToday.startTime.slice(3));
+      const openTs = atMinutesOfDay(now, startMins - 30).getTime();
+      if (openTs > nowTs) candidates.push(openTs);
+
+      if (!programWindow.isActive) {
+        const nextMinuteTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0).getTime();
+        if (nextMinuteTs > nowTs) candidates.push(nextMinuteTs);
+      }
+    }
 
     const nextTickTs = candidates.length ? Math.min(...candidates) : (nowTs + 60 * 1000);
     const delay = Math.max(500, nextTickTs - nowTs + 50);
     const timer = setTimeout(() => setRefreshTick((v) => v + 1), delay);
 
     return () => clearTimeout(timer);
-  }, [now, timesToday]);
+  }, [now, timesToday, programConfigToday, programWindow.isActive]);
 
   useEffect(() => {
     const loadLocal = async () => {
@@ -1243,7 +1253,7 @@ function AppContent() {
       const nowMinutes = runtimeNow.getHours() * 60 + runtimeNow.getMinutes();
       runtimeProgramWindow = {
         isConfigured: true,
-        isActive: nowMinutes >= startMinutes && nowMinutes <= (startMinutes + PROGRAM_ACTIVE_WINDOW_MINUTES),
+        isActive: nowMinutes >= (startMinutes - 30),
         label: String(runtimeProgramConfig.name || '').trim(),
       };
     }
@@ -1421,7 +1431,13 @@ function AppContent() {
             ) : (
               <>
                 <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Aktuell kein Programm vorhanden</Text>
-                {programWindow.isConfigured ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Start heute: {programWindow.startTime}</Text> : <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Bitte in den Einstellungen ein Programm für heute setzen.</Text>}
+                {programWindow.isConfigured ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>
+                    {programWindow.label} beginnt in {Math.floor((programWindow.minutesUntilStart || 0) / 60)}h {String((programWindow.minutesUntilStart || 0) % 60).padStart(2, '0')}m
+                  </Text>
+                ) : (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Für heute ist kein Programm geplant.</Text>
+                )}
               </>
             )
           )}
