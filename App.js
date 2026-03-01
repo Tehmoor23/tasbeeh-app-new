@@ -1533,9 +1533,16 @@ function AppContent() {
                 </Pressable>
               ))}
             </View>
-            <Pressable onPress={() => countAttendance(attendanceMode, 'guest')} style={withPressEffect(styles.guestLinkWrap)}>
-              <Text style={[styles.guestLinkText, { color: theme.muted }]}>Kein Mitglied? Tragen Sie sich als Gast ein</Text>
-            </Pressable>
+            <View style={styles.guestButtonRow}>
+              <View style={styles.guestButtonSpacer} />
+              <Pressable
+                onPress={() => countAttendance(attendanceMode, 'guest')}
+                style={({ pressed }) => [[styles.tanzeemBtn, styles.guestButton, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+              >
+                <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>Gast</Text>
+              </Pressable>
+              <View style={styles.guestButtonSpacer} />
+            </View>
           </>
         ) : terminalMode === 'majlis' ? (
           <>
@@ -1544,6 +1551,16 @@ function AppContent() {
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
               <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
+            <View style={styles.guestButtonRow}>
+              <View style={styles.guestButtonSpacer} />
+              <Pressable
+                onPress={() => countAttendance(attendanceMode, 'guest')}
+                style={({ pressed }) => [[styles.tanzeemBtn, styles.majlisGuestButton], pressed && styles.buttonPressed]}
+              >
+                <Text style={[styles.presetBtnText, styles.majlisGuestButtonText]}>Gast</Text>
+              </Pressable>
+              <View style={styles.guestButtonSpacer} />
+            </View>
             {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
             {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
             <View style={styles.gridWrap}>
@@ -2015,8 +2032,11 @@ const styles = StyleSheet.create({
   privacyBulletDot: { width: 16, fontSize: 15, lineHeight: 24, fontWeight: '500' },
   privacyBulletText: { flex: 1, fontSize: 15, lineHeight: 24, fontWeight: '400' },
   privacyDivider: { height: 1, marginTop: 10, opacity: 0.45 },
-  guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
-  guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
+  guestButtonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  guestButtonSpacer: { flex: 1 },
+  guestButton: { flex: 1 },
+  majlisGuestButton: { flex: 1, backgroundColor: '#000000' },
+  majlisGuestButtonText: { color: '#FFFFFF' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   statsHeaderCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 16, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
