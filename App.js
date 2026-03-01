@@ -502,6 +502,14 @@ const getNextPrayer = (now, timesToday) => {
   return (next || entries[0]).name;
 };
 
+const getToastTone = (message) => {
+  const value = String(message || '').toLowerCase();
+  if (!value) return 'positive';
+  if (/✓|gespeichert|gezählt|entfernt/.test(value)) return 'positive';
+  if (/fehler|nicht|konnte|bereits|bitte|kein\s/.test(value)) return 'negative';
+  return 'positive';
+};
+
 const getDisplayPrayerLabel = (key, timesToday) => {
   const soharAsrMerged = isValidTime(timesToday?.sohar) && timesToday?.sohar === timesToday?.asr;
   const maghribIshaaMerged = isValidTime(timesToday?.maghrib) && timesToday?.maghrib === timesToday?.ishaa;
@@ -1904,7 +1912,7 @@ function AppContent() {
       </Modal>
 
       {toast ? (
-        <View style={[styles.toast, { backgroundColor: '#16A34A' }]}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{toast}</Text></View>
+        <View style={[styles.toast, { backgroundColor: getToastTone(toast) === 'negative' ? '#DC2626' : '#16A34A' }]}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{toast}</Text></View>
       ) : null}
     </SafeAreaView>
   );
