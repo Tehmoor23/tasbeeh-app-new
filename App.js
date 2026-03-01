@@ -504,8 +504,8 @@ const getNextPrayer = (now, timesToday) => {
 const getToastTone = (message) => {
   const value = String(message || '').toLowerCase();
   if (!value) return 'positive';
-  if (/✓|gespeichert|gezählt|entfernt/.test(value)) return 'positive';
   if (/fehler|nicht|konnte|bereits|bitte|kein\s/.test(value)) return 'negative';
+  if (/✓|gespeichert|gezählt|entfernt/.test(value)) return 'positive';
   return 'positive';
 };
 
