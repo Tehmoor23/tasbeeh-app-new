@@ -191,6 +191,7 @@ const FIXED_TIMES = {
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const RAMADAN_END_ISO = '2026-03-19';
 
 const RAMADAN_RAW = {
@@ -915,7 +916,12 @@ function AppContent() {
   const memberChoices = useMemo(() => (
     membersDirectory
       .filter((entry) => entry.tanzeem === selectedTanzeem && entry.majlis === selectedMajlis)
-      .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)))
+      .sort((a, b) => {
+        const aNum = Number.parseInt(String(a.idNumber), 10);
+        const bNum = Number.parseInt(String(b.idNumber), 10);
+        if (Number.isFinite(aNum) && Number.isFinite(bNum)) return aNum - bNum;
+        return String(a.idNumber).localeCompare(String(b.idNumber));
+      })
   ), [membersDirectory, selectedMajlis, selectedTanzeem]);
 
   useEffect(() => {
@@ -1299,7 +1305,7 @@ function AppContent() {
             {memberChoices.map((member) => (
               <Pressable key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', selectedMajlis, member)}>
                 <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
-                <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text>
+                {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
               </Pressable>
             ))}
           </View>
@@ -1526,9 +1532,9 @@ function AppContent() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
-      <View style={styles.logoWrap}>
+      <Pressable style={styles.logoWrap} onPress={() => setActiveTab('gebetsplan')}>
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
-      </View>
+      </Pressable>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
