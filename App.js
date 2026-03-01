@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   Image,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -97,6 +98,85 @@ const MAJLIS_LABELS = {
   roedelheim: 'Rödelheim',
   zeilsheim: 'Zeilsheim',
 };
+
+const PRIVACY_POLICY_TEXT = `Datenschutzerklärung – Verarbeitung von Mitgliedsdaten
+
+1. Gegenstand der Verarbeitung
+
+Im Rahmen der Nutzung dieser App werden bereits bestehende Mitgliedsdaten verarbeitet. Hierzu gehören insbesondere:
+
+• Mitglieds-ID (bereits bestehende Registrierungsnummer)
+• Name (sofern im System hinterlegt)
+• Zuordnung zu Majlis und Tanzeem
+• Anwesenheits- bzw. Teilnahmeeinträge
+
+Die Mitglieds-IDs bestehen unabhängig von dieser App und wurden nicht durch diese neu erzeugt.
+
+2. Zweck der Datenverarbeitung
+
+Die Verarbeitung erfolgt ausschließlich zur:
+
+• eindeutigen Zuordnung von Mitgliedern
+• Vermeidung von Doppeleinträgen
+• internen organisatorischen Dokumentation (z. B. Anwesenheit)
+• statistischen Auswertung im Rahmen der jeweiligen Veranstaltung oder Funktion
+
+Eine Nutzung der Daten zu anderen Zwecken erfolgt nicht.
+
+3. Rechtsgrundlage
+
+Die Verarbeitung erfolgt auf Grundlage von:
+
+Art. 6 Abs. 1 lit. a DSGVO (Einwilligung),
+da die Nutzung der App sowie die Eingabe der Daten freiwillig erfolgt.
+
+Alternativ – sofern organisatorisch einschlägig – kann die Verarbeitung auch auf Grundlage von:
+
+Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse) erfolgen,
+wobei das berechtigte Interesse in der strukturierten und effizienten internen Organisation besteht.
+
+4. Freiwilligkeit
+
+Die Nutzung der App und die Eingabe der Mitgliedsdaten erfolgen freiwillig.
+Es entstehen keine Nachteile bei Nichtnutzung.
+
+5. Speicherung und technische Umsetzung
+
+Die Daten werden in einer Cloud-Datenbank gespeichert, konkret in Firestore (Google Firebase).
+
+Die Speicherung erfolgt auf Servern von:
+
+Google
+(im Rahmen von Google Firebase)
+
+Die Datenübertragung erfolgt verschlüsselt (HTTPS/TLS).
+
+Es werden angemessene technische und organisatorische Maßnahmen gemäß Art. 32 DSGVO getroffen, um die Sicherheit der Daten zu gewährleisten.
+
+6. Datenminimierung
+
+Es werden ausschließlich diejenigen personenbezogenen Daten verarbeitet, die für die jeweilige Funktion zwingend erforderlich sind.
+Eine weitergehende Profilbildung oder automatisierte Entscheidungsfindung findet nicht statt.
+
+7. Speicherdauer
+
+Die Daten werden nur so lange gespeichert, wie dies für den jeweiligen Verarbeitungszweck erforderlich ist.
+Nicht mehr benötigte Daten werden regelmäßig gelöscht oder anonymisiert.
+
+(⚠ Hier kannst du später noch eine konkrete Frist einsetzen, z. B. „maximal 12 Monate“.)
+
+8. Betroffenenrechte
+
+Betroffene Personen haben das Recht auf:
+
+• Auskunft (Art. 15 DSGVO)
+• Berichtigung (Art. 16 DSGVO)
+• Löschung (Art. 17 DSGVO)
+• Einschränkung der Verarbeitung (Art. 18 DSGVO)
+• Widerspruch (Art. 21 DSGVO)
+• Datenübertragbarkeit (Art. 20 DSGVO)
+
+Ein Widerruf einer erteilten Einwilligung ist jederzeit möglich.`;
 
 const FIREBASE_CONFIG = {
   apiKey: 'AIzaSyC_Kz1Cxs-HQ5G994mBztV_ADlAHYsgDKs',
@@ -455,6 +535,7 @@ function AppContent() {
   const [manualAsrTime, setManualAsrTime] = useState('');
   const [manualMaghribTime, setManualMaghribTime] = useState('');
   const [manualIshaaTime, setManualIshaaTime] = useState('');
+  const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
@@ -1204,6 +1285,13 @@ function AppContent() {
           <Text style={[styles.urduText, { color: theme.muted, marginTop: 6 }]}>حاضری صرف فعال نماز میں درج کی جا سکتی ہے (30 منٹ پہلے یا 60 منٹ بعد تک)</Text>
         </>
       )}
+
+      <View style={styles.privacyNoticeWrap}>
+        <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
+        <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
+          <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   );
 
@@ -1426,6 +1514,23 @@ function AppContent() {
         ))}
       </View>
 
+
+      <Modal visible={isPrivacyModalVisible} animationType="slide" transparent onRequestClose={() => setPrivacyModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.card }]}> 
+            <View style={styles.privacyModalHeader}>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datenschutzerklärung</Text>
+              <Pressable onPress={() => setPrivacyModalVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.privacyModalBody}>
+              <Text style={[styles.privacyModalBodyText, { color: theme.text }]}>{PRIVACY_POLICY_TEXT}</Text>
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
       {toast ? (
         <View style={[styles.toast, { backgroundColor: '#16A34A' }]}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{toast}</Text></View>
       ) : null}
@@ -1504,6 +1609,18 @@ const styles = StyleSheet.create({
   nextPrayerValue: { textAlign: 'center', fontSize: 20, fontWeight: '800', marginTop: 4 },
   urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
 
+  privacyNoticeWrap: { marginTop: 26, paddingHorizontal: 6, alignItems: 'center' },
+  privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
+  privacyNoticeLinkWrap: { marginTop: 8, paddingVertical: 2, paddingHorizontal: 4 },
+  privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
+  privacyModalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.35)', justifyContent: 'center', padding: 16 },
+  privacyModalCard: { flex: 1, borderRadius: 16, overflow: 'hidden' },
+  privacyModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingTop: 10, paddingBottom: 8 },
+  privacyModalTitle: { fontSize: 20, fontWeight: '700' },
+  privacyModalCloseBtn: { paddingVertical: 6, paddingHorizontal: 4 },
+  privacyModalCloseText: { fontSize: 14, fontWeight: '500' },
+  privacyModalBody: { paddingHorizontal: 18, paddingBottom: 24, paddingTop: 6 },
+  privacyModalBodyText: { fontSize: 14, lineHeight: 22, fontWeight: '400' },
   guestLinkWrap: { alignSelf: 'center', marginTop: 8, paddingVertical: 4, paddingHorizontal: 8 },
   guestLinkText: { fontSize: 12, textDecorationLine: 'underline', fontWeight: '600' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
