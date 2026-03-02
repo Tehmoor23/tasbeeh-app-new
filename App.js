@@ -752,29 +752,11 @@ function AppContent() {
 
   useEffect(() => {
     if (activeTab !== 'terminal') return;
-
-    const scrollTerminalToTop = () => {
-      const scrollRef = terminalScrollRef.current;
-      scrollRef?.scrollTo?.({ y: 0, animated: false });
-      if (Platform.OS === 'web') {
-        const scrollNode = scrollRef?.getScrollableNode?.();
-        if (scrollNode && typeof scrollNode.scrollTo === 'function') {
-          scrollNode.scrollTo({ top: 0, behavior: 'auto' });
-        }
-        if (scrollNode && typeof scrollNode.scrollTop === 'number') {
-          scrollNode.scrollTop = 0;
-        }
-      }
-    };
-
-    scrollTerminalToTop();
-    const rafId = requestAnimationFrame(scrollTerminalToTop);
-    const timeoutId = setTimeout(scrollTerminalToTop, 0);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      clearTimeout(timeoutId);
-    };
+    terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    const rafId = requestAnimationFrame(() => {
+      terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [activeTab, terminalMode, attendanceMode]);
 
 
