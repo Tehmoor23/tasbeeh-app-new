@@ -1513,7 +1513,6 @@ function AppContent() {
     const isPrayerMode = attendanceMode === 'prayer';
     const hasActiveAttendanceWindow = isPrayerMode ? prayerWindow.isActive : programWindow.isActive;
     const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : 'Programmanwesenheit';
-  const selectionTileBorderColor = isDarkMode ? '#FFFFFF' : '#000000';
 
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
@@ -1596,7 +1595,7 @@ function AppContent() {
             {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
             <View style={styles.gridWrap}>
               {majlisChoices.map((loc) => (
-                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: selectionTileBorderColor, borderWidth: 2 }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
+                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
                   <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{loc}</Text>
                 </Pressable>
               ))}
@@ -1637,7 +1636,7 @@ function AppContent() {
                   keyboardType="number-pad"
                   inputMode="numeric"
                   returnKeyType="done"
-                  style={[styles.idSearchInput, { color: theme.text, borderColor: selectionTileBorderColor, backgroundColor: theme.card }]}
+                  style={[styles.idSearchInput, { color: theme.text, borderColor: isDarkMode ? '#FFFFFF' : '#000000', backgroundColor: theme.card }]}
                 />
                 {isIdSearchFocused && !idSearchQuery ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte ID eingeben</Text>
@@ -1650,7 +1649,7 @@ function AppContent() {
                     {visibleMemberChoices.map((member) => (
                       <Pressable
                         key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                        style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: selectionTileBorderColor, borderWidth: 2 }], pressed && styles.buttonPressed]}
+                        style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
                         onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}
                       >
                         <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
