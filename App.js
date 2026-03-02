@@ -584,6 +584,7 @@ function AppContent() {
   const [programConfigByDate, setProgramConfigByDate] = useState({});
   const [programStats, setProgramStats] = useState(null);
   const [idSearchQuery, setIdSearchQuery] = useState('');
+  const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [selectedMemberForConfirm, setSelectedMemberForConfirm] = useState(null);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
@@ -765,15 +766,16 @@ function AppContent() {
   useEffect(() => {
     if (terminalMode !== 'idSelection') {
       setIdSearchQuery('');
+      setIsIdSearchFocused(false);
       setSelectedMemberForConfirm(null);
     }
   }, [terminalMode, selectedTanzeem, selectedMajlis]);
 
   useEffect(() => {
     if (!selectedMemberForConfirm) return;
-    const stillVisible = filteredMemberChoices.some((entry) => String(entry.idNumber) === String(selectedMemberForConfirm.idNumber));
+    const stillVisible = visibleMemberChoices.some((entry) => String(entry.idNumber) === String(selectedMemberForConfirm.idNumber));
     if (!stillVisible) setSelectedMemberForConfirm(null);
-  }, [filteredMemberChoices, selectedMemberForConfirm]);
+  }, [visibleMemberChoices, selectedMemberForConfirm]);
 
 
   useEffect(() => {
@@ -1103,6 +1105,12 @@ function AppContent() {
         return String(a.idNumber).localeCompare(String(b.idNumber));
       });
   }, [memberChoices, idSearchQuery]);
+
+  const visibleMemberChoices = useMemo(() => {
+    if (idSearchQuery) return filteredMemberChoices;
+    if (isIdSearchFocused) return [];
+    return memberChoices;
+  }, [filteredMemberChoices, idSearchQuery, isIdSearchFocused, memberChoices]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return undefined;
@@ -1631,6 +1639,8 @@ function AppContent() {
                     const digitsOnly = String(value || '').replace(/[^0-9]/g, '');
                     setIdSearchQuery(digitsOnly);
                   }}
+                  onFocus={() => setIsIdSearchFocused(true)}
+                  onBlur={() => setIsIdSearchFocused(false)}
                   placeholder="ID eingeben"
                   placeholderTextColor={theme.muted}
                   keyboardType="number-pad"
@@ -1638,13 +1648,15 @@ function AppContent() {
                   returnKeyType="done"
                   style={[styles.idSearchInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
                 />
-                {!idSearchQuery ? (
+                {isIdSearchFocused && !idSearchQuery ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte ID eingeben</Text>
-                ) : filteredMemberChoices.length === 0 ? (
+                ) : idSearchQuery && filteredMemberChoices.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden</Text>
+                ) : visibleMemberChoices.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine ID-Nummern verfügbar.</Text>
                 ) : (
                   <View style={styles.gridWrap}>
-                    {filteredMemberChoices.map((member) => {
+                    {visibleMemberChoices.map((member) => {
                       const isSelected = String(selectedMemberForConfirm?.idNumber || '') === String(member.idNumber);
                       return (
                         <Pressable
