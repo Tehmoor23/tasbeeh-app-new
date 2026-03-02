@@ -239,6 +239,136 @@ const THEME = {
 };
 
 const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+const STATS_PRAYER_SEQUENCE = [
+  { key: 'fajr', label: 'Fajr' },
+  { key: 'sohar', label: 'Zuhr' },
+  { key: 'asr', label: 'Asr' },
+  { key: 'maghrib', label: 'Maghrib' },
+  { key: 'ishaa', label: 'Isha' },
+];
+const STATS_TANZEEM_KEYS = ['ansar', 'khuddam', 'atfal'];
+
+const getPrayerCountsForStats = (attendanceData) => {
+  const byPrayer = attendanceData?.byPrayer || {};
+  return STATS_PRAYER_SEQUENCE.map(({ key, label }) => {
+    const prayer = byPrayer[key] || {};
+    const guest = Number(prayer.guest) || 0;
+    const tanzeemMap = prayer.tanzeem || {};
+    const tanzeemTotals = STATS_TANZEEM_KEYS.reduce((acc, tanzeemKey) => {
+      const majlisMap = tanzeemMap[tanzeemKey]?.majlis || {};
+      const value = Object.values(majlisMap).reduce((sum, count) => sum + (Number(count) || 0), 0);
+      acc[tanzeemKey] = value;
+      return acc;
+    }, {});
+    const total = guest + STATS_TANZEEM_KEYS.reduce((sum, keyName) => sum + (tanzeemTotals[keyName] || 0), 0);
+    return { key, label, total, tanzeemTotals, guest };
+  });
+};
+
+const getDailyTotalsForStats = (attendanceData) => {
+  const prayers = getPrayerCountsForStats(attendanceData);
+  return {
+    total: prayers.reduce((sum, row) => sum + (row.total || 0), 0),
+    tanzeemTotals: STATS_TANZEEM_KEYS.reduce((acc, key) => {
+      acc[key] = prayers.reduce((sum, row) => sum + (row.tanzeemTotals?.[key] || 0), 0);
+      return acc;
+    }, {}),
+  };
+};
+
+function MiniLineChart({ labels, series, theme, isDarkMode }) {
+  const chartHeight = 156;
+  const plotHeight = 96;
+  const plotTop = 18;
+  const leftPad = 14;
+  const rightPad = 14;
+  const pointCount = Math.max(2, labels.length);
+  const maxValue = Math.max(1, ...series.flatMap((line) => line.data.map((value) => Number(value) || 0)));
+
+  const getXPercent = (index) => leftPad + ((100 - leftPad - rightPad) * (index / (pointCount - 1)));
+  const getY = (value) => plotTop + (plotHeight - ((Number(value) || 0) / maxValue) * plotHeight);
+
+  return (
+    <View style={styles.chartWrap}>
+      <View style={[styles.chartCanvas, { backgroundColor: theme.bg, borderColor: theme.border, height: chartHeight }]}> 
+        {[0, 1, 2, 3].map((tick) => {
+          const y = plotTop + (plotHeight / 3) * tick;
+          return (
+            <View
+              key={`grid_${tick}`}
+              style={[
+                styles.chartGridLine,
+                { top: y, borderColor: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(17,24,39,0.16)' },
+              ]}
+            />
+          );
+        })}
+
+        {series.map((line) => line.data.map((value, index) => {
+          if (index === 0) return null;
+          const x1 = getXPercent(index - 1);
+          const y1 = getY(line.data[index - 1]);
+          const x2 = getXPercent(index);
+          const y2 = getY(value);
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx);
+          return (
+            <View
+              key={`${line.key}_seg_${index}`}
+              style={[
+                styles.chartSegment,
+                {
+                  left: `${x1}%`,
+                  top: y1,
+                  width: `${length}%`,
+                  backgroundColor: line.color,
+                  transform: [{ rotateZ: `${angle}rad` }],
+                  height: line.thick ? 3 : 2,
+                  opacity: line.thick ? 1 : 0.86,
+                },
+              ]}
+            />
+          );
+        }))}
+
+        {series.map((line) => line.data.map((value, index) => (
+          <View
+            key={`${line.key}_pt_${index}`}
+            style={[
+              styles.chartPoint,
+              {
+                left: `${getXPercent(index)}%`,
+                top: getY(value),
+                backgroundColor: line.color,
+                width: line.thick ? 8 : 6,
+                height: line.thick ? 8 : 6,
+                borderColor: theme.card,
+              },
+            ]}
+          />
+        )))}
+      </View>
+
+      <View style={styles.chartLabelsRow}>
+        {labels.map((label, index) => (
+          <Text key={`${label}_${index}`} style={[styles.chartLabel, { color: theme.muted }]}>{label}</Text>
+        ))}
+      </View>
+
+      <View style={styles.chartLegendRow}>
+        {series.map((line) => (
+          <View key={`legend_${line.key}`} style={styles.chartLegendItem}>
+            <View style={[styles.chartLegendDot, { backgroundColor: line.color }]} />
+            <Text style={[styles.chartLegendText, { color: theme.text }]}>{line.label}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
 const pad = (n) => String(n).padStart(2, '0');
 const toISO = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const parseISO = (iso) => (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? null : new Date(`${iso}T00:00:00`));
@@ -565,6 +695,10 @@ function AppContent() {
   const [toast, setToast] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsAttendance, setStatsAttendance] = useState(null);
+  const [statsGraphRange, setStatsGraphRange] = useState('today');
+  const [statsGraphDetail, setStatsGraphDetail] = useState('total');
+  const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
+  const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [overrideSaving, setOverrideSaving] = useState(false);
@@ -1287,6 +1421,92 @@ function AppContent() {
     };
   }, [statsAttendance, statsPrayerKey, soharAsrMergedToday, maghribIshaaMergedToday, hasSoharAsrOverrideToday, hasMaghribIshaaOverrideToday]);
 
+
+  const statsWeekIsos = useMemo(() => (
+    Array.from({ length: 7 }, (_, index) => toISO(addDays(now, index - 6)))
+  ), [now]);
+  const statsPrevWeekIsos = useMemo(() => (
+    Array.from({ length: 7 }, (_, index) => toISO(addDays(now, index - 13)))
+  ), [now]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'prayer') return undefined;
+
+    let cancelled = false;
+    const targetIsos = [...statsPrevWeekIsos, ...statsWeekIsos];
+
+    const fetchWeeklyStats = () => {
+      setWeeklyStatsLoading(true);
+      Promise.all(targetIsos.map((iso) => getDocData('attendance_daily', iso).then((data) => [iso, data || null])))
+        .then((rows) => {
+          if (cancelled) return;
+          const next = rows.reduce((acc, [iso, data]) => {
+            acc[iso] = data;
+            return acc;
+          }, {});
+          setWeeklyAttendanceDocs(next);
+          setWeeklyStatsLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setWeeklyStatsLoading(false);
+          setToast('Datenbankfehler – bitte Internet prüfen');
+        });
+    };
+
+    fetchWeeklyStats();
+    const timer = setInterval(fetchWeeklyStats, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeTab, statsMode, statsPrevWeekIsos, statsWeekIsos]);
+
+  const todayGraphRows = useMemo(() => getPrayerCountsForStats(statsAttendance), [statsAttendance]);
+  const todayGraphSummary = useMemo(() => {
+    if (!todayGraphRows.length) return null;
+    const totalValues = todayGraphRows.map((row) => row.total || 0);
+    const highest = todayGraphRows.reduce((best, row) => ((row.total || 0) > (best.total || 0) ? row : best), todayGraphRows[0]);
+    const lowest = todayGraphRows.reduce((worst, row) => ((row.total || 0) < (worst.total || 0) ? row : worst), todayGraphRows[0]);
+    const average = totalValues.reduce((sum, value) => sum + value, 0) / Math.max(1, totalValues.length);
+    const tanzeemTotals = STATS_TANZEEM_KEYS.reduce((acc, key) => {
+      acc[key] = todayGraphRows.reduce((sum, row) => sum + (row.tanzeemTotals?.[key] || 0), 0);
+      return acc;
+    }, {});
+    const tanzeemGrandTotal = Object.values(tanzeemTotals).reduce((sum, value) => sum + value, 0);
+    const tanzeemPercentages = STATS_TANZEEM_KEYS.reduce((acc, key) => {
+      acc[key] = tanzeemGrandTotal > 0 ? (tanzeemTotals[key] / tanzeemGrandTotal) * 100 : 0;
+      return acc;
+    }, {});
+    return { highest, lowest, average, tanzeemPercentages };
+  }, [todayGraphRows]);
+
+  const weekSeriesRows = useMemo(() => statsWeekIsos.map((iso) => {
+    const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
+    return {
+      iso,
+      label: parseISO(iso) ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(parseISO(iso)) : iso,
+      total: totals.total,
+      tanzeemTotals: totals.tanzeemTotals,
+    };
+  }), [statsWeekIsos, weeklyAttendanceDocs]);
+
+  const previousWeekTotal = useMemo(() => statsPrevWeekIsos.reduce((sum, iso) => {
+    const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
+    return sum + totals.total;
+  }, 0), [statsPrevWeekIsos, weeklyAttendanceDocs]);
+
+  const weekGraphSummary = useMemo(() => {
+    if (!weekSeriesRows.length) return null;
+    const highest = weekSeriesRows.reduce((best, row) => (row.total > best.total ? row : best), weekSeriesRows[0]);
+    const lowest = weekSeriesRows.reduce((worst, row) => (row.total < worst.total ? row : worst), weekSeriesRows[0]);
+    const weekTotal = weekSeriesRows.reduce((sum, row) => sum + row.total, 0);
+    const averagePerDay = weekTotal / Math.max(1, weekSeriesRows.length);
+    const previousAvg = previousWeekTotal / 7;
+    const trendPercent = previousAvg > 0 ? ((averagePerDay - previousAvg) / previousAvg) * 100 : 0;
+    return { highest, lowest, averagePerDay, trendPercent };
+  }, [weekSeriesRows, previousWeekTotal]);
+
   const formatMajlisName = (locationKey) => {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
@@ -1700,6 +1920,37 @@ function AppContent() {
       .sort((a, b) => (Number(b[1]) - Number(a[1])) || a[0].localeCompare(b[0]))
       .slice(0, 8);
 
+    const chartPalette = {
+      total: isDarkMode ? '#F9FAFB' : '#111827',
+      ansar: '#2563EB',
+      khuddam: '#16A34A',
+      atfal: '#F59E0B',
+      guest: '#A855F7',
+    };
+    const isTodayChart = statsGraphRange === 'today';
+    const isDetailedChart = statsGraphDetail === 'detailed';
+    const chartLabels = isTodayChart
+      ? STATS_PRAYER_SEQUENCE.map((item) => item.label)
+      : weekSeriesRows.map((item) => item.label);
+    const chartSeries = isTodayChart
+      ? [
+        { key: 'total', label: 'Gesamt', color: chartPalette.total, thick: true, data: todayGraphRows.map((row) => row.total || 0) },
+        ...(isDetailedChart ? [
+          { key: 'ansar', label: 'Ansar', color: chartPalette.ansar, data: todayGraphRows.map((row) => row.tanzeemTotals?.ansar || 0) },
+          { key: 'khuddam', label: 'Khuddam', color: chartPalette.khuddam, data: todayGraphRows.map((row) => row.tanzeemTotals?.khuddam || 0) },
+          { key: 'atfal', label: 'Atfal', color: chartPalette.atfal, data: todayGraphRows.map((row) => row.tanzeemTotals?.atfal || 0) },
+          { key: 'guest', label: 'Gäste', color: chartPalette.guest, data: todayGraphRows.map((row) => row.guest || 0) },
+        ] : []),
+      ]
+      : [
+        { key: 'total', label: 'Gesamt', color: chartPalette.total, thick: true, data: weekSeriesRows.map((row) => row.total || 0) },
+        ...(isDetailedChart ? [
+          { key: 'ansar', label: 'Ansar', color: chartPalette.ansar, data: weekSeriesRows.map((row) => row.tanzeemTotals?.ansar || 0) },
+          { key: 'khuddam', label: 'Khuddam', color: chartPalette.khuddam, data: weekSeriesRows.map((row) => row.tanzeemTotals?.khuddam || 0) },
+          { key: 'atfal', label: 'Atfal', color: chartPalette.atfal, data: weekSeriesRows.map((row) => row.tanzeemTotals?.atfal || 0) },
+        ] : []),
+      ];
+
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
@@ -1763,12 +2014,67 @@ function AppContent() {
             </>
           )
         ) : (
-          (!statsAttendance?.byPrayer || !statsView) ? (
+          <>
             <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-              <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+              <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Live Verlauf</Text>
+              <View style={styles.statsToggleRow}>
+                {[
+                  { key: 'today', label: '<< Heute >>' },
+                  { key: 'week', label: '<< Woche >>' },
+                ].map((option) => {
+                  const isActive = statsGraphRange === option.key;
+                  return (
+                    <Pressable key={option.key} onPress={() => setStatsGraphRange(option.key)} style={[styles.statsToggleBtn, { backgroundColor: isActive ? theme.button : theme.bg, borderColor: theme.border }]}>
+                      <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={styles.statsToggleRow}>
+                {[
+                  { key: 'total', label: '<< Gesamt >>' },
+                  { key: 'detailed', label: '<< Gesamt + Tanzeem >>' },
+                ].map((option) => {
+                  const isActive = statsGraphDetail === option.key;
+                  return (
+                    <Pressable key={option.key} onPress={() => setStatsGraphDetail(option.key)} style={[styles.statsToggleBtn, { backgroundColor: isActive ? theme.button : theme.bg, borderColor: theme.border }]}>
+                      <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} />
+
+              {statsGraphRange === 'today' && todayGraphSummary ? (
+                <View style={styles.statsInsightWrap}>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet: {todayGraphSummary.highest.label} ({todayGraphSummary.highest.total})</Text>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet: {todayGraphSummary.lowest.label} ({todayGraphSummary.lowest.total})</Text>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet: {todayGraphSummary.average.toFixed(1)}</Text>
+                  {statsGraphDetail === 'detailed' ? (
+                    <Text style={[styles.statsInsightText, { color: theme.text }]}>Tanzeem-Verteilung: Ansar {todayGraphSummary.tanzeemPercentages.ansar.toFixed(1)}% · Khuddam {todayGraphSummary.tanzeemPercentages.khuddam.toFixed(1)}% · Atfal {todayGraphSummary.tanzeemPercentages.atfal.toFixed(1)}%</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {statsGraphRange === 'week' && weekGraphSummary ? (
+                <View style={styles.statsInsightWrap}>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag: {weekGraphSummary.averagePerDay.toFixed(1)}</Text>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag: {weekGraphSummary.highest.label} ({weekGraphSummary.highest.total})</Text>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Niedrigster Tag: {weekGraphSummary.lowest.label} ({weekGraphSummary.lowest.total})</Text>
+                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Trend vs. vorherige 7 Tage: {weekGraphSummary.trendPercent >= 0 ? '+' : ''}{weekGraphSummary.trendPercent.toFixed(1)}%</Text>
+                </View>
+              ) : null}
+
+              {weeklyStatsLoading && statsGraphRange === 'week' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
             </View>
-          ) : (
-            <>
+
+            {(!statsAttendance?.byPrayer || !statsView) ? (
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
+              </View>
+            ) : (
+              <>
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{statsView.totalAttendance}</Text>
@@ -1860,8 +2166,9 @@ function AppContent() {
                   ));
                 })()}
               </View>
-            </>
-          )
+              </>
+            )}
+          </>
         )}
       </ScrollView>
     );
@@ -2131,6 +2438,22 @@ const styles = StyleSheet.create({
   statsHeaderDate: { marginTop: 2, fontSize: 16, fontWeight: '600', textTransform: 'capitalize', textAlign: 'center' },
   statsHeaderSubline: { marginTop: 3, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   statsHeaderDivider: { marginTop: 10, height: 1, width: '100%' },
+  statsToggleRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  statsToggleBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 9, alignItems: 'center' },
+  statsToggleBtnText: { fontSize: 12, fontWeight: '700' },
+  chartWrap: { marginTop: 12 },
+  chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
+  chartGridLine: { position: 'absolute', left: 8, right: 8, borderTopWidth: 1, opacity: 0.8 },
+  chartSegment: { position: 'absolute', borderRadius: 999 },
+  chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999, transform: [{ translateX: -4 }, { translateY: -4 }] },
+  chartLabelsRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
+  chartLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
+  chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chartLegendDot: { width: 10, height: 10, borderRadius: 999 },
+  chartLegendText: { fontSize: 12, fontWeight: '600' },
+  statsInsightWrap: { marginTop: 12, gap: 4 },
+  statsInsightText: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
   statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
