@@ -1484,7 +1484,7 @@ function AppContent() {
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
           </Pressable>
           <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
-          <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>عبادت حاضری</Text>
+          <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>{isPrayerMode ? 'نماز حاضری' : 'پروگرام حاضری'}</Text>
           <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
         </View>
 
@@ -1528,7 +1528,7 @@ function AppContent() {
         {hasActiveAttendanceWindow ? terminalMode === 'tanzeem' ? (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم تنظیم منتخب کریں</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
             <View style={styles.tanzeemRow}>
               {TANZEEM_OPTIONS.map((tanzeem) => (
                 <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
@@ -1550,7 +1550,7 @@ function AppContent() {
         ) : terminalMode === 'majlis' ? (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی مجلس منتخب کریں</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
@@ -1577,7 +1577,7 @@ function AppContent() {
         ) : (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی آئی ڈی منتخب کریں</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
@@ -1596,7 +1596,7 @@ function AppContent() {
         ) : (
           <>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isPrayerMode ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).' : 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'}</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>{isPrayerMode ? 'حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک).' : 'پروگرام حاضری صرف فعال پروگرام کے دوران درج کی جا سکتی ہے۔'}</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>{isPrayerMode ? 'حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔' : 'پروگرام حاضری صرف فعال پروگرام کے دوران درج کی جا سکتی ہے۔'}</Text>
           </>
         )}
 
