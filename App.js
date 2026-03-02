@@ -769,7 +769,6 @@ function AppContent() {
     }
   }, [terminalMode, selectedTanzeem, selectedMajlis]);
 
-
   useEffect(() => {
     let cancelled = false;
     setOverrideLoading(true);
