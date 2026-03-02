@@ -587,7 +587,6 @@ function AppContent() {
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
-  const prayerScrollRef = useRef(null);
   const terminalScrollRef = useRef(null);
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
@@ -769,15 +768,6 @@ function AppContent() {
       setIsIdSearchFocused(false);
     }
   }, [terminalMode, selectedTanzeem, selectedMajlis]);
-
-  const handleLogoPress = () => {
-    setActiveTab('gebetsplan');
-    prayerScrollRef.current?.scrollTo?.({ y: 0, animated: false });
-    requestAnimationFrame(() => {
-      prayerScrollRef.current?.scrollTo?.({ y: 0, animated: false });
-    });
-  };
-
 
   useEffect(() => {
     let cancelled = false;
@@ -1497,7 +1487,7 @@ function AppContent() {
   const renderPrayer = () => {
     const displayDate = selectedDate || now;
     return (
-      <ScrollView ref={prayerScrollRef} contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
           <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
@@ -1981,7 +1971,7 @@ function AppContent() {
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
-      <Pressable style={styles.logoWrap} onPress={handleLogoPress}>
+      <Pressable style={styles.logoWrap} onPress={() => setActiveTab('gebetsplan')}>
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </Pressable>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
