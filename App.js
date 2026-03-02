@@ -277,12 +277,12 @@ const getDailyTotalsForStats = (attendanceData) => {
   };
 };
 
-function MiniLineChart({ labels, series, theme, isDarkMode }) {
-  const chartHeight = 220;
-  const plotTop = 14;
-  const plotBottom = 40;
-  const axisLabelWidth = 34;
-  const plotRightPad = 10;
+function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse' }) {
+  const chartHeight = 280;
+  const plotTop = 18;
+  const plotBottom = 52;
+  const axisLabelWidth = 42;
+  const plotRightPad = 14;
   const tickCount = 5;
   const [chartWidth, setChartWidth] = useState(0);
 
@@ -312,11 +312,12 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
 
   return (
     <View style={styles.chartWrap}>
+      <Text style={[styles.chartAxisTitleY, { color: theme.muted }]}>Anzahl</Text>
+
       <View
         onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
         style={[styles.chartCanvas, { backgroundColor: theme.bg, borderColor: theme.border, height: chartHeight }]}
       >
-        <Text style={[styles.chartAxisTitleY, { color: theme.muted }]}>Anzahl</Text>
         {chartWidth > 0 ? (
           <>
             <View
@@ -367,7 +368,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
               const dy = y2 - y1;
               const length = Math.sqrt(dx * dx + dy * dy);
               const angle = Math.atan2(dy, dx);
-              const thickness = line.thick ? 3 : 2;
+              const thickness = line.thick ? 4 : 2;
               const midX = (x1 + x2) / 2;
               const midY = (y1 + y2) / 2;
               return (
@@ -382,7 +383,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
                       backgroundColor: line.color,
                       transform: [{ rotateZ: `${angle}rad` }],
                       height: thickness,
-                      opacity: line.thick ? 1 : 0.86,
+                      opacity: line.thick ? 1 : 0.9,
                     },
                   ]}
                 />
@@ -398,10 +399,10 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
                     left: getX(index),
                     top: getY(value),
                     backgroundColor: line.color,
-                    width: line.thick ? 8 : 6,
-                    height: line.thick ? 8 : 6,
+                    width: line.thick ? 9 : 7,
+                    height: line.thick ? 9 : 7,
                     borderColor: theme.card,
-                    transform: [{ translateX: line.thick ? -4 : -3 }, { translateY: line.thick ? -4 : -3 }],
+                    transform: [{ translateX: line.thick ? -4.5 : -3.5 }, { translateY: line.thick ? -4.5 : -3.5 }],
                   },
                 ]}
               />
@@ -410,13 +411,22 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
         ) : null}
       </View>
 
-      <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad }]}> 
-        {labels.map((label, index) => (
-          <Text key={`${label}_${index}`} style={[styles.chartLabel, { color: theme.muted }]}>{label}</Text>
-        ))}
+      <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad, height: 20 }]}> 
+        {chartWidth > 0 ? labels.map((label, index) => {
+          const left = getX(index) - axisLabelWidth;
+          return (
+            <Text
+              key={`${label}_${index}`}
+              numberOfLines={1}
+              style={[styles.chartLabel, { color: theme.muted, position: 'absolute', left, width: axisLabelWidth * 2 }]}
+            >
+              {label}
+            </Text>
+          );
+        }) : null}
       </View>
 
-      <Text style={[styles.chartAxisTitleX, { color: theme.muted }]}>Zeitachse</Text>
+      <Text style={[styles.chartAxisTitleX, { color: theme.muted }]}>{xAxisTitle}</Text>
 
       <View style={styles.chartLegendRow}>
         {series.map((line) => (
@@ -756,7 +766,7 @@ function AppContent() {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsAttendance, setStatsAttendance] = useState(null);
   const [statsGraphRange, setStatsGraphRange] = useState('today');
-  const [statsGraphDetail, setStatsGraphDetail] = useState('total');
+  const [statsGraphSeries, setStatsGraphSeries] = useState('total');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
@@ -1988,28 +1998,51 @@ function AppContent() {
       guest: '#A855F7',
     };
     const isTodayChart = statsGraphRange === 'today';
-    const isDetailedChart = statsGraphDetail === 'detailed';
     const chartLabels = isTodayChart
       ? STATS_PRAYER_SEQUENCE.map((item) => item.label)
       : weekSeriesRows.map((item) => item.label);
-    const chartSeries = isTodayChart
-      ? [
-        { key: 'total', label: 'Gesamt', color: chartPalette.total, thick: true, data: todayGraphRows.map((row) => row.total || 0) },
-        ...(isDetailedChart ? [
-          { key: 'ansar', label: 'Ansar', color: chartPalette.ansar, data: todayGraphRows.map((row) => row.tanzeemTotals?.ansar || 0) },
-          { key: 'khuddam', label: 'Khuddam', color: chartPalette.khuddam, data: todayGraphRows.map((row) => row.tanzeemTotals?.khuddam || 0) },
-          { key: 'atfal', label: 'Atfal', color: chartPalette.atfal, data: todayGraphRows.map((row) => row.tanzeemTotals?.atfal || 0) },
-          { key: 'guest', label: 'Gäste', color: chartPalette.guest, data: todayGraphRows.map((row) => row.guest || 0) },
-        ] : []),
-      ]
-      : [
-        { key: 'total', label: 'Gesamt', color: chartPalette.total, thick: true, data: weekSeriesRows.map((row) => row.total || 0) },
-        ...(isDetailedChart ? [
-          { key: 'ansar', label: 'Ansar', color: chartPalette.ansar, data: weekSeriesRows.map((row) => row.tanzeemTotals?.ansar || 0) },
-          { key: 'khuddam', label: 'Khuddam', color: chartPalette.khuddam, data: weekSeriesRows.map((row) => row.tanzeemTotals?.khuddam || 0) },
-          { key: 'atfal', label: 'Atfal', color: chartPalette.atfal, data: weekSeriesRows.map((row) => row.tanzeemTotals?.atfal || 0) },
-        ] : []),
-      ];
+
+    const seriesCycleOptions = isTodayChart
+      ? ['total', 'ansar', 'khuddam', 'atfal', 'guest']
+      : ['total', 'ansar', 'khuddam', 'atfal'];
+    const activeSeriesKey = seriesCycleOptions.includes(statsGraphSeries) ? statsGraphSeries : 'total';
+
+    const seriesConfig = {
+      total: {
+        key: 'total',
+        label: 'Gesamt',
+        color: chartPalette.total,
+        thick: true,
+        data: isTodayChart ? todayGraphRows.map((row) => row.total || 0) : weekSeriesRows.map((row) => row.total || 0),
+      },
+      ansar: {
+        key: 'ansar',
+        label: 'Ansar',
+        color: chartPalette.ansar,
+        data: isTodayChart ? todayGraphRows.map((row) => row.tanzeemTotals?.ansar || 0) : weekSeriesRows.map((row) => row.tanzeemTotals?.ansar || 0),
+      },
+      khuddam: {
+        key: 'khuddam',
+        label: 'Khuddam',
+        color: chartPalette.khuddam,
+        data: isTodayChart ? todayGraphRows.map((row) => row.tanzeemTotals?.khuddam || 0) : weekSeriesRows.map((row) => row.tanzeemTotals?.khuddam || 0),
+      },
+      atfal: {
+        key: 'atfal',
+        label: 'Atfal',
+        color: chartPalette.atfal,
+        data: isTodayChart ? todayGraphRows.map((row) => row.tanzeemTotals?.atfal || 0) : weekSeriesRows.map((row) => row.tanzeemTotals?.atfal || 0),
+      },
+      guest: {
+        key: 'guest',
+        label: 'Gäste',
+        color: chartPalette.guest,
+        data: todayGraphRows.map((row) => row.guest || 0),
+      },
+    };
+
+    const chartSeries = [seriesConfig[activeSeriesKey] || seriesConfig.total];
+    const chartXAxisTitle = isTodayChart ? 'Gebete' : 'Tage';
 
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
@@ -2078,40 +2111,57 @@ function AppContent() {
             <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
               <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Live Verlauf</Text>
               <View style={styles.statsToggleRow}>
-                {[
-                  { key: 'today', label: '<< Heute >>' },
-                  { key: 'week', label: '<< Woche >>' },
-                ].map((option) => {
-                  const isActive = statsGraphRange === option.key;
-                  return (
-                    <Pressable key={option.key} onPress={() => setStatsGraphRange(option.key)} style={[styles.statsToggleBtn, { backgroundColor: isActive ? theme.button : theme.bg, borderColor: theme.border }]}>
-                      <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{option.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              <View style={styles.statsToggleRow}>
-                {[
-                  { key: 'total', label: '<< Gesamt >>' },
-                  { key: 'detailed', label: '<< Gesamt + Tanzeem >>' },
-                ].map((option) => {
-                  const isActive = statsGraphDetail === option.key;
-                  return (
-                    <Pressable key={option.key} onPress={() => setStatsGraphDetail(option.key)} style={[styles.statsToggleBtn, { backgroundColor: isActive ? theme.button : theme.bg, borderColor: theme.border }]}>
-                      <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{option.label}</Text>
-                    </Pressable>
-                  );
-                })}
+                <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                  <Pressable
+                    onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                    style={styles.statsCyclerArrowBtn}
+                  >
+                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                  </Pressable>
+                  <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? 'Heute' : 'Woche'}</Text>
+                  <Pressable
+                    onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                    style={styles.statsCyclerArrowBtn}
+                  >
+                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                  </Pressable>
+                </View>
               </View>
 
-              <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} />
+              <View style={styles.statsToggleRow}>
+                <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                  <Pressable
+                    onPress={() => setStatsGraphSeries((prev) => {
+                      const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                      const idx = options.indexOf(prev);
+                      return options[(idx - 1 + options.length) % options.length];
+                    })}
+                    style={styles.statsCyclerArrowBtn}
+                  >
+                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                  </Pressable>
+                  <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{chartSeries[0]?.label || 'Gesamt'}</Text>
+                  <Pressable
+                    onPress={() => setStatsGraphSeries((prev) => {
+                      const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                      const idx = options.indexOf(prev);
+                      return options[(idx + 1) % options.length];
+                    })}
+                    style={styles.statsCyclerArrowBtn}
+                  >
+                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
 
               {statsGraphRange === 'today' && todayGraphSummary ? (
                 <View style={styles.statsInsightWrap}>
                   <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet: {todayGraphSummary.highest.label} ({todayGraphSummary.highest.total})</Text>
                   <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet: {todayGraphSummary.lowest.label} ({todayGraphSummary.lowest.total})</Text>
                   <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet: {todayGraphSummary.average.toFixed(1)}</Text>
-                  {statsGraphDetail === 'detailed' ? (
+                  {activeSeriesKey !== 'total' ? (
                     <Text style={[styles.statsInsightText, { color: theme.text }]}>Tanzeem-Verteilung: Ansar {todayGraphSummary.tanzeemPercentages.ansar.toFixed(1)}% · Khuddam {todayGraphSummary.tanzeemPercentages.khuddam.toFixed(1)}% · Atfal {todayGraphSummary.tanzeemPercentages.atfal.toFixed(1)}%</Text>
                   ) : null}
                 </View>
@@ -2501,18 +2551,22 @@ const styles = StyleSheet.create({
   statsToggleRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   statsToggleBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 9, alignItems: 'center' },
   statsToggleBtnText: { fontSize: 12, fontWeight: '700' },
+  statsCycler: { flex: 1, borderWidth: 1, borderRadius: 12, minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 },
+  statsCyclerArrowBtn: { paddingHorizontal: 8, paddingVertical: 6 },
+  statsCyclerArrow: { fontSize: 14, fontWeight: '800' },
+  statsCyclerValue: { fontSize: 14, fontWeight: '700' },
   chartWrap: { marginTop: 12 },
   chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
-  chartAxisTitleY: { position: 'absolute', left: 6, top: 4, fontSize: 10, fontWeight: '700' },
+  chartAxisTitleY: { marginBottom: 6, marginLeft: 6, fontSize: 10, fontWeight: '700' },
   chartAxisY: { position: 'absolute', width: 1 },
   chartAxisX: { position: 'absolute', height: 1 },
   chartGridLine: { position: 'absolute', borderTopWidth: 1 },
   chartYTickLabel: { position: 'absolute', left: 4, width: 26, textAlign: 'right', fontSize: 10, fontWeight: '600' },
   chartSegment: { position: 'absolute', borderRadius: 999 },
   chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999 },
-  chartLabelsRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
+  chartLabelsRow: { marginTop: 8, position: 'relative' },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 10, fontWeight: '700' },
-  chartLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
+  chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
   chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chartLegendDot: { width: 10, height: 10, borderRadius: 999 },
