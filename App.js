@@ -1099,9 +1099,8 @@ function AppContent() {
 
   const visibleMemberChoices = useMemo(() => {
     if (idSearchQuery) return filteredMemberChoices;
-    if (isIdSearchFocused) return [];
     return memberChoices;
-  }, [filteredMemberChoices, idSearchQuery, isIdSearchFocused, memberChoices]);
+  }, [filteredMemberChoices, idSearchQuery, memberChoices]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return undefined;
@@ -1631,21 +1630,19 @@ function AppContent() {
                   }}
                   onFocus={() => setIsIdSearchFocused(true)}
                   onBlur={() => setIsIdSearchFocused(false)}
-                  placeholder="ID suchen"
+                  placeholder="ID-Nummer suchen"
                   placeholderTextColor={theme.muted}
                   keyboardType="number-pad"
                   inputMode="numeric"
                   returnKeyType="done"
                   style={[styles.idSearchInput, { color: theme.text, borderColor: isDarkMode ? '#FFFFFF' : '#000000', backgroundColor: theme.card }]}
                 />
-                {isIdSearchFocused && !idSearchQuery ? (
-                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte ID eingeben</Text>
-                ) : idSearchQuery && filteredMemberChoices.length === 0 ? (
+                {idSearchQuery && filteredMemberChoices.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden</Text>
                 ) : visibleMemberChoices.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine ID-Nummern verfügbar.</Text>
                 ) : (
-                  <View style={styles.gridWrap}>
+                  <View style={[styles.gridWrap, styles.idGridWrap]}>
                     {visibleMemberChoices.map((member) => (
                       <Pressable
                         key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
@@ -2125,6 +2122,7 @@ const styles = StyleSheet.create({
   guestButton: { flex: 1 },
   guestButtonLightOutline: { borderWidth: 1, borderColor: '#FFFFFF' },
   idSearchInput: { marginTop: -8, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
+  idGridWrap: { marginTop: 12 },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   tanzeemBtnTablet: { minHeight: 72, justifyContent: 'center' },
