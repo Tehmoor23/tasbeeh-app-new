@@ -585,6 +585,7 @@ function AppContent() {
   const [programStats, setProgramStats] = useState(null);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
+  const terminalScrollRef = useRef(null);
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
   const statsPayloadRef = useRef('');
@@ -749,6 +750,15 @@ function AppContent() {
     const t = setTimeout(() => setToast(''), 1800);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (activeTab !== 'terminal') return;
+    terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    const rafId = requestAnimationFrame(() => {
+      terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [activeTab, terminalMode, attendanceMode]);
 
 
   useEffect(() => {
@@ -1479,7 +1489,7 @@ function AppContent() {
     const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : 'Programmanwesenheit';
 
     return (
-      <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
+      <ScrollView ref={terminalScrollRef} contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
         <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
@@ -2020,7 +2030,7 @@ const styles = StyleSheet.create({
   programScheduledHint: { marginTop: 10, borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', gap: 4 },
   programScheduledLabel: { fontSize: 14, fontWeight: '800', textAlign: 'center' },
   programScheduledValue: { fontSize: 16, fontWeight: '700', textAlign: 'center', lineHeight: 22 },
-  urduText: { textAlign: 'center', fontSize: 12, marginTop: -2, marginBottom: 2 },
+  urduText: { textAlign: 'center', fontSize: 16, marginTop: -2, marginBottom: 4 },
 
   privacyNoticeWrap: { marginTop: 26, paddingHorizontal: 6, alignItems: 'center' },
   privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
