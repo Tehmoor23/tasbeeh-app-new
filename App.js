@@ -413,12 +413,17 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
 
       <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad, height: 20 }]}> 
         {chartWidth > 0 ? labels.map((label, index) => {
-          const left = getX(index) - axisLabelWidth;
+          const isDateLabel = String(label || '').includes(',');
+          const labelWidth = isDateLabel ? 92 : 64;
+          const xRelative = getX(index) - plotLeft;
+          const leftRaw = xRelative - (labelWidth / 2);
+          const maxLeft = Math.max(0, plotWidth - labelWidth);
+          const left = Math.min(Math.max(0, leftRaw), maxLeft);
           return (
             <Text
               key={`${label}_${index}`}
               numberOfLines={1}
-              style={[styles.chartLabel, { color: theme.muted, position: 'absolute', left, width: axisLabelWidth * 2 }]}
+              style={[styles.chartLabel, { color: theme.muted, position: 'absolute', left, width: labelWidth }]}
             >
               {label}
             </Text>
@@ -1553,9 +1558,12 @@ function AppContent() {
 
   const weekSeriesRows = useMemo(() => statsWeekIsos.map((iso) => {
     const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
+    const dateObj = parseISO(iso);
+    const weekdayShort = dateObj ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '') : iso;
+    const dayMonth = dateObj ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(dateObj).replace(/\.$/, '') : '';
     return {
       iso,
-      label: parseISO(iso) ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(parseISO(iso)) : iso,
+      label: dateObj ? `${weekdayShort}, ${dayMonth}` : iso,
       total: totals.total,
       tanzeemTotals: totals.tanzeemTotals,
     };
@@ -2557,15 +2565,15 @@ const styles = StyleSheet.create({
   statsCyclerValue: { fontSize: 14, fontWeight: '700' },
   chartWrap: { marginTop: 12 },
   chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
-  chartAxisTitleY: { marginBottom: 6, marginLeft: 6, fontSize: 10, fontWeight: '700' },
-  chartAxisY: { position: 'absolute', width: 1 },
-  chartAxisX: { position: 'absolute', height: 1 },
+  chartAxisTitleY: { marginBottom: 6, marginLeft: 6, fontSize: 11, fontWeight: '800' },
+  chartAxisY: { position: 'absolute', width: 2 },
+  chartAxisX: { position: 'absolute', height: 2 },
   chartGridLine: { position: 'absolute', borderTopWidth: 1 },
   chartYTickLabel: { position: 'absolute', left: 4, width: 26, textAlign: 'right', fontSize: 10, fontWeight: '600' },
   chartSegment: { position: 'absolute', borderRadius: 999 },
   chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999 },
   chartLabelsRow: { marginTop: 8, position: 'relative' },
-  chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 10, fontWeight: '700' },
+  chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
   chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
