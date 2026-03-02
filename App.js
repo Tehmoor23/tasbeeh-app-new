@@ -368,14 +368,16 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
               const length = Math.sqrt(dx * dx + dy * dy);
               const angle = Math.atan2(dy, dx);
               const thickness = line.thick ? 3 : 2;
+              const midX = (x1 + x2) / 2;
+              const midY = (y1 + y2) / 2;
               return (
                 <View
                   key={`${line.key}_seg_${index}`}
                   style={[
                     styles.chartSegment,
                     {
-                      left: x1 - (length / 2),
-                      top: y1 - (thickness / 2),
+                      left: midX - (length / 2),
+                      top: midY - (thickness / 2),
                       width: length,
                       backgroundColor: line.color,
                       transform: [{ rotateZ: `${angle}rad` }],
