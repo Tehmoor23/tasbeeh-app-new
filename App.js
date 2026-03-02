@@ -1550,7 +1550,7 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
               <Pressable
                 onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
               >
                 <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Gast</Text>
               </Pressable>
@@ -1601,6 +1601,16 @@ function AppContent() {
                   {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
                 </Pressable>
               ))}
+            </View>
+            <View style={styles.guestButtonRow}>
+              <View style={styles.guestButtonSpacer} />
+              <Pressable
+                onPress={() => countAttendance(attendanceMode, 'guest')}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: isDarkMode ? '#FFFFFF' : theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
+              >
+                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: isDarkMode ? '#000000' : theme.buttonText }]}>Gast</Text>
+              </Pressable>
+              <View style={styles.guestButtonSpacer} />
             </View>
           </>
         ) : (
@@ -2055,6 +2065,7 @@ const styles = StyleSheet.create({
   guestButtonRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   guestButtonSpacer: { flex: 1 },
   guestButton: { flex: 1 },
+  guestButtonLightOutline: { borderWidth: 1, borderColor: '#FFFFFF' },
   majlisGuestButton: { flex: 1, backgroundColor: '#000000' },
   majlisGuestButtonText: { color: '#FFFFFF' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
