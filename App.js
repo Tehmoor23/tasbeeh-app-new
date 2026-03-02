@@ -1578,9 +1578,9 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
               <Pressable
                 onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.majlisGuestButton], pressed && styles.buttonPressed]}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: isDarkMode ? '#FFFFFF' : '#000000' }], pressed && styles.buttonPressed]}
               >
-                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, styles.majlisGuestButtonText]}>Gast</Text>
+                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: isDarkMode ? '#000000' : '#FFFFFF' }]}>Gast</Text>
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
@@ -2067,8 +2067,6 @@ const styles = StyleSheet.create({
   guestButtonSpacer: { flex: 1 },
   guestButton: { flex: 1 },
   guestButtonLightOutline: { borderWidth: 1, borderColor: '#FFFFFF' },
-  majlisGuestButton: { flex: 1, backgroundColor: '#000000' },
-  majlisGuestButtonText: { color: '#FFFFFF' },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   tanzeemBtnTablet: { minHeight: 72, justifyContent: 'center' },
