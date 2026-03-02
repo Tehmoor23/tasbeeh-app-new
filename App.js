@@ -278,81 +278,135 @@ const getDailyTotalsForStats = (attendanceData) => {
 };
 
 function MiniLineChart({ labels, series, theme, isDarkMode }) {
-  const chartHeight = 156;
-  const plotHeight = 96;
-  const plotTop = 18;
-  const leftPad = 14;
-  const rightPad = 14;
-  const pointCount = Math.max(2, labels.length);
-  const maxValue = Math.max(1, ...series.flatMap((line) => line.data.map((value) => Number(value) || 0)));
+  const chartHeight = 220;
+  const plotTop = 14;
+  const plotBottom = 40;
+  const axisLabelWidth = 34;
+  const plotRightPad = 10;
+  const tickCount = 5;
+  const [chartWidth, setChartWidth] = useState(0);
 
-  const getXPercent = (index) => leftPad + ((100 - leftPad - rightPad) * (index / (pointCount - 1)));
-  const getY = (value) => plotTop + (plotHeight - ((Number(value) || 0) / maxValue) * plotHeight);
+  const allValues = series.flatMap((line) => line.data.map((value) => Number(value) || 0));
+  const maxValueRaw = Math.max(0, ...allValues);
+
+  const getNiceStep = (maxValue, ticks) => {
+    if (maxValue <= 0) return 1;
+    const rough = maxValue / Math.max(1, ticks - 1);
+    const magnitude = 10 ** Math.floor(Math.log10(rough));
+    const normalized = rough / magnitude;
+    const nice = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10;
+    return nice * magnitude;
+  };
+
+  const yStep = getNiceStep(maxValueRaw, tickCount);
+  const maxValue = Math.max(yStep * (tickCount - 1), yStep);
+  const yTicks = Array.from({ length: tickCount }, (_, index) => maxValue - index * yStep);
+  const pointCount = Math.max(2, labels.length);
+
+  const plotLeft = axisLabelWidth;
+  const plotWidth = Math.max(1, chartWidth - plotLeft - plotRightPad);
+  const plotHeight = chartHeight - plotTop - plotBottom;
+
+  const getX = (index) => plotLeft + (plotWidth * index) / (pointCount - 1);
+  const getY = (value) => plotTop + plotHeight - ((Number(value) || 0) / maxValue) * plotHeight;
 
   return (
     <View style={styles.chartWrap}>
-      <View style={[styles.chartCanvas, { backgroundColor: theme.bg, borderColor: theme.border, height: chartHeight }]}> 
-        {[0, 1, 2, 3].map((tick) => {
-          const y = plotTop + (plotHeight / 3) * tick;
-          return (
+      <View
+        onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
+        style={[styles.chartCanvas, { backgroundColor: theme.bg, borderColor: theme.border, height: chartHeight }]}
+      >
+        {chartWidth > 0 ? (
+          <>
             <View
-              key={`grid_${tick}`}
               style={[
-                styles.chartGridLine,
-                { top: y, borderColor: isDarkMode ? 'rgba(255,255,255,0.18)' : 'rgba(17,24,39,0.16)' },
+                styles.chartAxisY,
+                { left: plotLeft, top: plotTop, height: plotHeight, backgroundColor: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(17,24,39,0.28)' },
               ]}
             />
-          );
-        })}
-
-        {series.map((line) => line.data.map((value, index) => {
-          if (index === 0) return null;
-          const x1 = getXPercent(index - 1);
-          const y1 = getY(line.data[index - 1]);
-          const x2 = getXPercent(index);
-          const y2 = getY(value);
-          const dx = x2 - x1;
-          const dy = y2 - y1;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const angle = Math.atan2(dy, dx);
-          return (
             <View
-              key={`${line.key}_seg_${index}`}
               style={[
-                styles.chartSegment,
+                styles.chartAxisX,
                 {
-                  left: `${x1}%`,
-                  top: y1,
-                  width: `${length}%`,
-                  backgroundColor: line.color,
-                  transform: [{ rotateZ: `${angle}rad` }],
-                  height: line.thick ? 3 : 2,
-                  opacity: line.thick ? 1 : 0.86,
+                  left: plotLeft,
+                  top: plotTop + plotHeight,
+                  width: plotWidth,
+                  backgroundColor: isDarkMode ? 'rgba(255,255,255,0.35)' : 'rgba(17,24,39,0.28)',
                 },
               ]}
             />
-          );
-        }))}
 
-        {series.map((line) => line.data.map((value, index) => (
-          <View
-            key={`${line.key}_pt_${index}`}
-            style={[
-              styles.chartPoint,
-              {
-                left: `${getXPercent(index)}%`,
-                top: getY(value),
-                backgroundColor: line.color,
-                width: line.thick ? 8 : 6,
-                height: line.thick ? 8 : 6,
-                borderColor: theme.card,
-              },
-            ]}
-          />
-        )))}
+            {yTicks.map((tickValue, index) => {
+              const y = plotTop + (plotHeight * index) / Math.max(1, tickCount - 1);
+              return (
+                <View key={`tick_${tickValue}_${index}`}>
+                  <View
+                    style={[
+                      styles.chartGridLine,
+                      {
+                        left: plotLeft,
+                        right: plotRightPad,
+                        top: y,
+                        borderColor: isDarkMode ? 'rgba(255,255,255,0.14)' : 'rgba(17,24,39,0.12)',
+                      },
+                    ]}
+                  />
+                  <Text style={[styles.chartYTickLabel, { top: y - 8, color: theme.muted }]}>{Math.round(tickValue)}</Text>
+                </View>
+              );
+            })}
+
+            {series.map((line) => line.data.map((value, index) => {
+              if (index === 0) return null;
+              const x1 = getX(index - 1);
+              const y1 = getY(line.data[index - 1]);
+              const x2 = getX(index);
+              const y2 = getY(value);
+              const dx = x2 - x1;
+              const dy = y2 - y1;
+              const length = Math.sqrt(dx * dx + dy * dy);
+              const angle = Math.atan2(dy, dx);
+              return (
+                <View
+                  key={`${line.key}_seg_${index}`}
+                  style={[
+                    styles.chartSegment,
+                    {
+                      left: x1,
+                      top: y1,
+                      width: length,
+                      backgroundColor: line.color,
+                      transform: [{ rotateZ: `${angle}rad` }],
+                      height: line.thick ? 3 : 2,
+                      opacity: line.thick ? 1 : 0.86,
+                    },
+                  ]}
+                />
+              );
+            }))}
+
+            {series.map((line) => line.data.map((value, index) => (
+              <View
+                key={`${line.key}_pt_${index}`}
+                style={[
+                  styles.chartPoint,
+                  {
+                    left: getX(index),
+                    top: getY(value),
+                    backgroundColor: line.color,
+                    width: line.thick ? 8 : 6,
+                    height: line.thick ? 8 : 6,
+                    borderColor: theme.card,
+                    transform: [{ translateX: line.thick ? -4 : -3 }, { translateY: line.thick ? -4 : -3 }],
+                  },
+                ]}
+              />
+            )))}
+          </>
+        ) : null}
       </View>
 
-      <View style={styles.chartLabelsRow}>
+      <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad }]}> 
         {labels.map((label, index) => (
           <Text key={`${label}_${index}`} style={[styles.chartLabel, { color: theme.muted }]}>{label}</Text>
         ))}
@@ -2443,9 +2497,12 @@ const styles = StyleSheet.create({
   statsToggleBtnText: { fontSize: 12, fontWeight: '700' },
   chartWrap: { marginTop: 12 },
   chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
-  chartGridLine: { position: 'absolute', left: 8, right: 8, borderTopWidth: 1, opacity: 0.8 },
+  chartAxisY: { position: 'absolute', width: 1 },
+  chartAxisX: { position: 'absolute', height: 1 },
+  chartGridLine: { position: 'absolute', borderTopWidth: 1 },
+  chartYTickLabel: { position: 'absolute', left: 4, width: 26, textAlign: 'right', fontSize: 10, fontWeight: '600' },
   chartSegment: { position: 'absolute', borderRadius: 999 },
-  chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999, transform: [{ translateX: -4 }, { translateY: -4 }] },
+  chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999 },
   chartLabelsRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
   chartLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
   chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
