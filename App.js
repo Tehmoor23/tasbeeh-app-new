@@ -1636,7 +1636,7 @@ function AppContent() {
                   keyboardType="number-pad"
                   inputMode="numeric"
                   returnKeyType="done"
-                  style={[styles.idSearchInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.card }]}
+                  style={[styles.idSearchInput, { color: theme.text, borderColor: '#000000', backgroundColor: theme.card }]}
                 />
                 {isIdSearchFocused && !idSearchQuery ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte ID eingeben</Text>
@@ -2124,7 +2124,7 @@ const styles = StyleSheet.create({
   guestButtonSpacer: { flex: 1 },
   guestButton: { flex: 1 },
   guestButtonLightOutline: { borderWidth: 1, borderColor: '#FFFFFF' },
-  idSearchInput: { marginTop: 4, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
+  idSearchInput: { marginTop: 2, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   tanzeemBtnTablet: { minHeight: 72, justifyContent: 'center' },
