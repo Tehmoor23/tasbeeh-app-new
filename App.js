@@ -7,7 +7,6 @@ import {
   Alert,
   Animated,
   Image,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -585,7 +584,6 @@ function AppContent() {
   const [programStats, setProgramStats] = useState(null);
   const [idSearchQuery, setIdSearchQuery] = useState('');
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
-  const [selectedMemberForConfirm, setSelectedMemberForConfirm] = useState(null);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalScrollRef = useRef(null);
@@ -767,15 +765,8 @@ function AppContent() {
     if (terminalMode !== 'idSelection') {
       setIdSearchQuery('');
       setIsIdSearchFocused(false);
-      setSelectedMemberForConfirm(null);
     }
   }, [terminalMode, selectedTanzeem, selectedMajlis]);
-
-  useEffect(() => {
-    if (!selectedMemberForConfirm) return;
-    const stillVisible = visibleMemberChoices.some((entry) => String(entry.idNumber) === String(selectedMemberForConfirm.idNumber));
-    if (!stillVisible) setSelectedMemberForConfirm(null);
-  }, [visibleMemberChoices, selectedMemberForConfirm]);
 
 
   useEffect(() => {
@@ -1524,8 +1515,7 @@ function AppContent() {
     const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : 'Programmanwesenheit';
 
     return (
-      <KeyboardAvoidingView style={styles.terminalKeyboardWrap} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
+      <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
         <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
@@ -1656,33 +1646,19 @@ function AppContent() {
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine ID-Nummern verfügbar.</Text>
                 ) : (
                   <View style={styles.gridWrap}>
-                    {visibleMemberChoices.map((member) => {
-                      const isSelected = String(selectedMemberForConfirm?.idNumber || '') === String(member.idNumber);
-                      return (
-                        <Pressable
-                          key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                          style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: isSelected ? theme.button : theme.border, borderWidth: isSelected ? 2 : 1 }], pressed && styles.buttonPressed]}
-                          onPress={() => setSelectedMemberForConfirm(member)}
-                        >
-                          <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
-                          {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
-                        </Pressable>
-                      );
-                    })}
+                    {visibleMemberChoices.map((member) => (
+                      <Pressable
+                        key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                        style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
+                        onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}
+                      >
+                        <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
+                        {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
+                      </Pressable>
+                    ))}
                   </View>
                 )}
-                {selectedMemberForConfirm ? (
-                  <View style={[styles.idConfirmWrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
-                    <Text style={[styles.noteText, { color: theme.text, textAlign: 'center' }]}>ID {selectedMemberForConfirm.idNumber} ausgewählt</Text>
-                    <Pressable
-                      style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button, marginTop: 10 }], pressed && styles.buttonPressed]}
-                      onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, selectedMemberForConfirm)}
-                    >
-                      <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>ID {selectedMemberForConfirm.idNumber} bestätigen</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </>
+             </>
             ) : null}
             <View style={styles.guestButtonRow}>
               <View style={styles.guestButtonSpacer} />
@@ -1708,8 +1684,7 @@ function AppContent() {
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
         </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+      </ScrollView>
     );
   };
 
@@ -2149,9 +2124,7 @@ const styles = StyleSheet.create({
   guestButtonSpacer: { flex: 1 },
   guestButton: { flex: 1 },
   guestButtonLightOutline: { borderWidth: 1, borderColor: '#FFFFFF' },
-  terminalKeyboardWrap: { flex: 1 },
-  idSearchInput: { marginTop: 12, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
-  idConfirmWrap: { marginTop: 12, borderRadius: 12, borderWidth: 1, padding: 10 },
+  idSearchInput: { marginTop: 4, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16 },
   tanzeemRow: { flexDirection: 'row', gap: 10 },
   tanzeemBtn: { flex: 1, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   tanzeemBtnTablet: { minHeight: 72, justifyContent: 'center' },
