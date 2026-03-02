@@ -316,6 +316,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
         onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
         style={[styles.chartCanvas, { backgroundColor: theme.bg, borderColor: theme.border, height: chartHeight }]}
       >
+        <Text style={[styles.chartAxisTitleY, { color: theme.muted }]}>Anzahl</Text>
         {chartWidth > 0 ? (
           <>
             <View
@@ -366,18 +367,19 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
               const dy = y2 - y1;
               const length = Math.sqrt(dx * dx + dy * dy);
               const angle = Math.atan2(dy, dx);
+              const thickness = line.thick ? 3 : 2;
               return (
                 <View
                   key={`${line.key}_seg_${index}`}
                   style={[
                     styles.chartSegment,
                     {
-                      left: x1,
-                      top: y1,
+                      left: x1 - (length / 2),
+                      top: y1 - (thickness / 2),
                       width: length,
                       backgroundColor: line.color,
                       transform: [{ rotateZ: `${angle}rad` }],
-                      height: line.thick ? 3 : 2,
+                      height: thickness,
                       opacity: line.thick ? 1 : 0.86,
                     },
                   ]}
@@ -411,6 +413,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode }) {
           <Text key={`${label}_${index}`} style={[styles.chartLabel, { color: theme.muted }]}>{label}</Text>
         ))}
       </View>
+
+      <Text style={[styles.chartAxisTitleX, { color: theme.muted }]}>Zeitachse</Text>
 
       <View style={styles.chartLegendRow}>
         {series.map((line) => (
@@ -2497,6 +2501,7 @@ const styles = StyleSheet.create({
   statsToggleBtnText: { fontSize: 12, fontWeight: '700' },
   chartWrap: { marginTop: 12 },
   chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
+  chartAxisTitleY: { position: 'absolute', left: 6, top: 4, fontSize: 10, fontWeight: '700' },
   chartAxisY: { position: 'absolute', width: 1 },
   chartAxisX: { position: 'absolute', height: 1 },
   chartGridLine: { position: 'absolute', borderTopWidth: 1 },
@@ -2504,6 +2509,7 @@ const styles = StyleSheet.create({
   chartSegment: { position: 'absolute', borderRadius: 999 },
   chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999 },
   chartLabelsRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'space-between' },
+  chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 10, fontWeight: '700' },
   chartLabel: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
   chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
