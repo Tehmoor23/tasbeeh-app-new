@@ -753,6 +753,10 @@ function AppContent() {
   useEffect(() => {
     if (activeTab !== 'terminal') return;
     terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    const rafId = requestAnimationFrame(() => {
+      terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+    });
+    return () => cancelAnimationFrame(rafId);
   }, [activeTab, terminalMode, attendanceMode]);
 
 
@@ -2025,7 +2029,7 @@ const styles = StyleSheet.create({
   programScheduledHint: { marginTop: 10, borderRadius: 12, borderWidth: 1, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', gap: 4 },
   programScheduledLabel: { fontSize: 14, fontWeight: '800', textAlign: 'center' },
   programScheduledValue: { fontSize: 16, fontWeight: '700', textAlign: 'center', lineHeight: 22 },
-  urduText: { textAlign: 'center', fontSize: 15, marginTop: -2, marginBottom: 4 },
+  urduText: { textAlign: 'center', fontSize: 16, marginTop: -2, marginBottom: 4 },
 
   privacyNoticeWrap: { marginTop: 26, paddingHorizontal: 6, alignItems: 'center' },
   privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
