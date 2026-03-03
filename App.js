@@ -47,7 +47,6 @@ const TERMINAL_LOCATIONS = [
   'Nied',
   'Nordweststadt',
   'Nuur Moschee',
-  'Riedberg',
   'Rödelheim',
   'Zeilsheim',
 ];
@@ -97,7 +96,6 @@ const MAJLIS_LABELS = {
   nied: 'Nied',
   nordweststadt: 'Nordweststadt',
   nuur_moschee: 'Nuur Moschee',
-  riedberg: 'Riedberg',
   roedelheim: 'Rödelheim',
   zeilsheim: 'Zeilsheim',
 };
@@ -278,7 +276,7 @@ const getDailyTotalsForStats = (attendanceData) => {
 };
 
 const buildMajlisRanking = (countsByMajlis = {}) => {
-  const allKeys = Array.from(new Set([...Object.keys(MAJLIS_LABELS), ...Object.keys(countsByMajlis || {})]));
+  const allKeys = Array.from(new Set([...Object.keys(MAJLIS_LABELS), ...Object.keys(countsByMajlis || {})])).filter((key) => key !== 'riedberg');
   return allKeys
     .map((key) => [key, Number(countsByMajlis?.[key]) || 0])
     .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
