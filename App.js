@@ -277,6 +277,13 @@ const getDailyTotalsForStats = (attendanceData) => {
   };
 };
 
+const buildMajlisRanking = (countsByMajlis = {}) => {
+  const allKeys = Array.from(new Set([...Object.keys(MAJLIS_LABELS), ...Object.keys(countsByMajlis || {})]));
+  return allKeys
+    .map((key) => [key, Number(countsByMajlis?.[key]) || 0])
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
+};
+
 function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse' }) {
   const [chartWidth, setChartWidth] = useState(0);
   const isCompactChart = chartWidth > 0 && chartWidth < 360;
@@ -1645,10 +1652,7 @@ function AppContent() {
         });
       });
     });
-    return Object.entries(map)
-      .filter(([, count]) => count > 0)
-      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
-      .slice(0, 8);
+    return buildMajlisRanking(map);
   }, [statsWeekIsos, weeklyAttendanceDocs]);
 
   const weekPrayerTotals = useMemo(() => {
@@ -2113,10 +2117,7 @@ function AppContent() {
     };
     const programTotal = Number(programStats?.total) || 0;
     const programGuestTotal = Number(programStats?.guestTotal) || 0;
-    const topProgramMajlis = Object.entries(programStats?.byMajlis || {})
-      .filter(([, count]) => Number(count) > 0)
-      .sort((a, b) => (Number(b[1]) - Number(a[1])) || a[0].localeCompare(b[0]))
-      .slice(0, 8);
+    const topProgramMajlis = buildMajlisRanking(programStats?.byMajlis || {});
 
     const chartPalette = {
       total: isDarkMode ? '#F9FAFB' : '#111827',
@@ -2278,7 +2279,7 @@ function AppContent() {
                     });
                   });
                 });
-                return Object.entries(map).filter(([, c]) => c > 0).sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0])).slice(0, 8);
+                return buildMajlisRanking(map);
               })();
 
               const totalSource = statsTotalRange === 'week' ? weekUniqueSummary : selectedDateSummary;
