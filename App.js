@@ -364,7 +364,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
   const plotTop = 18;
   const plotBottom = isCompactChart ? 74 : 52;
   const axisLabelWidth = isCompactChart ? 34 : 42;
-  const plotRightPad = isCompactChart ? 10 : 14;
+  const edgeInset = useEqualLabelSlots ? (isCompactChart ? 24 : 28) : 0;
+  const plotRightPad = (isCompactChart ? 10 : 14) + edgeInset;
   const tickCount = yTickCount || 5;
 
   const allValues = series.flatMap((line) => line.data.map((value) => Number(value) || 0));
@@ -384,7 +385,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
   const yTicks = Array.from({ length: tickCount }, (_, index) => maxValue - index * yStep);
   const pointCount = Math.max(2, labels.length);
 
-  const plotLeft = axisLabelWidth;
+  const plotLeft = axisLabelWidth + edgeInset;
   const plotWidth = Math.max(1, chartWidth - plotLeft - plotRightPad);
   const plotHeight = chartHeight - plotTop - plotBottom;
 
@@ -539,15 +540,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
           const isDateLabel = rawLabel.includes(',');
           const isWeekdayLabel = /^[A-Za-zÄÖÜäöü]{2,3}$/.test(rawLabel);
           if (useEqualLabelSlots) {
-            const slotCount = Math.max(1, labels.length - 1);
-            const xPercent = (index / slotCount) * 100;
-            const isIshaaLabel = rawLabel.trim().toLowerCase() === 'ishaa';
-            const isLastIshaa = index === labels.length - 1 && isIshaaLabel;
-            const edgeAlignStyle = index === 0
-              ? { left: `${xPercent}%`, textAlign: 'left', transform: [] }
-              : index === labels.length - 1
-                ? { left: `${xPercent}%`, textAlign: 'right', transform: [{ translateX: isLastIshaa ? -72 : -56 }] }
-                : { left: `${xPercent}%`, textAlign: 'center', transform: [{ translateX: -28 }] };
+            const equalLabelWidth = isCompactChart ? 52 : 64;
+            const xRelative = getX(index) - plotLeft;
             return (
               <Text
                 key={`${label}_${index}`}
@@ -558,13 +552,14 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                   styles.chartEqualLabel,
                   {
                     color: theme.muted,
-                    left: edgeAlignStyle.left,
-                    textAlign: edgeAlignStyle.textAlign,
-                    transform: edgeAlignStyle.transform,
+                    width: equalLabelWidth,
+                    left: xRelative,
+                    textAlign: 'center',
+                    transform: [{ translateX: -(equalLabelWidth / 2) }],
                   },
                 ]}
               >
-                  {label}
+                {label}
               </Text>
             );
           }
@@ -3443,7 +3438,7 @@ const styles = StyleSheet.create({
   statsCalendarBtn: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, alignItems: 'center' },
   statsCalendarBtnText: { fontSize: 12, fontWeight: '700' },
   chartWrap: { marginTop: 12 },
-  chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
+  chartCanvas: { width: '100%', borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
   chartAxisTitleY: { marginBottom: 6, marginLeft: 6, fontSize: 11, fontWeight: '800' },
   chartAxisY: { position: 'absolute', width: 2 },
   chartAxisX: { position: 'absolute', height: 2 },
@@ -3454,7 +3449,7 @@ const styles = StyleSheet.create({
   chartPoint: { borderWidth: 2, borderRadius: 999 },
   chartTooltip: { position: 'absolute', maxWidth: 170, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
   chartTooltipText: { fontSize: 11, fontWeight: '700' },
-  chartLabelsRow: { marginTop: 8, position: 'relative', flexDirection: 'row' },
+  chartLabelsRow: { marginTop: 8, position: 'relative' },
   chartEqualLabel: { position: 'absolute', width: 56 },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
