@@ -772,6 +772,7 @@ function AppContent() {
   const [statsAttendance, setStatsAttendance] = useState(null);
   const [statsGraphRange, setStatsGraphRange] = useState('today');
   const [statsGraphSeries, setStatsGraphSeries] = useState('total');
+  const [statsCardsRange, setStatsCardsRange] = useState('today');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
@@ -1585,6 +1586,97 @@ function AppContent() {
     return { highest, lowest, averagePerDay, trendPercent };
   }, [weekSeriesRows, previousWeekTotal]);
 
+  const buildUniqueSummary = (attendanceData) => {
+    const byPrayer = attendanceData?.byPrayer || {};
+    const tanzeemSets = {
+      ansar: new Set(),
+      khuddam: new Set(),
+      atfal: new Set(),
+    };
+    let guestTotal = 0;
+
+    Object.values(byPrayer).forEach((prayerNode) => {
+      guestTotal += Number(prayerNode?.guest) || 0;
+      const memberDetails = prayerNode?.memberDetails || {};
+      STATS_TANZEEM_KEYS.forEach((key) => {
+        const majlisMap = memberDetails[key] || {};
+        Object.values(majlisMap).forEach((entries) => {
+          if (!Array.isArray(entries)) return;
+          entries.forEach((entry) => {
+            const id = String(entry?.idNumber || '').trim();
+            if (!id) return;
+            tanzeemSets[key].add(id);
+          });
+        });
+      });
+    });
+
+    const tanzeemTotals = {
+      ansar: tanzeemSets.ansar.size,
+      khuddam: tanzeemSets.khuddam.size,
+      atfal: tanzeemSets.atfal.size,
+    };
+    const membersTotal = tanzeemTotals.ansar + tanzeemTotals.khuddam + tanzeemTotals.atfal;
+    return {
+      tanzeemTotals,
+      guestTotal,
+      total: membersTotal + guestTotal,
+    };
+  };
+
+  const todayUniqueSummary = useMemo(() => buildUniqueSummary(statsAttendance), [statsAttendance]);
+
+  const weekUniqueSummary = useMemo(() => statsWeekIsos.reduce((acc, iso) => {
+    const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
+    acc.total += oneDay.total;
+    acc.guestTotal += oneDay.guestTotal;
+    acc.tanzeemTotals.ansar += oneDay.tanzeemTotals.ansar;
+    acc.tanzeemTotals.khuddam += oneDay.tanzeemTotals.khuddam;
+    acc.tanzeemTotals.atfal += oneDay.tanzeemTotals.atfal;
+    return acc;
+  }, {
+    total: 0,
+    guestTotal: 0,
+    tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 },
+  }), [statsWeekIsos, weeklyAttendanceDocs]);
+
+  const weekTopMajlis = useMemo(() => {
+    const map = {};
+    statsWeekIsos.forEach((iso) => {
+      const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
+      Object.values(byPrayer).forEach((prayerNode) => {
+        const tanzeemMap = prayerNode?.tanzeem || {};
+        STATS_TANZEEM_KEYS.forEach((key) => {
+          const majlis = tanzeemMap[key]?.majlis || {};
+          Object.entries(majlis).forEach(([loc, count]) => {
+            map[loc] = (map[loc] || 0) + (Number(count) || 0);
+          });
+        });
+      });
+    });
+    return Object.entries(map)
+      .filter(([, count]) => count > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8);
+  }, [statsWeekIsos, weeklyAttendanceDocs]);
+
+  const weekPrayerTotals = useMemo(() => {
+    const agg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
+    statsWeekIsos.forEach((iso) => {
+      const rows = getPrayerCountsForStats(weeklyAttendanceDocs[iso]);
+      rows.forEach((row) => {
+        agg[row.key] += Number(row.total) || 0;
+      });
+    });
+    return [
+      { key: 'fajr', label: 'Fajr (الفجر)', total: agg.fajr },
+      { key: 'sohar', label: 'Sohar (الظهر)', total: agg.sohar },
+      { key: 'asr', label: 'Asr (العصر)', total: agg.asr },
+      { key: 'maghrib', label: 'Maghrib (المغرب)', total: agg.maghrib },
+      { key: 'ishaa', label: 'Ishaa (العشاء)', total: agg.ishaa },
+    ];
+  }, [statsWeekIsos, weeklyAttendanceDocs]);
+
   const formatMajlisName = (locationKey) => {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
@@ -2116,176 +2208,204 @@ function AppContent() {
           )
         ) : (
           <>
-            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-              <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Live Verlauf</Text>
-              <View style={styles.statsToggleRow}>
-                <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
-                  <Pressable
-                    onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
-                    style={styles.statsCyclerArrowBtn}
-                  >
-                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
-                  </Pressable>
-                  <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? 'Heute' : 'Woche'}</Text>
-                  <Pressable
-                    onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
-                    style={styles.statsCyclerArrowBtn}
-                  >
-                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
-                  </Pressable>
-                </View>
-              </View>
+            {(() => {
+              const isWeekCards = statsCardsRange === 'week';
+              const summarySource = isWeekCards ? weekUniqueSummary : todayUniqueSummary;
+              const topMajlisSource = isWeekCards ? weekTopMajlis : (statsView?.topMajlis || []);
+              const cardRangeLabel = isWeekCards ? 'Woche' : 'Heute';
 
-              <View style={styles.statsToggleRow}>
-                <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
-                  <Pressable
-                    onPress={() => setStatsGraphSeries((prev) => {
-                      const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
-                      const idx = options.indexOf(prev);
-                      return options[(idx - 1 + options.length) % options.length];
-                    })}
-                    style={styles.statsCyclerArrowBtn}
-                  >
-                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
-                  </Pressable>
-                  <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{chartSeries[0]?.label || 'Gesamt'}</Text>
-                  <Pressable
-                    onPress={() => setStatsGraphSeries((prev) => {
-                      const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
-                      const idx = options.indexOf(prev);
-                      return options[(idx + 1) % options.length];
-                    })}
-                    style={styles.statsCyclerArrowBtn}
-                  >
-                    <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
-                  </Pressable>
-                </View>
-              </View>
+              const todayPrayerBars = (() => {
+                if (!statsAttendance?.byPrayer) return [];
+                const getPrayerTotal = (prayerKey) => {
+                  const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
+                  const guest = Number(prayer.guest) || 0;
+                  const tanzeem = prayer.tanzeem || {};
+                  const members = ['ansar', 'khuddam', 'atfal'].reduce((sum, tanzeemKey) => {
+                    const majlis = tanzeem[tanzeemKey]?.majlis || {};
+                    return sum + Object.values(majlis).reduce((x, y) => x + (Number(y) || 0), 0);
+                  }, 0);
+                  return guest + members;
+                };
 
-              <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
+                const soharTotalRaw = getPrayerTotal('sohar');
+                const asrTotalRaw = getPrayerTotal('asr');
+                const maghribTotalRaw = getPrayerTotal('maghrib');
+                const ishaaTotalRaw = getPrayerTotal('ishaa');
+                const soharAsrCarryValue = soharTotalRaw + asrTotalRaw;
+                const maghribIshaaCarryValue = maghribTotalRaw + ishaaTotalRaw;
 
-              {statsGraphRange === 'today' && todayGraphSummary ? (
-                <View style={styles.statsInsightWrap}>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet: {todayGraphSummary.highest.label} ({todayGraphSummary.highest.total})</Text>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet: {todayGraphSummary.lowest.label} ({todayGraphSummary.lowest.total})</Text>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet: {todayGraphSummary.average.toFixed(1)}</Text>
-                  {activeSeriesKey !== 'total' ? (
-                    <Text style={[styles.statsInsightText, { color: theme.text }]}>Tanzeem-Verteilung: Ansar {todayGraphSummary.tanzeemPercentages.ansar.toFixed(1)}% · Khuddam {todayGraphSummary.tanzeemPercentages.khuddam.toFixed(1)}% · Atfal {todayGraphSummary.tanzeemPercentages.atfal.toFixed(1)}%</Text>
-                  ) : null}
-                </View>
-              ) : null}
+                return [
+                  { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
+                  ...(soharAsrMergedToday
+                    ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
+                    : [
+                      { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
+                      { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
+                    ]),
+                  ...(maghribIshaaMergedToday
+                    ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
+                    : [
+                      { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
+                      { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
+                    ]),
+                ];
+              })();
 
-              {statsGraphRange === 'week' && weekGraphSummary ? (
-                <View style={styles.statsInsightWrap}>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag: {weekGraphSummary.averagePerDay.toFixed(1)}</Text>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag: {weekGraphSummary.highest.label} ({weekGraphSummary.highest.total})</Text>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Niedrigster Tag: {weekGraphSummary.lowest.label} ({weekGraphSummary.lowest.total})</Text>
-                  <Text style={[styles.statsInsightText, { color: theme.text }]}>Trend vs. vorherige 7 Tage: {weekGraphSummary.trendPercent >= 0 ? '+' : ''}{weekGraphSummary.trendPercent.toFixed(1)}%</Text>
-                </View>
-              ) : null}
+              const prayerBars = isWeekCards ? weekPrayerTotals : todayPrayerBars;
 
-              {weeklyStatsLoading && statsGraphRange === 'week' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
-            </View>
-
-            {(!statsAttendance?.byPrayer || !statsView) ? (
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
-              </View>
-            ) : (
-              <>
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende heute</Text>
-                <Text style={[styles.statsBigValue, { color: theme.text }]}>{statsView.totalAttendance}</Text>
-              </View>
-
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (heute)</Text>
-                <View style={styles.tanzeemStatsRow}>
-                  {['ansar','khuddam','atfal'].map((key) => (
-                    <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                      <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.tanzeemTotalsToday[key]}</Text>
-                      <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{TANZEEM_LABELS[key]}</Text>
+              return (
+                <>
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                    <View style={styles.statsCardHeaderRow}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
+                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      </Pressable>
                     </View>
-                  ))}
-                  <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                    <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{statsView.guestTotal}</Text>
-                    <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
+                    <Text style={[styles.statsBigValue, { color: theme.text }]}>{summarySource.total}</Text>
                   </View>
-                </View>
-              </View>
 
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises heute (alle Gebete)</Text>
-                {statsView.topMajlis.length === 0 ? (
-                  <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für heute</Text>
-                ) : (
-                  (() => {
-                    const maxTop = Math.max(1, ...statsView.topMajlis.map(([, count]) => count));
-                    return statsView.topMajlis.map(([locationKey, count]) => (
-                      <View key={locationKey} style={styles.majlisBarRow}>
-                        <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
-                        <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
-                          <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
-                        </View>
-                        <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
-                      </View>
-                    ));
-                  })()
-                )}
-              </View>
-
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet heute</Text>
-                {(() => {
-                  const getPrayerTotal = (prayerKey) => {
-                    const prayer = statsAttendance.byPrayer?.[prayerKey] || {};
-                    const guest = Number(prayer.guest) || 0;
-                    const tanzeem = prayer.tanzeem || {};
-                    const members = ['ansar', 'khuddam', 'atfal'].reduce((sum, tanzeemKey) => {
-                      const majlis = tanzeem[tanzeemKey]?.majlis || {};
-                      return sum + Object.values(majlis).reduce((x, y) => x + (Number(y) || 0), 0);
-                    }, 0);
-                    return guest + members;
-                  };
-
-                  const soharTotalRaw = getPrayerTotal('sohar');
-                  const asrTotalRaw = getPrayerTotal('asr');
-                  const maghribTotalRaw = getPrayerTotal('maghrib');
-                  const ishaaTotalRaw = getPrayerTotal('ishaa');
-
-                  const soharAsrCarryValue = soharTotalRaw + asrTotalRaw;
-                  const maghribIshaaCarryValue = maghribTotalRaw + ishaaTotalRaw;
-
-                  const totals = [
-                    { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
-                    ...(soharAsrMergedToday
-                      ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
-                      : [
-                        { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
-                        { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
-                      ]),
-                    ...(maghribIshaaMergedToday
-                      ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
-                      : [
-                        { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
-                        { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
-                      ]),
-                  ];
-
-                  const maxTotal = Math.max(1, ...totals.map((item) => item.total));
-                  return totals.map(({ key, label, total }) => (
-                    <View key={key} style={styles.barRow}>
-                      <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
-                      <View style={[styles.barTrack, { backgroundColor: theme.border }]}> 
-                        <View style={[styles.barFill, { backgroundColor: theme.button, width: `${(total / maxTotal) * 100}%` }]} />
-                      </View>
-                      <Text style={[styles.barValue, { color: theme.text }]}>{total}</Text>
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                    <View style={styles.statsCardHeaderRow}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
+                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      </Pressable>
                     </View>
-                  ));
-                })()}
-              </View>
-              </>
-            )}
+                    <View style={styles.tanzeemStatsRow}>
+                      {['ansar', 'khuddam', 'atfal'].map((key) => (
+                        <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                          <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{summarySource.tanzeemTotals[key] || 0}</Text>
+                          <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{TANZEEM_LABELS[key]}</Text>
+                        </View>
+                      ))}
+                      <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{summarySource.guestTotal || 0}</Text>
+                        <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Live Verlauf</Text>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                        <Pressable
+                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? 'Heute' : 'Woche'}</Text>
+                        <Pressable
+                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                        <Pressable
+                          onPress={() => setStatsGraphSeries((prev) => {
+                            const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx - 1 + options.length) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{chartSeries[0]?.label || 'Gesamt'}</Text>
+                        <Pressable
+                          onPress={() => setStatsGraphSeries((prev) => {
+                            const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx + 1) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
+
+                    {statsGraphRange === 'today' && todayGraphSummary ? (
+                      <View style={styles.statsInsightWrap}>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet: {todayGraphSummary.highest.label} ({todayGraphSummary.highest.total})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet: {todayGraphSummary.lowest.label} ({todayGraphSummary.lowest.total})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet: {todayGraphSummary.average.toFixed(1)}</Text>
+                        {activeSeriesKey !== 'total' ? (
+                          <Text style={[styles.statsInsightText, { color: theme.text }]}>Tanzeem-Verteilung: Ansar {todayGraphSummary.tanzeemPercentages.ansar.toFixed(1)}% · Khuddam {todayGraphSummary.tanzeemPercentages.khuddam.toFixed(1)}% · Atfal {todayGraphSummary.tanzeemPercentages.atfal.toFixed(1)}%</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    {statsGraphRange === 'week' && weekGraphSummary ? (
+                      <View style={styles.statsInsightWrap}>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag: {weekGraphSummary.averagePerDay.toFixed(1)}</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag: {weekGraphSummary.highest.label} ({weekGraphSummary.highest.total})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Niedrigster Tag: {weekGraphSummary.lowest.label} ({weekGraphSummary.lowest.total})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Trend vs. vorherige 7 Tage: {weekGraphSummary.trendPercent >= 0 ? '+' : ''}{weekGraphSummary.trendPercent.toFixed(1)}%</Text>
+                      </View>
+                    ) : null}
+
+                    {weeklyStatsLoading && statsGraphRange === 'week' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                    <View style={styles.statsCardHeaderRow}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
+                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      </Pressable>
+                    </View>
+                    {topMajlisSource.length === 0 ? (
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {isWeekCards ? 'diese Woche' : 'heute'}</Text>
+                    ) : (
+                      (() => {
+                        const maxTop = Math.max(1, ...topMajlisSource.map(([, count]) => count));
+                        return topMajlisSource.map(([locationKey, count]) => (
+                          <View key={locationKey} style={styles.majlisBarRow}>
+                            <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
+                            <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                              <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
+                            </View>
+                            <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
+                          </View>
+                        ));
+                      })()
+                    )}
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                    <View style={styles.statsCardHeaderRow}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      </Pressable>
+                    </View>
+                    {(() => {
+                      const totals = prayerBars;
+                      const maxTotal = Math.max(1, ...totals.map((item) => item.total || 0));
+                      return totals.map(({ key, label, total }) => (
+                        <View key={key} style={styles.barRow}>
+                          <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
+                          <View style={[styles.barTrack, { backgroundColor: theme.border }]}> 
+                            <View style={[styles.barFill, { backgroundColor: theme.button, width: `${((total || 0) / maxTotal) * 100}%` }]} />
+                          </View>
+                          <Text style={[styles.barValue, { color: theme.text }]}>{total || 0}</Text>
+                        </View>
+                      ));
+                    })()}
+                  </View>
+                </>
+              );
+            })()}
           </>
         )}
       </ScrollView>
@@ -2582,6 +2702,9 @@ const styles = StyleSheet.create({
   statsInsightWrap: { marginTop: 12, gap: 4 },
   statsInsightText: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
   statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
+  statsCardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+  statsCardMiniSwitch: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statsCardMiniSwitchText: { fontSize: 11, fontWeight: '700' },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
   tanzeemStatsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
