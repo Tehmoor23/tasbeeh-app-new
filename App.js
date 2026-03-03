@@ -242,10 +242,10 @@ const DAY_NAMES_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag',
 
 const STATS_PRAYER_SEQUENCE = [
   { key: 'fajr', label: 'Fajr' },
-  { key: 'sohar', label: 'Zuhr' },
+  { key: 'sohar', label: 'Sohar' },
   { key: 'asr', label: 'Asr' },
   { key: 'maghrib', label: 'Maghrib' },
-  { key: 'ishaa', label: 'Isha' },
+  { key: 'ishaa', label: 'Ishaa' },
 ];
 const STATS_TANZEEM_KEYS = ['ansar', 'khuddam', 'atfal'];
 
@@ -278,13 +278,14 @@ const getDailyTotalsForStats = (attendanceData) => {
 };
 
 function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse' }) {
-  const chartHeight = 280;
-  const plotTop = 18;
-  const plotBottom = 52;
-  const axisLabelWidth = 42;
-  const plotRightPad = 14;
-  const tickCount = 5;
   const [chartWidth, setChartWidth] = useState(0);
+  const isCompactChart = chartWidth > 0 && chartWidth < 360;
+  const chartHeight = isCompactChart ? 320 : 280;
+  const plotTop = 18;
+  const plotBottom = isCompactChart ? 74 : 52;
+  const axisLabelWidth = isCompactChart ? 34 : 42;
+  const plotRightPad = isCompactChart ? 10 : 14;
+  const tickCount = 5;
 
   const allValues = series.flatMap((line) => line.data.map((value) => Number(value) || 0));
   const maxValueRaw = Math.max(0, ...allValues);
@@ -411,10 +412,10 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
         ) : null}
       </View>
 
-      <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad, height: 20 }]}> 
+      <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad, height: isCompactChart ? 52 : 20 }]}>
         {chartWidth > 0 ? labels.map((label, index) => {
           const isDateLabel = String(label || '').includes(',');
-          const labelWidth = isDateLabel ? 92 : 64;
+          const labelWidth = isDateLabel ? (isCompactChart ? 84 : 92) : (isCompactChart ? 54 : 64);
           const xRelative = getX(index) - plotLeft;
           const leftRaw = xRelative - (labelWidth / 2);
           const maxLeft = Math.max(0, plotWidth - labelWidth);
@@ -423,7 +424,11 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
             <Text
               key={`${label}_${index}`}
               numberOfLines={1}
-              style={[styles.chartLabel, { color: theme.muted, position: 'absolute', left, width: labelWidth }]}
+              style={[
+                styles.chartLabel,
+                isCompactChart && styles.chartLabelCompact,
+                { color: theme.muted, position: 'absolute', left, width: labelWidth, transform: isCompactChart ? [{ rotate: '-24deg' }] : undefined },
+              ]}
             >
               {label}
             </Text>
@@ -1674,6 +1679,8 @@ function AppContent() {
     return selectedStatsDateISO === todayISO ? `${base} (heute)` : base;
   }, [selectedStatsDateISO, todayISO]);
 
+  const todayRangeLabel = `<< ${selectedStatsDateLabel} >>`;
+
   const formatRangeLabel = (rangeMode) => {
     if (rangeMode === 'week') {
       const start = parseISO(statsWeekIsos[0]);
@@ -1915,7 +1922,7 @@ function AppContent() {
 
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
-        <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}> 
+        <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
           </Pressable>
@@ -1924,7 +1931,7 @@ function AppContent() {
           <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
         </View>
 
-        <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           {isPrayerMode ? (
             prayerWindow.isActive ? (
               <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
@@ -2183,7 +2190,7 @@ function AppContent() {
 
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
-        <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => setStatsMode(isProgramStatsMode ? 'prayer' : 'program')}>
             <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: theme.text }]}>{isProgramStatsMode ? '<< Programmstatistik >>' : '<< Gebetsstatistik >>'}</Text>
           </Pressable>
@@ -2195,22 +2202,22 @@ function AppContent() {
 
         {isProgramStatsMode ? (
           !programWindow.isConfigured ? (
-            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
             </View>
           ) : (
             <>
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm heute</Text>
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{programWindow.label}</Text>
               </View>
 
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Programmanwesenheit heute</Text>
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{programTotal}</Text>
               </View>
 
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (Programm)</Text>
                 <View style={styles.tanzeemStatsRow}>
                   {['ansar','khuddam','atfal','guest'].map((key) => (
@@ -2222,7 +2229,7 @@ function AppContent() {
                 </View>
               </View>
 
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (Programm)</Text>
                 {topProgramMajlis.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
@@ -2320,27 +2327,27 @@ function AppContent() {
                       <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>Datum auswählen · {selectedStatsDateLabel}</Text>
                     </Pressable>
                   ) : null}
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTotalRange)}</Text>
                       </View>
                       <Pressable onPress={() => setStatsTotalRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsTotalRange === 'today' ? 'Heute' : 'Woche'} >>`}</Text>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsTotalRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
                       </Pressable>
                     </View>
                     <Text style={[styles.statsBigValue, { color: theme.text }]}>{totalSource.total}</Text>
                   </View>
 
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTanzeemRange)}</Text>
                       </View>
                       <Pressable onPress={() => setStatsTanzeemRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsTanzeemRange === 'today' ? 'Heute' : 'Woche'} >>`}</Text>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsTanzeemRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
                       </Pressable>
                     </View>
                     <View style={styles.tanzeemStatsRow}>
@@ -2357,17 +2364,17 @@ function AppContent() {
                     </View>
                   </View>
 
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Live Verlauf</Text>
                     <View style={styles.statsToggleRow}>
-                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
                           onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? 'Heute' : 'Woche'}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? selectedStatsDateLabel : 'Woche'}</Text>
                         <Pressable
                           onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
@@ -2377,7 +2384,7 @@ function AppContent() {
                       </View>
                     </View>
                     <View style={styles.statsToggleRow}>
-                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
                             const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
@@ -2424,14 +2431,14 @@ function AppContent() {
                     {weeklyStatsLoading && statsGraphRange === 'week' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
                   </View>
 
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
                       <Pressable onPress={() => setStatsMajlisRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsMajlisRange === 'today' ? 'Heute' : 'Woche'} >>`}</Text>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsMajlisRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
                       </Pressable>
                     </View>
                     {topMajlisSource.length === 0 ? (
@@ -2452,14 +2459,14 @@ function AppContent() {
                     )}
                   </View>
 
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
                       </View>
                       <Pressable onPress={() => setStatsPrayerRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsPrayerRange === 'today' ? 'Heute' : 'Woche'} >>`}</Text>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsPrayerRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
                       </Pressable>
                     </View>
                     {(() => {
@@ -2468,7 +2475,7 @@ function AppContent() {
                       return totals.map(({ key, label, total }) => (
                         <View key={key} style={styles.barRow}>
                           <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
-                          <View style={[styles.barTrack, { backgroundColor: theme.border }]}> 
+                          <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
                             <View style={[styles.barFill, { backgroundColor: theme.button, width: `${((total || 0) / maxTotal) * 100}%` }]} />
                           </View>
                           <Text style={[styles.barValue, { color: theme.text }]}>{total || 0}</Text>
@@ -2490,11 +2497,11 @@ function AppContent() {
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
 
@@ -2532,7 +2539,7 @@ function AppContent() {
       </View>
 
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
 
@@ -2549,7 +2556,7 @@ function AppContent() {
         </Pressable>
       </View>
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Programme</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Heute</Text>
 
@@ -2583,7 +2590,7 @@ function AppContent() {
         : renderSettings();
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}> 
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
       <Pressable style={styles.logoWrap} onPress={() => setActiveTab('gebetsplan')}>
@@ -2602,7 +2609,7 @@ function AppContent() {
 
       <Modal visible={isPrivacyModalVisible} animationType="slide" transparent onRequestClose={() => setPrivacyModalVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
-          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}> 
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datenschutzerklärung</Text>
               <Pressable onPress={() => setPrivacyModalVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
@@ -2626,7 +2633,7 @@ function AppContent() {
 
       <Modal visible={isStatsCalendarVisible} animationType="slide" transparent onRequestClose={() => setStatsCalendarVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
-          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}> 
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
               <Pressable onPress={() => setStatsCalendarVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
@@ -2634,19 +2641,28 @@ function AppContent() {
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+              {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
+                <Pressable
+                  onPress={() => { setSelectedStatsDateISO(todayISO); setStatsCalendarVisible(false); }}
+                  style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                >
+                  <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
+                </Pressable>
+              ) : null}
               {availableStatsDates.length === 0 ? (
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Datumswerte verfügbar.</Text>
               ) : availableStatsDates.map((iso) => {
                 const dateObj = parseISO(iso);
                 const label = dateObj ? formatStatsDateShort(iso) : iso;
                 const isActive = iso === selectedStatsDateISO;
+                const isTodayEntry = iso === todayISO;
                 return (
                   <Pressable
                     key={iso}
                     onPress={() => { setSelectedStatsDateISO(iso); setStatsCalendarVisible(false); }}
                     style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
                   >
-                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{label}</Text>
+                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
                   </Pressable>
                 );
               })}
@@ -2759,6 +2775,8 @@ const styles = StyleSheet.create({
   privacyModalBody: { paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 },
   statsCalendarBody: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 },
   statsCalendarItem: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 12 },
+  statsCalendarResetBtn: { borderWidth: 1, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', marginBottom: 2 },
+  statsCalendarResetBtnText: { fontSize: 12, fontWeight: '700' },
   privacyModalHeroTitle: { fontSize: 23, fontWeight: '700', lineHeight: 30, marginTop: 4, marginBottom: 8 },
   privacySection: { marginTop: 18 },
   privacySectionLast: { marginBottom: 10 },
@@ -2804,6 +2822,7 @@ const styles = StyleSheet.create({
   chartLabelsRow: { marginTop: 8, position: 'relative' },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
+  chartLabelCompact: { fontSize: 10, textAlign: 'left' },
   chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chartLegendDot: { width: 10, height: 10, borderRadius: 999 },
