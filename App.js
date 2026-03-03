@@ -639,6 +639,28 @@ async function getDocData(collection, id) {
   return fromFirestoreValue({ mapValue: { fields: json.fields || {} } });
 }
 
+async function listDocIds(collection, pageSize = 300) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  let pageToken = '';
+  const ids = [];
+  do {
+    const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}?pageSize=${pageSize}${tokenPart}&key=${FIREBASE_CONFIG.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Firestore list failed');
+    const json = await res.json();
+    const docs = Array.isArray(json.documents) ? json.documents : [];
+    docs.forEach((doc) => {
+      const fullName = String(doc?.name || '');
+      const id = fullName.split('/').pop();
+      if (id) ids.push(id);
+    });
+    pageToken = String(json.nextPageToken || '');
+  } while (pageToken);
+  return ids;
+}
+
+
 async function setDocData(collection, id, data) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const body = { fields: toFirestoreValue(data).mapValue.fields };
@@ -778,6 +800,9 @@ function AppContent() {
   const [statsPrayerRange, setStatsPrayerRange] = useState('today');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
+  const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
+  const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
+  const [availableStatsDates, setAvailableStatsDates] = useState([]);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
   const [overrideLoading, setOverrideLoading] = useState(false);
   const [overrideSaving, setOverrideSaving] = useState(false);
@@ -804,6 +829,8 @@ function AppContent() {
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
   const statsPayloadRef = useRef('');
+  const weeklyStatsPayloadRef = useRef('');
+  const hasLoadedWeeklyRef = useRef(false);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const insets = useSafeAreaInsets();
@@ -819,6 +846,7 @@ function AppContent() {
     return d;
   }, [refreshTick]);
   const todayISO = toISO(now);
+  useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   const programConfigToday = programConfigByDate[todayISO] || null;
   const programWindow = useMemo(() => {
     if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
@@ -1515,7 +1543,7 @@ function AppContent() {
     const targetIsos = [...statsPrevWeekIsos, ...statsWeekIsos];
 
     const fetchWeeklyStats = () => {
-      setWeeklyStatsLoading(true);
+      if (!hasLoadedWeeklyRef.current) setWeeklyStatsLoading(true);
       Promise.all(targetIsos.map((iso) => getDocData('attendance_daily', iso).then((data) => [iso, data || null])))
         .then((rows) => {
           if (cancelled) return;
@@ -1523,11 +1551,17 @@ function AppContent() {
             acc[iso] = data;
             return acc;
           }, {});
-          setWeeklyAttendanceDocs(next);
+          const serialized = JSON.stringify(next);
+          if (serialized !== weeklyStatsPayloadRef.current) {
+            weeklyStatsPayloadRef.current = serialized;
+            setWeeklyAttendanceDocs((prev) => ({ ...prev, ...next }));
+          }
+          hasLoadedWeeklyRef.current = true;
           setWeeklyStatsLoading(false);
         })
         .catch(() => {
           if (cancelled) return;
+          hasLoadedWeeklyRef.current = true;
           setWeeklyStatsLoading(false);
           setToast('Datenbankfehler – bitte Internet prüfen');
         });
@@ -1540,6 +1574,41 @@ function AppContent() {
       clearInterval(timer);
     };
   }, [activeTab, statsMode, statsPrevWeekIsos, statsWeekIsos]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'prayer') return;
+    let cancelled = false;
+    listDocIds('attendance_daily')
+      .then((ids) => {
+        if (cancelled) return;
+        const normalized = ids
+          .filter((id) => /^\d{4}-\d{2}-\d{2}$/.test(String(id)))
+          .sort()
+          .reverse();
+        setAvailableStatsDates(normalized);
+      })
+      .catch(() => {
+        if (!cancelled) setToast('Datenbankfehler – bitte Internet prüfen');
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, statsMode]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'prayer') return;
+    if (!selectedStatsDateISO || weeklyAttendanceDocs[selectedStatsDateISO] !== undefined) return;
+    let cancelled = false;
+    getDocData('attendance_daily', selectedStatsDateISO)
+      .then((data) => {
+        if (cancelled) return;
+        setWeeklyAttendanceDocs((prev) => ({ ...prev, [selectedStatsDateISO]: data || null }));
+      })
+      .catch(() => {
+        if (!cancelled) setToast('Datenbankfehler – bitte Internet prüfen');
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, statsMode, selectedStatsDateISO, weeklyAttendanceDocs]);
+
+  const selectedDateAttendance = useMemo(() => (selectedStatsDateISO ? (weeklyAttendanceDocs[selectedStatsDateISO] || null) : null), [selectedStatsDateISO, weeklyAttendanceDocs]);
 
   const todayGraphRows = useMemo(() => getPrayerCountsForStats(statsAttendance), [statsAttendance]);
   const todayGraphSummary = useMemo(() => {
@@ -2114,11 +2183,12 @@ function AppContent() {
       guest: '#A855F7',
     };
     const isTodayChart = statsGraphRange === 'today';
-    const chartLabels = isTodayChart
+    const isDateChart = statsGraphRange === 'date';
+    const chartLabels = (isTodayChart || isDateChart)
       ? STATS_PRAYER_SEQUENCE.map((item) => item.label)
       : weekSeriesRows.map((item) => item.label);
 
-    const seriesCycleOptions = isTodayChart
+    const seriesCycleOptions = (isTodayChart || isDateChart)
       ? ['total', 'ansar', 'khuddam', 'atfal', 'guest']
       : ['total', 'ansar', 'khuddam', 'atfal'];
     const activeSeriesKey = seriesCycleOptions.includes(statsGraphSeries) ? statsGraphSeries : 'total';
@@ -2129,55 +2199,55 @@ function AppContent() {
         label: 'Gesamt',
         color: chartPalette.total,
         thick: true,
-        data: isTodayChart ? todayGraphRows.map((row) => row.total || 0) : weekSeriesRows.map((row) => row.total || 0),
+        data: (isTodayChart ? todayGraphRows : (isDateChart ? getPrayerCountsForStats(selectedDateAttendance) : weekSeriesRows)).map((row) => row.total || 0),
       },
       ansar: {
         key: 'ansar',
         label: 'Ansar',
         color: chartPalette.ansar,
-        data: isTodayChart ? todayGraphRows.map((row) => row.tanzeemTotals?.ansar || 0) : weekSeriesRows.map((row) => row.tanzeemTotals?.ansar || 0),
+        data: (isTodayChart ? todayGraphRows : (isDateChart ? getPrayerCountsForStats(selectedDateAttendance) : weekSeriesRows)).map((row) => row.tanzeemTotals?.ansar || 0),
       },
       khuddam: {
         key: 'khuddam',
         label: 'Khuddam',
         color: chartPalette.khuddam,
-        data: isTodayChart ? todayGraphRows.map((row) => row.tanzeemTotals?.khuddam || 0) : weekSeriesRows.map((row) => row.tanzeemTotals?.khuddam || 0),
+        data: (isTodayChart ? todayGraphRows : (isDateChart ? getPrayerCountsForStats(selectedDateAttendance) : weekSeriesRows)).map((row) => row.tanzeemTotals?.khuddam || 0),
       },
       atfal: {
         key: 'atfal',
         label: 'Atfal',
         color: chartPalette.atfal,
-        data: isTodayChart ? todayGraphRows.map((row) => row.tanzeemTotals?.atfal || 0) : weekSeriesRows.map((row) => row.tanzeemTotals?.atfal || 0),
+        data: (isTodayChart ? todayGraphRows : (isDateChart ? getPrayerCountsForStats(selectedDateAttendance) : weekSeriesRows)).map((row) => row.tanzeemTotals?.atfal || 0),
       },
       guest: {
         key: 'guest',
         label: 'Gäste',
         color: chartPalette.guest,
-        data: todayGraphRows.map((row) => row.guest || 0),
+        data: (isTodayChart ? todayGraphRows : getPrayerCountsForStats(selectedDateAttendance)).map((row) => row.guest || 0),
       },
     };
 
     const chartSeries = [seriesConfig[activeSeriesKey] || seriesConfig.total];
-    const chartXAxisTitle = isTodayChart ? 'Gebete' : 'Tage';
+    const chartXAxisTitle = (isTodayChart || isDateChart) ? 'Gebete' : 'Tage';
 
     const activeSeriesLabel = chartSeries[0]?.label || 'Gesamt';
     const activeSeriesData = chartSeries[0]?.data || [];
     const chartPointRows = chartLabels.map((label, index) => ({ label, value: Number(activeSeriesData[index]) || 0 }));
 
-    const todaySeriesSummary = isTodayChart && chartPointRows.length > 0 ? (() => {
+    const todaySeriesSummary = (isTodayChart || isDateChart) && chartPointRows.length > 0 ? (() => {
       const highest = chartPointRows.reduce((best, item) => (item.value > best.value ? item : best), chartPointRows[0]);
       const lowest = chartPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), chartPointRows[0]);
       const average = chartPointRows.reduce((sum, item) => sum + item.value, 0) / Math.max(1, chartPointRows.length);
       return { highest, lowest, average };
     })() : null;
 
-    const previousWeekSeriesTotal = !isTodayChart ? statsPrevWeekIsos.reduce((sum, iso) => {
+    const previousWeekSeriesTotal = (!isTodayChart && !isDateChart) ? statsPrevWeekIsos.reduce((sum, iso) => {
       const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
       if (activeSeriesKey === 'total') return sum + (totals.total || 0);
       return sum + (totals.tanzeemTotals?.[activeSeriesKey] || 0);
     }, 0) : 0;
 
-    const weekSeriesSummary = !isTodayChart && chartPointRows.length > 0 ? (() => {
+    const weekSeriesSummary = (!isTodayChart && !isDateChart) && chartPointRows.length > 0 ? (() => {
       const highest = chartPointRows.reduce((best, item) => (item.value > best.value ? item : best), chartPointRows[0]);
       const lowest = chartPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), chartPointRows[0]);
       const total = chartPointRows.reduce((sum, item) => sum + item.value, 0);
@@ -2252,13 +2322,26 @@ function AppContent() {
         ) : (
           <>
             {(() => {
-              const totalIsWeek = statsTotalRange === 'week';
-              const tanzeemIsWeek = statsTanzeemRange === 'week';
-              const majlisIsWeek = statsMajlisRange === 'week';
-              const prayerIsWeek = statsPrayerRange === 'week';
-              const totalSource = totalIsWeek ? weekUniqueSummary : todayUniqueSummary;
-              const tanzeemSource = tanzeemIsWeek ? weekUniqueSummary : todayUniqueSummary;
-              const topMajlisSource = majlisIsWeek ? weekTopMajlis : (statsView?.topMajlis || []);
+              const cycleRangeMode = (prev) => (prev === 'today' ? 'week' : prev === 'week' ? 'date' : 'today');
+              const selectedDateSummary = buildUniqueSummary(selectedDateAttendance);
+              const selectedDateTopMajlis = (() => {
+                const map = {};
+                const byPrayer = selectedDateAttendance?.byPrayer || {};
+                Object.values(byPrayer).forEach((prayerNode) => {
+                  const tanzeemMap = prayerNode?.tanzeem || {};
+                  STATS_TANZEEM_KEYS.forEach((key) => {
+                    const majlis = tanzeemMap[key]?.majlis || {};
+                    Object.entries(majlis).forEach(([loc, count]) => {
+                      map[loc] = (map[loc] || 0) + (Number(count) || 0);
+                    });
+                  });
+                });
+                return Object.entries(map).filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1]).slice(0, 8);
+              })();
+
+              const totalSource = statsTotalRange === 'week' ? weekUniqueSummary : statsTotalRange === 'date' ? selectedDateSummary : todayUniqueSummary;
+              const tanzeemSource = statsTanzeemRange === 'week' ? weekUniqueSummary : statsTanzeemRange === 'date' ? selectedDateSummary : todayUniqueSummary;
+              const topMajlisSource = statsMajlisRange === 'week' ? weekTopMajlis : statsMajlisRange === 'date' ? selectedDateTopMajlis : (statsView?.topMajlis || []);
 
               const todayPrayerBars = (() => {
                 if (!statsAttendance?.byPrayer) return [];
@@ -2297,18 +2380,23 @@ function AppContent() {
                 ];
               })();
 
-              const prayerBars = prayerIsWeek ? weekPrayerTotals : todayPrayerBars;
+              const prayerBars = statsPrayerRange === 'week' ? weekPrayerTotals : statsPrayerRange === 'date' ? getPrayerCountsForStats(selectedDateAttendance).map((row) => ({ key: row.key, label: `${row.label} (${row.key === 'fajr' ? 'الفجر' : row.key === 'sohar' ? 'الظهر' : row.key === 'asr' ? 'العصر' : row.key === 'maghrib' ? 'المغرب' : 'العشاء'})`, total: row.total || 0 })) : todayPrayerBars;
 
               return (
                 <>
+                  {(statsTotalRange === 'date' || statsTanzeemRange === 'date' || statsMajlisRange === 'date' || statsPrayerRange === 'date' || statsGraphRange === 'date') ? (
+                    <Pressable onPress={() => setStatsCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                      <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>Datum auswählen · {selectedStatsDateISO || '—'}</Text>
+                    </Pressable>
+                  ) : null}
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTotalRange)}</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{statsTotalRange === 'date' ? `Datum · ${selectedStatsDateISO || '—'}` : formatRangeLabel(statsTotalRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsTotalRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${totalIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
+                      <Pressable onPress={() => setStatsTotalRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsTotalRange === 'today' ? 'Heute' : statsTotalRange === 'week' ? 'Woche' : 'Datum'} >>`}</Text>
                       </Pressable>
                     </View>
                     <Text style={[styles.statsBigValue, { color: theme.text }]}>{totalSource.total}</Text>
@@ -2318,10 +2406,10 @@ function AppContent() {
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTanzeemRange)}</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{statsTanzeemRange === 'date' ? `Datum · ${selectedStatsDateISO || '—'}` : formatRangeLabel(statsTanzeemRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsTanzeemRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${tanzeemIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
+                      <Pressable onPress={() => setStatsTanzeemRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsTanzeemRange === 'today' ? 'Heute' : statsTanzeemRange === 'week' ? 'Woche' : 'Datum'} >>`}</Text>
                       </Pressable>
                     </View>
                     <View style={styles.tanzeemStatsRow}>
@@ -2343,26 +2431,25 @@ function AppContent() {
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : prev === 'week' ? 'date' : 'today')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? 'Heute' : 'Woche'}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? 'Heute' : statsGraphRange === 'week' ? 'Woche' : (selectedStatsDateISO || 'Datum')}</Text>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : prev === 'week' ? 'date' : 'today')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
                         </Pressable>
                       </View>
                     </View>
-
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
-                            const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const options = (statsGraphRange === 'today' || statsGraphRange === 'date') ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
                             const idx = options.indexOf(prev);
                             return options[(idx - 1 + options.length) % options.length];
                           })}
@@ -2373,7 +2460,7 @@ function AppContent() {
                         <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{chartSeries[0]?.label || 'Gesamt'}</Text>
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
-                            const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const options = (statsGraphRange === 'today' || statsGraphRange === 'date') ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
                             const idx = options.indexOf(prev);
                             return options[(idx + 1) % options.length];
                           })}
@@ -2386,7 +2473,7 @@ function AppContent() {
 
                     <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
 
-                    {statsGraphRange === 'today' && todaySeriesSummary ? (
+                    {(statsGraphRange === 'today' || statsGraphRange === 'date') && todaySeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet ({activeSeriesLabel}): {todaySeriesSummary.highest.label} ({todaySeriesSummary.highest.value})</Text>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet ({activeSeriesLabel}): {todaySeriesSummary.lowest.label} ({todaySeriesSummary.lowest.value})</Text>
@@ -2410,14 +2497,14 @@ function AppContent() {
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{statsMajlisRange === 'date' ? `Datum · ${selectedStatsDateISO || '—'}` : formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsMajlisRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${majlisIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
+                      <Pressable onPress={() => setStatsMajlisRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsMajlisRange === 'today' ? 'Heute' : statsMajlisRange === 'week' ? 'Woche' : 'Datum'} >>`}</Text>
                       </Pressable>
                     </View>
                     {topMajlisSource.length === 0 ? (
-                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {majlisIsWeek ? 'diese Woche' : 'heute'}</Text>
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {statsMajlisRange === 'week' ? 'diese Woche' : statsMajlisRange === 'date' ? 'dieses Datum' : 'heute'}</Text>
                     ) : (
                       (() => {
                         const maxTop = Math.max(1, ...topMajlisSource.map(([, count]) => count));
@@ -2438,10 +2525,10 @@ function AppContent() {
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{statsPrayerRange === 'date' ? `Datum · ${selectedStatsDateISO || '—'}` : formatRangeLabel(statsPrayerRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsPrayerRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${prayerIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
+                      <Pressable onPress={() => setStatsPrayerRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsPrayerRange === 'today' ? 'Heute' : statsPrayerRange === 'week' ? 'Woche' : 'Datum'} >>`}</Text>
                       </Pressable>
                     </View>
                     {(() => {
@@ -2606,6 +2693,38 @@ function AppContent() {
         </View>
       </Modal>
 
+      <Modal visible={isStatsCalendarVisible} animationType="slide" transparent onRequestClose={() => setStatsCalendarVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}> 
+            <View style={styles.privacyModalHeader}>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
+              <Pressable onPress={() => setStatsCalendarVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+              {availableStatsDates.length === 0 ? (
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Datumswerte verfügbar.</Text>
+              ) : availableStatsDates.map((iso) => {
+                const dateObj = parseISO(iso);
+                const label = dateObj ? germanWeekdayDateLong(dateObj) : iso;
+                const isActive = iso === selectedStatsDateISO;
+                return (
+                  <Pressable
+                    key={iso}
+                    onPress={() => { setSelectedStatsDateISO(iso); setStatsCalendarVisible(false); }}
+                    style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
+                  >
+                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+
       {toast ? (
         <View style={[styles.toast, { backgroundColor: getToastTone(toast) === 'negative' ? '#DC2626' : '#16A34A' }]}><Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{toast}</Text></View>
       ) : null}
@@ -2707,6 +2826,8 @@ const styles = StyleSheet.create({
   privacyModalCloseBtn: { paddingVertical: 6, paddingHorizontal: 4 },
   privacyModalCloseText: { fontSize: 14, fontWeight: '500' },
   privacyModalBody: { paddingHorizontal: 20, paddingBottom: 32, paddingTop: 4 },
+  statsCalendarBody: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 },
+  statsCalendarItem: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 12 },
   privacyModalHeroTitle: { fontSize: 23, fontWeight: '700', lineHeight: 30, marginTop: 4, marginBottom: 8 },
   privacySection: { marginTop: 18 },
   privacySectionLast: { marginBottom: 10 },
@@ -2738,6 +2859,8 @@ const styles = StyleSheet.create({
   statsCyclerArrowBtn: { paddingHorizontal: 8, paddingVertical: 6 },
   statsCyclerArrow: { fontSize: 14, fontWeight: '800' },
   statsCyclerValue: { fontSize: 14, fontWeight: '700' },
+  statsCalendarBtn: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10, alignItems: 'center' },
+  statsCalendarBtnText: { fontSize: 12, fontWeight: '700' },
   chartWrap: { marginTop: 12 },
   chartCanvas: { borderWidth: 1, borderRadius: 12, position: 'relative', overflow: 'hidden' },
   chartAxisTitleY: { marginBottom: 6, marginLeft: 6, fontSize: 11, fontWeight: '800' },
