@@ -1763,7 +1763,7 @@ function AppContent() {
         denseRank += 1;
         previousCount = row.count;
       }
-      return denseRank <= 5;
+      return denseRank <= 3;
     });
   }, [membersDirectory, statsWeekIsos, weeklyAttendanceDocs, statsWeekRankingFilter]);
 
@@ -2260,7 +2260,7 @@ function AppContent() {
           </Pressable>
           <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
           <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
-          <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
+          <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt · Bait-Us-Sabuh</Text>
           <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
         </View>
 
