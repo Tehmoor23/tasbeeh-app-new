@@ -356,7 +356,7 @@ const calculateStatus = (weekTotal, distinctDays) => {
   return { provisional: false, label: '🟢🟢 Exzellent' };
 };
 
-function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null }) {
+function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null, mobileXEdgeInset = 0 }) {
   const [chartWidth, setChartWidth] = useState(0);
   const isCompactChart = chartWidth > 0 && chartWidth < 360;
   const chartHeight = isCompactChart ? 320 : 280;
@@ -386,8 +386,11 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
   const plotLeft = axisLabelWidth;
   const plotWidth = Math.max(1, chartWidth - plotLeft - plotRightPad);
   const plotHeight = chartHeight - plotTop - plotBottom;
+  const clampedMobileInset = Math.max(0, Number(mobileXEdgeInset) || 0);
+  const xInset = isCompactChart ? Math.min(clampedMobileInset, plotWidth / 2) : 0;
+  const xUsableWidth = Math.max(1, plotWidth - (xInset * 2));
 
-  const getX = (index) => plotLeft + (plotWidth * index) / (pointCount - 1);
+  const getX = (index) => plotLeft + xInset + (xUsableWidth * index) / (pointCount - 1);
   const getY = (value) => plotTop + plotHeight - ((Number(value) || 0) / maxValue) * plotHeight;
 
   return (
@@ -2736,7 +2739,7 @@ function AppContent() {
                       </View>
                     </View>
 
-                    <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
+                    <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} mobileXEdgeInset={8} />
 
                     {false && selectedDateSeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
