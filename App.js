@@ -2544,38 +2544,48 @@ function AppContent() {
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking</Text>
-                    </View>
-                    <View style={styles.statsToggleRow}>
-                      {['total', 'ansar', 'khuddam', 'atfal'].map((key) => {
-                        const isActive = statsWeekRankingFilter === key;
-                        const label = key === 'total' ? 'Gesamt' : TANZEEM_LABELS[key];
-                        return (
-                          <Pressable
-                            key={key}
-                            onPress={() => setStatsWeekRankingFilter(key)}
-                            style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
-                          >
-                            <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{label}</Text>
-                          </Pressable>
-                        );
-                      })}
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking (Gebete)</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel('week')}</Text>
+                      </View>
+                      <Pressable
+                        onPress={() => {
+                          const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                          const idx = options.indexOf(statsWeekRankingFilter);
+                          setStatsWeekRankingFilter(options[(idx + 1) % options.length]);
+                        }}
+                        style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                      >
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsWeekRankingFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsWeekRankingFilter]} >>`}</Text>
+                      </Pressable>
                     </View>
                     {weekRankingRows.length === 0 ? (
                       <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten für diese Woche</Text>
-                    ) : weekRankingRows.map((row) => {
-                      const tanzeemLabel = TANZEEM_LABELS[row.tanzeem] || (row.tanzeem ? row.tanzeem.charAt(0).toUpperCase() + row.tanzeem.slice(1) : '—');
-                      const majlisLabel = row.majlis || '—';
-                      const descriptor = statsWeekRankingFilter === 'total'
-                        ? `${row.idNumber} (${tanzeemLabel} · ${majlisLabel})`
-                        : `${row.idNumber} (${majlisLabel})`;
-                      return (
-                        <View key={`${row.idNumber}_${row.count}`} style={styles.statsRankingRow}>
-                          <Text style={[styles.statsRankingLabel, { color: theme.text }]} numberOfLines={1}>{descriptor}</Text>
-                          <Text style={[styles.statsRankingValue, { color: theme.text }]}>{row.count}</Text>
-                        </View>
-                      );
-                    })}
+                    ) : (() => {
+                      const maxRankCount = Math.max(1, ...weekRankingRows.map((row) => row.count || 0));
+                      let currentRank = 0;
+                      let previousCount = null;
+                      return weekRankingRows.map((row, index) => {
+                        const tanzeemLabel = TANZEEM_LABELS[row.tanzeem] || (row.tanzeem ? row.tanzeem.charAt(0).toUpperCase() + row.tanzeem.slice(1) : '—');
+                        const majlisLabel = row.majlis || '—';
+                        const descriptor = statsWeekRankingFilter === 'total'
+                          ? `${row.idNumber} (${tanzeemLabel} · ${majlisLabel})`
+                          : `${row.idNumber} (${majlisLabel})`;
+                        if (previousCount !== row.count) {
+                          currentRank = index + 1;
+                          previousCount = row.count;
+                        }
+                        return (
+                          <View key={`${row.idNumber}_${row.count}`} style={styles.barRow}>
+                            <Text style={[styles.statsRankingBarLabel, { color: theme.text }]} numberOfLines={1}>{`${currentRank}. ${descriptor}`}</Text>
+                            <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
+                              <View style={[styles.barFill, { backgroundColor: theme.button, width: `${((row.count || 0) / maxRankCount) * 100}%` }]} />
+                            </View>
+                            <Text style={[styles.barValue, { color: theme.text }]}>{row.count}</Text>
+                          </View>
+                        );
+                      });
+                    })()}
                   </View>
                 </>
               );
@@ -2947,6 +2957,7 @@ const styles = StyleSheet.create({
   statsRankingRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   statsRankingLabel: { flex: 1, fontSize: 13, fontWeight: '600' },
   statsRankingValue: { minWidth: 30, textAlign: 'right', fontSize: 14, fontWeight: '800' },
+  statsRankingBarLabel: { width: 230, fontSize: 12, fontWeight: '600' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridItemTablet: { width: '31.8%', paddingVertical: 24 },
