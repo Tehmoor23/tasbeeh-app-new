@@ -282,6 +282,64 @@ const buildMajlisRanking = (countsByMajlis = {}) => {
     .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]));
 };
 
+const startOfWeekMonday = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = (d.getDay() + 6) % 7;
+  d.setDate(d.getDate() - day);
+  return d;
+};
+
+const getLast7Days = (baseDate) => {
+  const base = new Date(baseDate);
+  base.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, idx) => toISO(addDays(base, idx - 6)));
+};
+
+const getLast8Weeks = (baseDate) => {
+  const currentWeekStart = startOfWeekMonday(baseDate);
+  return Array.from({ length: 8 }, (_, idx) => {
+    const start = addDays(currentWeekStart, (idx - 7) * 7);
+    const end = addDays(start, 6);
+    return {
+      startISO: toISO(start),
+      endISO: toISO(end),
+      label: `${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(start)}–${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(end)}`,
+    };
+  });
+};
+
+const buildDailySeries = (logs, dayIsos) => {
+  const counts = dayIsos.reduce((acc, iso) => ({ ...acc, [iso]: 0 }), {});
+  logs.forEach((row) => {
+    const iso = String(row?.date || '');
+    if (counts[iso] !== undefined) counts[iso] += 1;
+  });
+  return dayIsos.map((iso) => ({ iso, value: counts[iso] || 0 }));
+};
+
+const buildWeeklySeries = (logs, weeks) => weeks.map((week) => ({
+  ...week,
+  value: logs.reduce((sum, row) => {
+    const iso = String(row?.date || '');
+    return (iso >= week.startISO && iso <= week.endISO) ? (sum + 1) : sum;
+  }, 0),
+}));
+
+const calculateStatus = (weekTotal, distinctDays) => {
+  if (distinctDays < 3) {
+    return {
+      provisional: true,
+      label: 'Status vorläufig – zu wenig Daten',
+      detail: null,
+    };
+  }
+  if (weekTotal <= 4) return { provisional: false, label: '🔴 Niedrig' };
+  if (weekTotal <= 14) return { provisional: false, label: '🟡 Gut dabei' };
+  if (weekTotal <= 29) return { provisional: false, label: '🟢 Sehr gut' };
+  return { provisional: false, label: '🟢🟢 Exzellent' };
+};
+
 function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse' }) {
   const [chartWidth, setChartWidth] = useState(0);
   const isCompactChart = chartWidth > 0 && chartWidth < 360;
@@ -812,6 +870,13 @@ function AppContent() {
   const [statsMajlisRange, setStatsMajlisRange] = useState('today');
   const [statsPrayerRange, setStatsPrayerRange] = useState('today');
   const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
+  const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
+  const [detailedFlowTanzeem, setDetailedFlowTanzeem] = useState('');
+  const [detailedFlowMajlis, setDetailedFlowMajlis] = useState('');
+  const [detailedIdSearchQuery, setDetailedIdSearchQuery] = useState('');
+  const [selectedDetailedMember, setSelectedDetailedMember] = useState(null);
+  const [detailedMemberLogs, setDetailedMemberLogs] = useState([]);
+  const [detailedLogsLoading, setDetailedLogsLoading] = useState(false);
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
@@ -845,6 +910,7 @@ function AppContent() {
   const statsPayloadRef = useRef('');
   const weeklyStatsPayloadRef = useRef('');
   const hasLoadedWeeklyRef = useRef(false);
+  const detailedLogsCacheRef = useRef({});
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const insets = useSafeAreaInsets();
@@ -1767,6 +1833,96 @@ function AppContent() {
     });
   }, [membersDirectory, statsWeekIsos, weeklyAttendanceDocs, statsWeekRankingFilter]);
 
+  const detailedMajlisOptions = useMemo(() => {
+    if (!detailedFlowTanzeem) return [];
+    return Array.from(new Set(
+      membersDirectory
+        .filter((entry) => entry.tanzeem === detailedFlowTanzeem)
+        .map((entry) => entry.majlis),
+    )).sort((a, b) => a.localeCompare(b));
+  }, [membersDirectory, detailedFlowTanzeem]);
+
+  const detailedIdChoices = useMemo(() => {
+    const query = detailedIdSearchQuery.trim();
+    return membersDirectory
+      .filter((entry) => (!detailedFlowTanzeem || entry.tanzeem === detailedFlowTanzeem) && (!detailedFlowMajlis || entry.majlis === detailedFlowMajlis))
+      .filter((entry) => (!query || String(entry.idNumber).includes(query)))
+      .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
+  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery]);
+
+  const detailedLast7Days = useMemo(() => getLast7Days(now), [now]);
+  const detailedLast8Weeks = useMemo(() => getLast8Weeks(now), [now]);
+
+  const loadDetailedLogsForMember = async (idNumber, minISO, maxISO) => {
+    const cacheKey = `${idNumber}_${minISO}_${maxISO}`;
+    if (Array.isArray(detailedLogsCacheRef.current[cacheKey])) {
+      setDetailedMemberLogs(detailedLogsCacheRef.current[cacheKey]);
+      return;
+    }
+    setDetailedLogsLoading(true);
+    try {
+      const ids = await listDocIds(MEMBER_DIRECTORY_COLLECTION);
+      const relevantIds = ids.filter((docId) => {
+        const id = String(docId || '');
+        if (!/^\d{4}-\d{2}-\d{2}_/.test(id)) return false;
+        const dateISO = id.slice(0, 10);
+        if (dateISO < minISO || dateISO > maxISO) return false;
+        return id.endsWith(`_${String(idNumber)}`);
+      });
+      const rows = await Promise.all(relevantIds.map(async (docId) => {
+        const doc = await getDocData(MEMBER_DIRECTORY_COLLECTION, docId);
+        return doc || null;
+      }));
+      const filteredRows = rows
+        .filter(Boolean)
+        .filter((row) => String(row?.idNumber || '') === String(idNumber))
+        .filter((row) => {
+          const iso = String(row?.date || '');
+          return /^\d{4}-\d{2}-\d{2}$/.test(iso) && iso >= minISO && iso <= maxISO;
+        })
+        .filter((row) => Boolean(row?.prayer))
+        .map((row) => ({
+          date: String(row?.date || ''),
+          prayer: String(row?.prayer || ''),
+          tanzeem: String(row?.tanzeem || ''),
+          majlis: String(row?.majlis || ''),
+          timestamp: String(row?.timestamp || ''),
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      detailedLogsCacheRef.current[cacheKey] = filteredRows;
+      setDetailedMemberLogs(filteredRows);
+    } catch {
+      setToast('Datenbankfehler – bitte Internet prüfen');
+      setDetailedMemberLogs([]);
+    } finally {
+      setDetailedLogsLoading(false);
+    }
+  };
+
+  const detailedDailySeries = useMemo(() => buildDailySeries(detailedMemberLogs, detailedLast7Days), [detailedMemberLogs, detailedLast7Days]);
+  const detailedWeeklySeries = useMemo(() => buildWeeklySeries(detailedMemberLogs, detailedLast8Weeks), [detailedMemberLogs, detailedLast8Weeks]);
+
+  const detailedCurrentWeek = detailedLast8Weeks[detailedLast8Weeks.length - 1] || null;
+  const detailedPreviousWeek = detailedLast8Weeks[detailedLast8Weeks.length - 2] || null;
+  const detailedCurrentWeekCount = useMemo(() => {
+    if (!detailedCurrentWeek) return 0;
+    return detailedMemberLogs.reduce((sum, row) => ((row.date >= detailedCurrentWeek.startISO && row.date <= detailedCurrentWeek.endISO) ? (sum + 1) : sum), 0);
+  }, [detailedMemberLogs, detailedCurrentWeek]);
+  const detailedPreviousWeekCount = useMemo(() => {
+    if (!detailedPreviousWeek) return 0;
+    return detailedMemberLogs.reduce((sum, row) => ((row.date >= detailedPreviousWeek.startISO && row.date <= detailedPreviousWeek.endISO) ? (sum + 1) : sum), 0);
+  }, [detailedMemberLogs, detailedPreviousWeek]);
+  const detailedCurrentWeekDistinctDays = useMemo(() => {
+    if (!detailedCurrentWeek) return 0;
+    const days = new Set(
+      detailedMemberLogs
+        .filter((row) => row.date >= detailedCurrentWeek.startISO && row.date <= detailedCurrentWeek.endISO)
+        .map((row) => row.date),
+    );
+    return days.size;
+  }, [detailedMemberLogs, detailedCurrentWeek]);
+  const detailedStatus = useMemo(() => calculateStatus(detailedCurrentWeekCount, detailedCurrentWeekDistinctDays), [detailedCurrentWeekCount, detailedCurrentWeekDistinctDays]);
+
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
@@ -2594,6 +2750,14 @@ function AppContent() {
                       });
                     })()}
                   </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
+                    <Text style={[styles.noteText, { color: theme.muted }]}>Privater Bereich (Zugriffsbeschränkung folgt).</Text>
+                    <Pressable onPress={() => setDetailedIdOverviewVisible(true)} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                      <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>Übersicht öffnen</Text>
+                    </Pressable>
+                  </View>
                 </>
               );
             })()}
@@ -2777,6 +2941,137 @@ function AppContent() {
                   </Pressable>
                 );
               })}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+
+      <Modal visible={isDetailedIdOverviewVisible} animationType="slide" transparent onRequestClose={() => setDetailedIdOverviewVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
+            <View style={styles.privacyModalHeader}>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Detaillierte ID-Übersicht</Text>
+              <Pressable onPress={() => setDetailedIdOverviewVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailedIdModalBody}>
+              {!selectedDetailedMember ? (
+                <>
+                  <Text style={[styles.noteText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID</Text>
+                  <View style={styles.statsToggleRow}>
+                    {TANZEEM_OPTIONS.map((key) => {
+                      const isActive = detailedFlowTanzeem === key;
+                      return (
+                        <Pressable
+                          key={key}
+                          onPress={() => { setDetailedFlowTanzeem(key); setDetailedFlowMajlis(''); }}
+                          style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
+                        >
+                          <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{TANZEEM_LABELS[key]}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+
+                  {detailedFlowTanzeem ? (
+                    <View style={styles.detailedIdSectionWrap}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Majlis</Text>
+                      <View style={styles.detailedIdChipsWrap}>
+                        {detailedMajlisOptions.map((majlis) => {
+                          const isActive = detailedFlowMajlis === majlis;
+                          return (
+                            <Pressable
+                              key={majlis}
+                              onPress={() => setDetailedFlowMajlis(majlis)}
+                              style={[styles.detailedIdChip, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
+                            >
+                              <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{majlis}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <TextInput
+                    value={detailedIdSearchQuery}
+                    onChangeText={setDetailedIdSearchQuery}
+                    placeholder="ID-Nummer suchen"
+                    placeholderTextColor={theme.muted}
+                    keyboardType="number-pad"
+                    style={[styles.idSearchInput, { marginTop: 8, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                  />
+
+                  <View style={styles.detailedIdListWrap}>
+                    {detailedIdChoices.map((member) => (
+                      <Pressable
+                        key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                        onPress={() => {
+                          setSelectedDetailedMember(member);
+                          const firstWeek = getLast8Weeks(now)[0];
+                          loadDetailedLogsForMember(member.idNumber, firstWeek.startISO, toISO(now));
+                        }}
+                        style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
+                      >
+                        <Text style={{ color: theme.text, fontWeight: '700' }}>{member.idNumber}</Text>
+                        <Text style={{ color: theme.muted, fontSize: 12 }}>{`${TANZEEM_LABELS[member.tanzeem]} · ${member.majlis}`}</Text>
+                      </Pressable>
+                    ))}
+                    {detailedIdChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine IDs gefunden.</Text> : null}
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
+                    <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Zurück</Text>
+                  </Pressable>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>ID {selectedDetailedMember.idNumber}</Text>
+                    <Text style={{ color: theme.text, fontWeight: '700', marginTop: 4 }}>{selectedDetailedMember.majlis}</Text>
+                    <Text style={[styles.noteText, { color: theme.muted, marginTop: 2 }]}>{TANZEEM_LABELS[selectedDetailedMember.tanzeem]}</Text>
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Status (wöchentlich)</Text>
+                    {detailedLogsLoading ? <ActivityIndicator size="small" color={theme.text} style={{ marginTop: 8 }} /> : null}
+                    <Text style={[styles.statsInsightText, { color: theme.text, marginTop: 6 }]}>{`Diese Woche: ${detailedCurrentWeekCount} / 35`}</Text>
+                    <Text style={[styles.statsInsightText, { color: theme.text }]}>{`Letzte Woche: ${detailedPreviousWeekCount} / 35`}</Text>
+                    <Text style={[styles.statsInsightText, { color: theme.text }]}>{`Differenz (Δ): ${detailedCurrentWeekCount - detailedPreviousWeekCount >= 0 ? '+' : ''}${detailedCurrentWeekCount - detailedPreviousWeekCount}`}</Text>
+                    <Text style={[styles.statsInsightText, { color: theme.text }]}>{`Durchschnitt pro Tag: ${(detailedCurrentWeekCount / 7).toFixed(1)}`}</Text>
+                    <Text style={[styles.statsInsightText, { color: theme.text, marginTop: 6 }]}>{detailedStatus.label}</Text>
+                    <Text style={[styles.noteText, { color: theme.muted, marginTop: 4 }]}>{`Entspricht ca. ${(detailedCurrentWeekCount / 7).toFixed(1)} Gebeten pro Tag (Ø)`}</Text>
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Letzte 7 Tage</Text>
+                    <MiniLineChart
+                      labels={detailedDailySeries.map((row) => {
+                        const d = parseISO(row.iso);
+                        return d ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(d).replace(/\.$/, '') : row.iso;
+                      })}
+                      series={[{ key: 'daily', label: 'Gebete/Tag', color: theme.button, thick: true, data: detailedDailySeries.map((row) => row.value) }]}
+                      theme={theme}
+                      isDarkMode={isDarkMode}
+                      xAxisTitle="Tage"
+                    />
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Letzte 8 Wochen</Text>
+                    <MiniLineChart
+                      labels={detailedWeeklySeries.map((row) => row.label)}
+                      series={[{ key: 'weekly', label: 'Gebete/Woche', color: theme.button, thick: true, data: detailedWeeklySeries.map((row) => row.value) }]}
+                      theme={theme}
+                      isDarkMode={isDarkMode}
+                      xAxisTitle="Wochen (Mo–So)"
+                    />
+                  </View>
+                </>
+              )}
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -2967,6 +3262,14 @@ const styles = StyleSheet.create({
   statsRankingLabel: { flex: 1, fontSize: 13, fontWeight: '600' },
   statsRankingValue: { minWidth: 30, textAlign: 'right', fontSize: 14, fontWeight: '800' },
   statsRankingBarLabel: { width: 230, fontSize: 12, fontWeight: '600' },
+  statsDetailOpenBtn: { marginTop: 10, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  statsDetailOpenBtnText: { fontSize: 13, fontWeight: '700' },
+  detailedIdModalBody: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 },
+  detailedIdSectionWrap: { marginTop: 8, gap: 8 },
+  detailedIdChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  detailedIdChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
+  detailedIdListWrap: { marginTop: 10, gap: 8 },
+  detailedIdRow: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12 },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridItemTablet: { width: '31.8%', paddingVertical: 24 },
