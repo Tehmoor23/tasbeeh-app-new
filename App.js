@@ -319,7 +319,7 @@ const getLast8Weeks = (baseDate) => {
       startISO: toISO(start),
       endISO: toISO(end),
       weekNumber,
-      label: `KW ${weekNumber}`,
+      label: `KW ${weekNumber} (${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(start)}–${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(end)})`,
       rangeLabel: `${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(start)}–${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(end)}`,
     };
   });
@@ -1762,6 +1762,14 @@ function AppContent() {
     return `${weekday}, ${datePart}`;
   };
 
+  const formatIsoWithWeekday = (iso) => {
+    const dateObj = parseISO(iso || '');
+    if (!dateObj) return iso || '—';
+    const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '');
+    const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+    return `${weekday}, ${datePart}`;
+  };
+
   const selectedStatsDateLabel = useMemo(() => {
     if (!selectedStatsDateISO) return '—';
     const base = formatStatsDateShort(selectedStatsDateISO);
@@ -1782,7 +1790,7 @@ function AppContent() {
     return `${prefix} · ${startFmt} – ${endFmt}`;
   };
 
-  const currentWeekToggleLabel = '<< Aktuelle Woche >>';
+  const currentWeekToggleLabel = `<< Aktuelle Woche (${formatRangeFromIsos(statsWeekIsos, '').replace(/^ · /, '')} · KW ${getISOWeekNumber(parseISO(statsWeekIsos[0] || '') || now)}) >>`;
   const previousWeekToggleLabel = `<< Letzte Woche (${formatRangeFromIsos(statsRollingWeekIsos, '').replace(/^ · /, '')}) >>`;
   const selectedDateToggleLabel = `<< ${selectedStatsDateToggleLabel} >>`;
 
@@ -3052,10 +3060,16 @@ function AppContent() {
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.detailedIdModalBody}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[styles.detailedIdModalBody, !selectedDetailedMember && (!detailedFlowTanzeem || !detailedFlowMajlis) && styles.detailedIdModalBodyCompact]}
+            >
               {!selectedDetailedMember ? (
                 <>
-                  <Text style={[styles.noteText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID</Text>
+                  <View style={[styles.detailedGuideCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                    <Text style={[styles.detailedGuideTitle, { color: theme.text }]}>Bitte zuerst auswählen</Text>
+                    <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID</Text>
+                  </View>
                   <View style={styles.statsToggleRow}>
                     {TANZEEM_OPTIONS.map((key) => {
                       const isActive = detailedFlowTanzeem === key;
@@ -3122,6 +3136,9 @@ function AppContent() {
                   </>) : (
                     <Text style={[styles.noteText, { color: theme.muted, marginTop: 8 }]}>Bitte erst Majlis auswählen, dann werden IDs geladen.</Text>
                   )}
+                  {!detailedFlowTanzeem || !detailedFlowMajlis ? (
+                    <Text style={[styles.detailedGuideHint, { color: theme.button }]}>Bitte Tanzeem und Majlis auswählen, dann erscheinen die IDs.</Text>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -3153,7 +3170,7 @@ function AppContent() {
                         <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{detailedGraphRange === 'currentWeek' ? '<< Aktuelle Woche >>' : '<< Letzte Woche >>'}</Text>
                       </Pressable>
                     </View>
-                    <Text style={[styles.noteText, { color: theme.muted }]}>{`${detailedComparisonSeries[0]?.iso || '—'} - ${detailedComparisonSeries[detailedComparisonSeries.length - 1]?.iso || '—'}`}</Text>
+                    <Text style={[styles.noteText, { color: theme.muted }]}>{`${formatIsoWithWeekday(detailedComparisonSeries[0]?.iso)} – ${formatIsoWithWeekday(detailedComparisonSeries[detailedComparisonSeries.length - 1]?.iso)}`}</Text>
                     <MiniLineChart
                       labels={detailedComparisonSeries.map((row) => {
                         const d = parseISO(row.iso);
@@ -3175,7 +3192,7 @@ function AppContent() {
                       series={[{ key: 'weekly', label: 'Gebete/Woche', color: theme.button, thick: true, data: detailedWeeklySeries.map((row) => row.value) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="Letzte 4 Wochen (Mo–So)"
+                      xAxisTitle="Letzte 4 Wochen (KW + Datum)"
                     />
                   </View>
                 </>
@@ -3373,6 +3390,11 @@ const styles = StyleSheet.create({
   statsDetailOpenBtn: { marginTop: 10, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   statsDetailOpenBtnText: { fontSize: 13, fontWeight: '700' },
   detailedIdModalBody: { paddingHorizontal: 14, paddingBottom: 18, gap: 8 },
+  detailedIdModalBodyCompact: { justifyContent: 'flex-start', paddingTop: 6, paddingBottom: 8 },
+  detailedGuideCard: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  detailedGuideTitle: { fontSize: 15, fontWeight: '800' },
+  detailedGuideText: { fontSize: 13, marginTop: 4, textAlign: 'center' },
+  detailedGuideHint: { textAlign: 'center', fontSize: 13, fontWeight: '700', marginTop: 10 },
   detailedIdSectionWrap: { marginTop: 6, gap: 6 },
   detailedIdChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   detailedIdChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 8 },
