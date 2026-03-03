@@ -541,10 +541,12 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
           if (useEqualLabelSlots) {
             const slotCount = Math.max(1, labels.length - 1);
             const xPercent = (index / slotCount) * 100;
+            const isIshaaLabel = rawLabel.trim().toLowerCase() === 'ishaa';
+            const isLastIshaa = index === labels.length - 1 && isIshaaLabel;
             const edgeAlignStyle = index === 0
               ? { left: `${xPercent}%`, textAlign: 'left', transform: [] }
               : index === labels.length - 1
-                ? { left: `${xPercent}%`, textAlign: 'right', transform: [{ translateX: -56 }] }
+                ? { left: `${xPercent}%`, textAlign: 'right', transform: [{ translateX: isLastIshaa ? -62 : -56 }] }
                 : { left: `${xPercent}%`, textAlign: 'center', transform: [{ translateX: -28 }] };
             return (
               <Text
