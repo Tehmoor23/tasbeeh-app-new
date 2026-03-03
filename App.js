@@ -415,11 +415,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
       <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad, height: isCompactChart ? 52 : 20 }]}>
         {chartWidth > 0 ? labels.map((label, index) => {
           const isDateLabel = String(label || '').includes(',');
-          const labelWidth = isDateLabel ? (isCompactChart ? 84 : 92) : (isCompactChart ? 54 : 64);
+          const labelWidth = isDateLabel ? (isCompactChart ? 56 : 92) : (isCompactChart ? 48 : 64);
           const xRelative = getX(index) - plotLeft;
-          const leftRaw = xRelative - (labelWidth / 2);
-          const maxLeft = Math.max(0, plotWidth - labelWidth);
-          const left = Math.min(Math.max(0, leftRaw), maxLeft);
           return (
             <Text
               key={`${label}_${index}`}
@@ -427,7 +424,13 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
               style={[
                 styles.chartLabel,
                 isCompactChart && styles.chartLabelCompact,
-                { color: theme.muted, position: 'absolute', left, width: labelWidth, transform: isCompactChart ? [{ rotate: '-24deg' }] : undefined },
+                {
+                  color: theme.muted,
+                  position: 'absolute',
+                  left: xRelative,
+                  width: labelWidth,
+                  transform: [{ translateX: -(labelWidth / 2) }, ...(isCompactChart ? [{ rotate: '-24deg' }] : [])],
+                },
               ]}
             >
               {label}
@@ -2093,7 +2096,10 @@ function AppContent() {
   };
 
   const renderStats = () => {
-    const statsHeaderDate = germanWeekdayDateLong(now);
+    const selectedStatsDateObj = parseISO(selectedStatsDateISO || '');
+    const statsHeaderDate = statsMode === 'prayer' && selectedStatsDateObj
+      ? germanWeekdayDateLong(selectedStatsDateObj)
+      : germanWeekdayDateLong(now);
     const isProgramStatsMode = statsMode === 'program';
     const tanzeemProgramTotals = {
       ansar: Number(programStats?.byTanzeem?.ansar) || 0,
@@ -2822,7 +2828,7 @@ const styles = StyleSheet.create({
   chartLabelsRow: { marginTop: 8, position: 'relative' },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
-  chartLabelCompact: { fontSize: 10, textAlign: 'left' },
+  chartLabelCompact: { fontSize: 9, textAlign: 'center' },
   chartLegendRow: { marginTop: 10, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   chartLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chartLegendDot: { width: 10, height: 10, borderRadius: 999 },
