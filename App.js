@@ -510,10 +510,10 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                 {
                   color: theme.muted,
                   position: 'absolute',
-                  left: xRelative,
+                  left: xRelative - (isWeekdayLabel ? 2 : 0),
                   width: labelWidth,
                   textAlign: 'center',
-                  transform: [{ translateX: -(labelWidth / 2) }, ...(isCompactChart ? [{ rotate: '-24deg' }] : [])],
+                  transform: [{ translateX: -(labelWidth / 2) }, ...((isCompactChart && !isWeekdayLabel) ? [{ rotate: '-24deg' }] : [])],
                 },
               ]}
             >
@@ -2660,8 +2660,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTotalRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsTotalRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsTotalRange)}</Text>
+                      <Pressable onPress={() => setStatsTotalRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsTotalRange)}</Text>
                       </Pressable>
                     </View>
                     <Text style={[styles.statsBigValue, { color: theme.text }]}>{totalSource.total}</Text>
@@ -2673,8 +2673,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTanzeemRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsTanzeemRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsTanzeemRange)}</Text>
+                      <Pressable onPress={() => setStatsTanzeemRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsTanzeemRange)}</Text>
                       </Pressable>
                     </View>
                     <View style={styles.tanzeemStatsRow}>
@@ -2764,8 +2764,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsMajlisRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsMajlisRange)}</Text>
+                      <Pressable onPress={() => setStatsMajlisRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsMajlisRange)}</Text>
                       </Pressable>
                     </View>
                     {topMajlisSource.length === 0 ? (
@@ -2792,8 +2792,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsPrayerRange)}</Text>
+                      <Pressable onPress={() => setStatsPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsPrayerRange)}</Text>
                       </Pressable>
                     </View>
                     {(() => {
@@ -2823,7 +2823,7 @@ function AppContent() {
                           const idx = options.indexOf(statsWeekRankingFilter);
                           setStatsWeekRankingFilter(options[(idx + 1) % options.length]);
                         }}
-                        style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                        style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}
                       >
                         <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsWeekRankingFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsWeekRankingFilter]} >>`}</Text>
                       </Pressable>
@@ -3167,8 +3167,8 @@ function AppContent() {
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche' : 'Letzte Woche'}</Text>
-                      <Pressable onPress={() => setDetailedGraphRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{detailedGraphRange === 'currentWeek' ? '<< Aktuelle Woche >>' : '<< Letzte Woche >>'}</Text>
+                      <Pressable onPress={() => setDetailedGraphRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{detailedGraphRange === 'currentWeek' ? '<< Aktuelle Woche >>' : '<< Letzte Woche >>'}</Text>
                       </Pressable>
                     </View>
                     <Text style={[styles.noteText, { color: theme.muted }]}>{`${formatIsoWithWeekday(detailedComparisonSeries[0]?.iso)} – ${formatIsoWithWeekday(detailedComparisonSeries[detailedComparisonSeries.length - 1]?.iso)}`}</Text>
@@ -3368,7 +3368,9 @@ const styles = StyleSheet.create({
   statsCard: { borderRadius: 16, borderWidth: 1, padding: 14, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 1 },
   statsCardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   statsCardMiniSwitch: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  statsCardMiniSwitchMobile: { maxWidth: '50%', paddingHorizontal: 8 },
   statsCardMiniSwitchText: { fontSize: 11, fontWeight: '700' },
+  statsCardMiniSwitchTextMobile: { fontSize: 10 },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
   statsCardRangeInfo: { marginTop: 2, fontSize: 11, fontWeight: '600' },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
