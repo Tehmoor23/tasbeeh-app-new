@@ -356,7 +356,7 @@ const calculateStatus = (weekTotal, distinctDays) => {
   return { provisional: false, label: '🟢🟢 Exzellent' };
 };
 
-function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null, pointLabelFormatter = null }) {
+function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null, pointLabelFormatter = null, useEqualLabelSlots = false }) {
   const [chartWidth, setChartWidth] = useState(0);
   const [selectedPoint, setSelectedPoint] = useState(null);
   const isCompactChart = chartWidth > 0 && chartWidth < 360;
@@ -538,6 +538,15 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
           const rawLabel = String(label || '');
           const isDateLabel = rawLabel.includes(',');
           const isWeekdayLabel = /^[A-Za-zÄÖÜäöü]{2,3}$/.test(rawLabel);
+          if (useEqualLabelSlots) {
+            return (
+              <View key={`${label}_${index}`} style={[styles.chartEqualLabelSlot, { width: `${100 / Math.max(1, labels.length)}%` }]}>
+                <Text numberOfLines={1} style={[styles.chartLabel, isCompactChart && styles.chartLabelCompact, { color: theme.muted, textAlign: 'center' }]}>
+                  {label}
+                </Text>
+              </View>
+            );
+          }
           const isFirstLabel = index === 0;
           const isLastLabel = index === labels.length - 1;
           const shouldRotateLabel = isCompactChart && !isWeekdayLabel && !isFirstLabel && !isLastLabel;
@@ -2777,6 +2786,7 @@ function AppContent() {
                       theme={theme}
                       isDarkMode={isDarkMode}
                       xAxisTitle="Gebete"
+                      useEqualLabelSlots
                       pointLabelFormatter={({ label, value }) => `${label}, ${Number(value) || 0} Gebete`}
                     />
                   </View>
@@ -3423,7 +3433,8 @@ const styles = StyleSheet.create({
   chartPoint: { borderWidth: 2, borderRadius: 999 },
   chartTooltip: { position: 'absolute', maxWidth: 170, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
   chartTooltipText: { fontSize: 11, fontWeight: '700' },
-  chartLabelsRow: { marginTop: 8, position: 'relative' },
+  chartLabelsRow: { marginTop: 8, position: 'relative', flexDirection: 'row' },
+  chartEqualLabelSlot: { justifyContent: 'center', alignItems: 'center' },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
   chartLabelCompact: { fontSize: 9, textAlign: 'center' },
