@@ -356,8 +356,9 @@ const calculateStatus = (weekTotal, distinctDays) => {
   return { provisional: false, label: '🟢🟢 Exzellent' };
 };
 
-function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null }) {
+function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null, pointLabelFormatter = null }) {
   const [chartWidth, setChartWidth] = useState(0);
+  const [selectedPoint, setSelectedPoint] = useState(null);
   const isCompactChart = chartWidth > 0 && chartWidth < 360;
   const chartHeight = isCompactChart ? 320 : 280;
   const plotTop = 18;
@@ -389,6 +390,15 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
 
   const getX = (index) => plotLeft + (plotWidth * index) / (pointCount - 1);
   const getY = (value) => plotTop + plotHeight - ((Number(value) || 0) / maxValue) * plotHeight;
+
+  useEffect(() => {
+    setSelectedPoint(null);
+  }, [labels, series]);
+
+  const getPointTooltip = (line, value, index) => {
+    if (typeof pointLabelFormatter === 'function') return pointLabelFormatter({ line, value, index, label: labels[index] });
+    return `${line.label} · ${labels[index] || `Punkt ${index + 1}`}: ${Number(value) || 0}`;
+  };
 
   return (
     <View style={styles.chartWrap}>
@@ -470,23 +480,55 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
               );
             }))}
 
-            {series.map((line) => line.data.map((value, index) => (
+            {series.map((line) => line.data.map((value, index) => {
+              const dotSize = line.thick ? 9 : 7;
+              return (
+                <Pressable
+                  key={`${line.key}_pt_${index}`}
+                  onPress={() => setSelectedPoint({
+                    key: `${line.key}_${index}`,
+                    x: getX(index),
+                    y: getY(value),
+                    tooltip: getPointTooltip(line, value, index),
+                  })}
+                  style={[
+                    styles.chartPointTouchTarget,
+                    {
+                      left: getX(index) - 14,
+                      top: getY(value) - 14,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.chartPoint,
+                      {
+                        backgroundColor: line.color,
+                        width: dotSize,
+                        height: dotSize,
+                        borderColor: theme.card,
+                      },
+                    ]}
+                  />
+                </Pressable>
+              );
+            }))}
+
+            {selectedPoint ? (
               <View
-                key={`${line.key}_pt_${index}`}
                 style={[
-                  styles.chartPoint,
+                  styles.chartTooltip,
                   {
-                    left: getX(index),
-                    top: getY(value),
-                    backgroundColor: line.color,
-                    width: line.thick ? 9 : 7,
-                    height: line.thick ? 9 : 7,
-                    borderColor: theme.card,
-                    transform: [{ translateX: line.thick ? -4.5 : -3.5 }, { translateY: line.thick ? -4.5 : -3.5 }],
+                    left: Math.min(Math.max(8, selectedPoint.x - 85), Math.max(8, chartWidth - 178)),
+                    top: Math.max(8, selectedPoint.y - 42),
+                    backgroundColor: theme.card,
+                    borderColor: theme.border,
                   },
                 ]}
-              />
-            )))}
+              >
+                <Text style={[styles.chartTooltipText, { color: theme.text }]}>{selectedPoint.tooltip}</Text>
+              </View>
+            ) : null}
           </>
         ) : null}
       </View>
@@ -2646,6 +2688,14 @@ function AppContent() {
               })();
 
               const prayerBars = statsPrayerRange === 'selectedDate' ? todayPrayerBars : buildPrayerTotalsForIsos(getIsosForRange(statsPrayerRange));
+              const prayerLineLabels = prayerBars.map((item) => item.label.split(' (')[0]);
+              const prayerLineSeries = [{
+                key: 'prayerTotals',
+                label: 'Anzahl pro Gebet',
+                color: theme.button,
+                thick: true,
+                data: prayerBars.map((item) => Number(item.total) || 0),
+              }];
 
               return (
                 <>
@@ -2689,6 +2739,26 @@ function AppContent() {
                         <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
                       </View>
                     </View>
+                  </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={styles.statsCardHeaderRow}>
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
+                      </View>
+                      <Pressable onPress={() => setStatsPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsPrayerRange)}</Text>
+                      </Pressable>
+                    </View>
+                    <MiniLineChart
+                      labels={prayerLineLabels}
+                      series={prayerLineSeries}
+                      theme={theme}
+                      isDarkMode={isDarkMode}
+                      xAxisTitle="Gebete"
+                      pointLabelFormatter={({ label, value }) => `${label}, ${Number(value) || 0} Gebete`}
+                    />
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -2784,31 +2854,6 @@ function AppContent() {
                         ));
                       })()
                     )}
-                  </View>
-
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={styles.statsCardHeaderRow}>
-                      <View>
-                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
-                      </View>
-                      <Pressable onPress={() => setStatsPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsPrayerRange)}</Text>
-                      </Pressable>
-                    </View>
-                    {(() => {
-                      const totals = prayerBars;
-                      const maxTotal = Math.max(1, ...totals.map((item) => item.total || 0));
-                      return totals.map(({ key, label, total }) => (
-                        <View key={key} style={styles.barRow}>
-                          <Text style={[styles.barLabel, { color: theme.text }]}>{label}</Text>
-                          <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
-                            <View style={[styles.barFill, { backgroundColor: theme.button, width: `${((total || 0) / maxTotal) * 100}%` }]} />
-                          </View>
-                          <Text style={[styles.barValue, { color: theme.text }]}>{total || 0}</Text>
-                        </View>
-                      ));
-                    })()}
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -3354,7 +3399,10 @@ const styles = StyleSheet.create({
   chartGridLine: { position: 'absolute', borderTopWidth: 1 },
   chartYTickLabel: { position: 'absolute', left: 4, width: 26, textAlign: 'right', fontSize: 10, fontWeight: '600' },
   chartSegment: { position: 'absolute', borderRadius: 999 },
-  chartPoint: { position: 'absolute', borderWidth: 2, borderRadius: 999 },
+  chartPointTouchTarget: { position: 'absolute', width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  chartPoint: { borderWidth: 2, borderRadius: 999 },
+  chartTooltip: { position: 'absolute', maxWidth: 170, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  chartTooltipText: { fontSize: 11, fontWeight: '700' },
   chartLabelsRow: { marginTop: 8, position: 'relative' },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
