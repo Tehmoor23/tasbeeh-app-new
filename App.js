@@ -811,6 +811,7 @@ function AppContent() {
   const [statsTanzeemRange, setStatsTanzeemRange] = useState('today');
   const [statsMajlisRange, setStatsMajlisRange] = useState('today');
   const [statsPrayerRange, setStatsPrayerRange] = useState('today');
+  const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
@@ -1713,6 +1714,53 @@ function AppContent() {
       .join(' ');
   };
 
+  const weekRankingRows = useMemo(() => {
+    const metadataById = new Map();
+    membersDirectory.forEach((entry) => {
+      const id = String(entry?.idNumber || '').trim();
+      if (!id || metadataById.has(id)) return;
+      metadataById.set(id, {
+        tanzeem: String(entry?.tanzeem || '').toLowerCase(),
+        majlis: String(entry?.majlis || '').trim(),
+      });
+    });
+
+    const countsById = new Map();
+    statsWeekIsos.forEach((iso) => {
+      const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
+      Object.values(byPrayer).forEach((prayerNode) => {
+        const memberDetails = prayerNode?.memberDetails || {};
+        STATS_TANZEEM_KEYS.forEach((tanzeemKey) => {
+          const majlisMap = memberDetails[tanzeemKey] || {};
+          Object.entries(majlisMap).forEach(([locationKey, entries]) => {
+            if (!Array.isArray(entries)) return;
+            entries.forEach((entry) => {
+              const id = String(entry?.idNumber || '').trim();
+              if (!id) return;
+              const meta = metadataById.get(id);
+              const tanzeem = String(meta?.tanzeem || entry?.tanzeem || tanzeemKey || '').toLowerCase();
+              const majlis = String(meta?.majlis || entry?.majlis || formatMajlisName(locationKey) || '').trim();
+              if (!countsById.has(id)) countsById.set(id, { idNumber: id, tanzeem, majlis, count: 0 });
+              const row = countsById.get(id);
+              row.count += 1;
+              if (!row.tanzeem && tanzeem) row.tanzeem = tanzeem;
+              if (!row.majlis && majlis) row.majlis = majlis;
+            });
+          });
+        });
+      });
+    });
+
+    const filtered = Array.from(countsById.values()).filter((row) => (
+      statsWeekRankingFilter === 'total' ? true : row.tanzeem === statsWeekRankingFilter
+    ));
+    filtered.sort((a, b) => (b.count - a.count) || a.idNumber.localeCompare(b.idNumber));
+
+    if (filtered.length <= 5) return filtered;
+    const cutoff = filtered[4]?.count ?? -1;
+    return filtered.filter((row) => row.count >= cutoff);
+  }, [membersDirectory, statsWeekIsos, weeklyAttendanceDocs, statsWeekRankingFilter]);
+
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
@@ -2493,6 +2541,42 @@ function AppContent() {
                       ));
                     })()}
                   </View>
+
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <View style={styles.statsCardHeaderRow}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking</Text>
+                    </View>
+                    <View style={styles.statsToggleRow}>
+                      {['total', 'ansar', 'khuddam', 'atfal'].map((key) => {
+                        const isActive = statsWeekRankingFilter === key;
+                        const label = key === 'total' ? 'Gesamt' : TANZEEM_LABELS[key];
+                        return (
+                          <Pressable
+                            key={key}
+                            onPress={() => setStatsWeekRankingFilter(key)}
+                            style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
+                          >
+                            <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    {weekRankingRows.length === 0 ? (
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten für diese Woche</Text>
+                    ) : weekRankingRows.map((row) => {
+                      const tanzeemLabel = TANZEEM_LABELS[row.tanzeem] || (row.tanzeem ? row.tanzeem.charAt(0).toUpperCase() + row.tanzeem.slice(1) : '—');
+                      const majlisLabel = row.majlis || '—';
+                      const descriptor = statsWeekRankingFilter === 'total'
+                        ? `${row.idNumber} (${tanzeemLabel} · ${majlisLabel})`
+                        : `${row.idNumber} (${majlisLabel})`;
+                      return (
+                        <View key={`${row.idNumber}_${row.count}`} style={styles.statsRankingRow}>
+                          <Text style={[styles.statsRankingLabel, { color: theme.text }]} numberOfLines={1}>{descriptor}</Text>
+                          <Text style={[styles.statsRankingValue, { color: theme.text }]}>{row.count}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                 </>
               );
             })()}
@@ -2860,6 +2944,9 @@ const styles = StyleSheet.create({
   barTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 999 },
   barValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
+  statsRankingRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  statsRankingLabel: { flex: 1, fontSize: 13, fontWeight: '600' },
+  statsRankingValue: { minWidth: 30, textAlign: 'right', fontSize: 14, fontWeight: '800' },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridItemTablet: { width: '31.8%', paddingVertical: 24 },
