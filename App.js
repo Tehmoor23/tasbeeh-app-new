@@ -546,7 +546,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
             const edgeAlignStyle = index === 0
               ? { left: `${xPercent}%`, textAlign: 'left', transform: [] }
               : index === labels.length - 1
-                ? { left: `${xPercent}%`, textAlign: 'right', transform: [{ translateX: isLastIshaa ? -62 : -56 }] }
+                ? { left: `${xPercent}%`, textAlign: 'right', transform: [{ translateX: isLastIshaa ? -72 : -56 }] }
                 : { left: `${xPercent}%`, textAlign: 'center', transform: [{ translateX: -28 }] };
             return (
               <Text
