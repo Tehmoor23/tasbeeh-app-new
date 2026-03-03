@@ -2160,6 +2160,33 @@ function AppContent() {
     const chartSeries = [seriesConfig[activeSeriesKey] || seriesConfig.total];
     const chartXAxisTitle = isTodayChart ? 'Gebete' : 'Tage';
 
+    const activeSeriesLabel = chartSeries[0]?.label || 'Gesamt';
+    const activeSeriesData = chartSeries[0]?.data || [];
+    const chartPointRows = chartLabels.map((label, index) => ({ label, value: Number(activeSeriesData[index]) || 0 }));
+
+    const todaySeriesSummary = isTodayChart && chartPointRows.length > 0 ? (() => {
+      const highest = chartPointRows.reduce((best, item) => (item.value > best.value ? item : best), chartPointRows[0]);
+      const lowest = chartPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), chartPointRows[0]);
+      const average = chartPointRows.reduce((sum, item) => sum + item.value, 0) / Math.max(1, chartPointRows.length);
+      return { highest, lowest, average };
+    })() : null;
+
+    const previousWeekSeriesTotal = !isTodayChart ? statsPrevWeekIsos.reduce((sum, iso) => {
+      const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
+      if (activeSeriesKey === 'total') return sum + (totals.total || 0);
+      return sum + (totals.tanzeemTotals?.[activeSeriesKey] || 0);
+    }, 0) : 0;
+
+    const weekSeriesSummary = !isTodayChart && chartPointRows.length > 0 ? (() => {
+      const highest = chartPointRows.reduce((best, item) => (item.value > best.value ? item : best), chartPointRows[0]);
+      const lowest = chartPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), chartPointRows[0]);
+      const total = chartPointRows.reduce((sum, item) => sum + item.value, 0);
+      const averagePerDay = total / Math.max(1, chartPointRows.length);
+      const previousAvg = previousWeekSeriesTotal / Math.max(1, statsPrevWeekIsos.length);
+      const trendPercent = previousAvg > 0 ? ((averagePerDay - previousAvg) / previousAvg) * 100 : 0;
+      return { highest, lowest, averagePerDay, trendPercent };
+    })() : null;
+
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
@@ -2359,23 +2386,20 @@ function AppContent() {
 
                     <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
 
-                    {statsGraphRange === 'today' && todayGraphSummary ? (
+                    {statsGraphRange === 'today' && todaySeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet: {todayGraphSummary.highest.label} ({todayGraphSummary.highest.total})</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet: {todayGraphSummary.lowest.label} ({todayGraphSummary.lowest.total})</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet: {todayGraphSummary.average.toFixed(1)}</Text>
-                        {activeSeriesKey !== 'total' ? (
-                          <Text style={[styles.statsInsightText, { color: theme.text }]}>Tanzeem-Verteilung: Ansar {todayGraphSummary.tanzeemPercentages.ansar.toFixed(1)}% · Khuddam {todayGraphSummary.tanzeemPercentages.khuddam.toFixed(1)}% · Atfal {todayGraphSummary.tanzeemPercentages.atfal.toFixed(1)}%</Text>
-                        ) : null}
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet ({activeSeriesLabel}): {todaySeriesSummary.highest.label} ({todaySeriesSummary.highest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet ({activeSeriesLabel}): {todaySeriesSummary.lowest.label} ({todaySeriesSummary.lowest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet ({activeSeriesLabel}): {todaySeriesSummary.average.toFixed(1)}</Text>
                       </View>
                     ) : null}
 
-                    {statsGraphRange === 'week' && weekGraphSummary ? (
+                    {statsGraphRange === 'week' && weekSeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag: {weekGraphSummary.averagePerDay.toFixed(1)}</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag: {weekGraphSummary.highest.label} ({weekGraphSummary.highest.total})</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Niedrigster Tag: {weekGraphSummary.lowest.label} ({weekGraphSummary.lowest.total})</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Trend vs. vorherige 7 Tage: {weekGraphSummary.trendPercent >= 0 ? '+' : ''}{weekGraphSummary.trendPercent.toFixed(1)}%</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag ({activeSeriesLabel}): {weekSeriesSummary.averagePerDay.toFixed(1)}</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag ({activeSeriesLabel}): {weekSeriesSummary.highest.label} ({weekSeriesSummary.highest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Niedrigster Tag ({activeSeriesLabel}): {weekSeriesSummary.lowest.label} ({weekSeriesSummary.lowest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Trend vs. vorherige 7 Tage ({activeSeriesLabel}): {weekSeriesSummary.trendPercent >= 0 ? '+' : ''}{weekSeriesSummary.trendPercent.toFixed(1)}%</Text>
                       </View>
                     ) : null}
 
