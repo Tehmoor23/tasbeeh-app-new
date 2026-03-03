@@ -2260,7 +2260,8 @@ function AppContent() {
           </Pressable>
           <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
           <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
-          <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt · Bait-Us-Sabuh</Text>
+          <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
+          <View style={[styles.statsHeaderLocationChip, { backgroundColor: theme.chipBg }]}><Text style={[styles.statsHeaderLocationChipText, { color: theme.chipText }]}>Bait-Us-Sabuh</Text></View>
           <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
         </View>
 
@@ -2910,6 +2911,8 @@ const styles = StyleSheet.create({
   statsHeaderTitle: { fontSize: 28, fontWeight: '800', letterSpacing: 0.2, textAlign: 'center' },
   statsHeaderDate: { marginTop: 2, fontSize: 16, fontWeight: '600', textTransform: 'capitalize', textAlign: 'center' },
   statsHeaderSubline: { marginTop: 3, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  statsHeaderLocationChip: { alignSelf: 'center', borderRadius: 10, paddingVertical: 5, paddingHorizontal: 10, marginTop: 6 },
+  statsHeaderLocationChipText: { fontSize: 15, fontWeight: '700' },
   statsHeaderDivider: { marginTop: 10, height: 1, width: '100%' },
   statsToggleRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   statsToggleBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 9, alignItems: 'center' },
