@@ -539,12 +539,31 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
           const isDateLabel = rawLabel.includes(',');
           const isWeekdayLabel = /^[A-Za-zÄÖÜäöü]{2,3}$/.test(rawLabel);
           if (useEqualLabelSlots) {
+            const slotCount = Math.max(1, labels.length - 1);
+            const xPercent = (index / slotCount) * 100;
+            const edgeAlignStyle = index === 0
+              ? { left: `${xPercent}%`, textAlign: 'left', transform: [] }
+              : index === labels.length - 1
+                ? { left: `${xPercent}%`, textAlign: 'right', transform: [{ translateX: -56 }] }
+                : { left: `${xPercent}%`, textAlign: 'center', transform: [{ translateX: -28 }] };
             return (
-              <View key={`${label}_${index}`} style={[styles.chartEqualLabelSlot, { width: `${100 / Math.max(1, labels.length)}%` }]}>
-                <Text numberOfLines={1} style={[styles.chartLabel, isCompactChart && styles.chartLabelCompact, { color: theme.muted, textAlign: 'center' }]}>
+              <Text
+                key={`${label}_${index}`}
+                numberOfLines={1}
+                style={[
+                  styles.chartLabel,
+                  isCompactChart && styles.chartLabelCompact,
+                  styles.chartEqualLabel,
+                  {
+                    color: theme.muted,
+                    left: edgeAlignStyle.left,
+                    textAlign: edgeAlignStyle.textAlign,
+                    transform: edgeAlignStyle.transform,
+                  },
+                ]}
+              >
                   {label}
-                </Text>
-              </View>
+              </Text>
             );
           }
           const isFirstLabel = index === 0;
@@ -3434,7 +3453,7 @@ const styles = StyleSheet.create({
   chartTooltip: { position: 'absolute', maxWidth: 170, borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
   chartTooltipText: { fontSize: 11, fontWeight: '700' },
   chartLabelsRow: { marginTop: 8, position: 'relative', flexDirection: 'row' },
-  chartEqualLabelSlot: { justifyContent: 'center', alignItems: 'center' },
+  chartEqualLabel: { position: 'absolute', width: 56 },
   chartAxisTitleX: { marginTop: 6, textAlign: 'center', fontSize: 11, fontWeight: '800' },
   chartLabel: { textAlign: 'center', fontSize: 11, fontWeight: '600' },
   chartLabelCompact: { fontSize: 9, textAlign: 'center' },
