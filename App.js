@@ -296,6 +296,11 @@ const getLast7Days = (baseDate) => {
   return Array.from({ length: 7 }, (_, idx) => toISO(addDays(base, idx - 6)));
 };
 
+const getWeekIsosMondayToSunday = (baseDate) => {
+  const start = startOfWeekMonday(baseDate);
+  return Array.from({ length: 7 }, (_, idx) => toISO(addDays(start, idx)));
+};
+
 const getISOWeekNumber = (date) => {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = d.getUTCDay() || 7;
@@ -874,12 +879,12 @@ function AppContent() {
   const [toast, setToast] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsAttendance, setStatsAttendance] = useState(null);
-  const [statsGraphRange, setStatsGraphRange] = useState('today');
+  const [statsGraphRange, setStatsGraphRange] = useState('currentWeek');
   const [statsGraphSeries, setStatsGraphSeries] = useState('total');
-  const [statsTotalRange, setStatsTotalRange] = useState('today');
-  const [statsTanzeemRange, setStatsTanzeemRange] = useState('today');
-  const [statsMajlisRange, setStatsMajlisRange] = useState('today');
-  const [statsPrayerRange, setStatsPrayerRange] = useState('today');
+  const [statsTotalRange, setStatsTotalRange] = useState('currentWeek');
+  const [statsTanzeemRange, setStatsTanzeemRange] = useState('currentWeek');
+  const [statsMajlisRange, setStatsMajlisRange] = useState('currentWeek');
+  const [statsPrayerRange, setStatsPrayerRange] = useState('currentWeek');
   const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
   const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
   const [detailedFlowTanzeem, setDetailedFlowTanzeem] = useState('');
@@ -888,6 +893,7 @@ function AppContent() {
   const [selectedDetailedMember, setSelectedDetailedMember] = useState(null);
   const [detailedMemberLogs, setDetailedMemberLogs] = useState([]);
   const [detailedLogsLoading, setDetailedLogsLoading] = useState(false);
+  const [detailedGraphRange, setDetailedGraphRange] = useState('currentWeek');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
@@ -1528,20 +1534,18 @@ function AppContent() {
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
-  const statsWeekIsos = useMemo(() => {
-    const start = startOfWeekMonday(now);
-    return Array.from({ length: 7 }, (_, index) => toISO(addDays(start, index)));
-  }, [now]);
+  const statsWeekIsos = useMemo(() => getWeekIsosMondayToSunday(now), [now]);
   const statsPrevWeekIsos = useMemo(() => {
     const start = addDays(startOfWeekMonday(now), -7);
     return Array.from({ length: 7 }, (_, index) => toISO(addDays(start, index)));
   }, [now]);
+  const statsRollingWeekIsos = useMemo(() => getLast7Days(now), [now]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'prayer') return undefined;
 
     let cancelled = false;
-    const targetIsos = [...statsPrevWeekIsos, ...statsWeekIsos];
+    const targetIsos = Array.from(new Set([...statsPrevWeekIsos, ...statsWeekIsos, ...statsRollingWeekIsos]));
 
     const fetchWeeklyStats = () => {
       if (!hasLoadedWeeklyRef.current) setWeeklyStatsLoading(true);
@@ -1574,7 +1578,7 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, statsPrevWeekIsos, statsWeekIsos]);
+  }, [activeTab, statsMode, statsPrevWeekIsos, statsWeekIsos, statsRollingWeekIsos]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'prayer') return;
@@ -1769,18 +1773,35 @@ function AppContent() {
     return formatStatsDateShort(selectedStatsDateISO);
   }, [selectedStatsDateISO]);
 
-  const todayRangeLabel = `<< ${selectedStatsDateToggleLabel} >>`;
+  const formatRangeFromIsos = (isos, prefix = 'Woche') => {
+    const start = parseISO(isos?.[0] || '');
+    const endDate = parseISO(isos?.[isos.length - 1] || '');
+    if (!start || !endDate) return prefix;
+    const startFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(start);
+    const endFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(endDate);
+    return `${prefix} · ${startFmt} – ${endFmt}`;
+  };
+
+  const currentWeekToggleLabel = '<< Aktuelle Woche >>';
+  const previousWeekToggleLabel = `<< Letzte Woche (${formatRangeFromIsos(statsRollingWeekIsos, '').replace(/^ · /, '')}) >>`;
+  const selectedDateToggleLabel = `<< ${selectedStatsDateToggleLabel} >>`;
+
+  const cycleStatsRangeMode = (prev) => {
+    const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+    const idx = options.indexOf(prev);
+    return options[(idx + 1) % options.length];
+  };
 
   const formatRangeLabel = (rangeMode) => {
-    if (rangeMode === 'week') {
-      const start = parseISO(statsWeekIsos[0]);
-      const endDate = parseISO(statsWeekIsos[statsWeekIsos.length - 1]);
-      if (!start || !endDate) return 'Woche';
-      const startFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(start);
-      const endFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(endDate);
-      return `Woche · ${startFmt} – ${endFmt} · KW ${getISOWeekNumber(start)}`;
-    }
+    if (rangeMode === 'currentWeek') return formatRangeFromIsos(statsWeekIsos, 'Aktuelle Woche');
+    if (rangeMode === 'previousWeek') return formatRangeFromIsos(statsRollingWeekIsos, 'Letzte Woche');
     return `Tag · ${selectedStatsDateLabel}`;
+  };
+
+  const getRangeToggleLabel = (rangeMode) => {
+    if (rangeMode === 'currentWeek') return currentWeekToggleLabel;
+    if (rangeMode === 'previousWeek') return previousWeekToggleLabel;
+    return selectedDateToggleLabel;
   };
 
 
@@ -1856,13 +1877,15 @@ function AppContent() {
   }, [membersDirectory, detailedFlowTanzeem]);
 
   const detailedIdChoices = useMemo(() => {
+    if (!detailedFlowTanzeem || !detailedFlowMajlis) return [];
     const query = detailedIdSearchQuery.trim();
     return membersDirectory
-      .filter((entry) => (!detailedFlowTanzeem || entry.tanzeem === detailedFlowTanzeem) && (!detailedFlowMajlis || entry.majlis === detailedFlowMajlis))
+      .filter((entry) => entry.tanzeem === detailedFlowTanzeem && entry.majlis === detailedFlowMajlis)
       .filter((entry) => (!query || String(entry.idNumber).includes(query)))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
   }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery]);
 
+  const detailedCurrentWeekIsos = useMemo(() => getWeekIsosMondayToSunday(now), [now]);
   const detailedLast7Days = useMemo(() => getLast7Days(now), [now]);
   const detailedLast8Weeks = useMemo(() => getLast8Weeks(now), [now]);
 
@@ -1914,26 +1937,29 @@ function AppContent() {
 
   const detailedDailySeries = useMemo(() => buildDailySeries(detailedMemberLogs, detailedLast7Days), [detailedMemberLogs, detailedLast7Days]);
   const detailedWeeklySeries = useMemo(() => buildWeeklySeries(detailedMemberLogs, detailedLast8Weeks), [detailedMemberLogs, detailedLast8Weeks]);
+  const detailedCurrentWeekSeries = useMemo(() => buildDailySeries(detailedMemberLogs, detailedCurrentWeekIsos), [detailedMemberLogs, detailedCurrentWeekIsos]);
+  const detailedComparisonSeries = detailedGraphRange === 'currentWeek' ? detailedCurrentWeekSeries : detailedDailySeries;
 
-  const detailedCurrentWeek = detailedLast8Weeks[detailedLast8Weeks.length - 1] || null;
-  const detailedPreviousWeek = detailedLast8Weeks[detailedLast8Weeks.length - 2] || null;
   const detailedCurrentWeekCount = useMemo(() => {
-    if (!detailedCurrentWeek) return 0;
-    return detailedMemberLogs.reduce((sum, row) => ((row.date >= detailedCurrentWeek.startISO && row.date <= detailedCurrentWeek.endISO) ? (sum + 1) : sum), 0);
-  }, [detailedMemberLogs, detailedCurrentWeek]);
+    const minISO = detailedCurrentWeekIsos[0] || '';
+    const maxISO = detailedCurrentWeekIsos[detailedCurrentWeekIsos.length - 1] || '';
+    return detailedMemberLogs.reduce((sum, row) => ((row.date >= minISO && row.date <= maxISO) ? (sum + 1) : sum), 0);
+  }, [detailedMemberLogs, detailedCurrentWeekIsos]);
   const detailedPreviousWeekCount = useMemo(() => {
-    if (!detailedPreviousWeek) return 0;
-    return detailedMemberLogs.reduce((sum, row) => ((row.date >= detailedPreviousWeek.startISO && row.date <= detailedPreviousWeek.endISO) ? (sum + 1) : sum), 0);
-  }, [detailedMemberLogs, detailedPreviousWeek]);
+    const minISO = detailedLast7Days[0] || '';
+    const maxISO = detailedLast7Days[detailedLast7Days.length - 1] || '';
+    return detailedMemberLogs.reduce((sum, row) => ((row.date >= minISO && row.date <= maxISO) ? (sum + 1) : sum), 0);
+  }, [detailedMemberLogs, detailedLast7Days]);
   const detailedCurrentWeekDistinctDays = useMemo(() => {
-    if (!detailedCurrentWeek) return 0;
+    const minISO = detailedCurrentWeekIsos[0] || '';
+    const maxISO = detailedCurrentWeekIsos[detailedCurrentWeekIsos.length - 1] || '';
     const days = new Set(
       detailedMemberLogs
-        .filter((row) => row.date >= detailedCurrentWeek.startISO && row.date <= detailedCurrentWeek.endISO)
+        .filter((row) => row.date >= minISO && row.date <= maxISO)
         .map((row) => row.date),
     );
     return days.size;
-  }, [detailedMemberLogs, detailedCurrentWeek]);
+  }, [detailedMemberLogs, detailedCurrentWeekIsos]);
   const detailedStatus = useMemo(() => calculateStatus(detailedCurrentWeekCount, detailedCurrentWeekDistinctDays), [detailedCurrentWeekCount, detailedCurrentWeekDistinctDays]);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
@@ -2347,12 +2373,20 @@ function AppContent() {
       atfal: '#F59E0B',
       guest: '#A855F7',
     };
-    const isTodayChart = statsGraphRange === 'today';
-    const chartLabels = isTodayChart
+    const isSelectedDateChart = statsGraphRange === 'selectedDate';
+    const activeGraphIsos = statsGraphRange === 'currentWeek' ? statsWeekIsos : (statsGraphRange === 'previousWeek' ? statsRollingWeekIsos : [selectedStatsDateISO]);
+    const graphWeekRows = activeGraphIsos.map((iso) => {
+      const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
+      const dateObj = parseISO(iso);
+      const weekdayShort = dateObj ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '') : iso;
+      const dayMonth = dateObj ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(dateObj).replace(/\.$/, '') : '';
+      return { iso, label: dateObj ? `${weekdayShort}, ${dayMonth}` : iso, total: totals.total, tanzeemTotals: totals.tanzeemTotals };
+    });
+    const chartLabels = isSelectedDateChart
       ? STATS_PRAYER_SEQUENCE.map((item) => item.label)
-      : weekSeriesRows.map((item) => item.label);
+      : graphWeekRows.map((item) => item.label);
 
-    const seriesCycleOptions = isTodayChart
+    const seriesCycleOptions = isSelectedDateChart
       ? ['total', 'ansar', 'khuddam', 'atfal', 'guest']
       : ['total', 'ansar', 'khuddam', 'atfal'];
     const activeSeriesKey = seriesCycleOptions.includes(statsGraphSeries) ? statsGraphSeries : 'total';
@@ -2363,25 +2397,25 @@ function AppContent() {
         label: 'Gesamt',
         color: chartPalette.total,
         thick: true,
-        data: (isTodayChart ? todayGraphRows : weekSeriesRows).map((row) => row.total || 0),
+        data: (isSelectedDateChart ? todayGraphRows : graphWeekRows).map((row) => row.total || 0),
       },
       ansar: {
         key: 'ansar',
         label: 'Ansar',
         color: chartPalette.ansar,
-        data: (isTodayChart ? todayGraphRows : weekSeriesRows).map((row) => row.tanzeemTotals?.ansar || 0),
+        data: (isSelectedDateChart ? todayGraphRows : graphWeekRows).map((row) => row.tanzeemTotals?.ansar || 0),
       },
       khuddam: {
         key: 'khuddam',
         label: 'Khuddam',
         color: chartPalette.khuddam,
-        data: (isTodayChart ? todayGraphRows : weekSeriesRows).map((row) => row.tanzeemTotals?.khuddam || 0),
+        data: (isSelectedDateChart ? todayGraphRows : graphWeekRows).map((row) => row.tanzeemTotals?.khuddam || 0),
       },
       atfal: {
         key: 'atfal',
         label: 'Atfal',
         color: chartPalette.atfal,
-        data: (isTodayChart ? todayGraphRows : weekSeriesRows).map((row) => row.tanzeemTotals?.atfal || 0),
+        data: (isSelectedDateChart ? todayGraphRows : graphWeekRows).map((row) => row.tanzeemTotals?.atfal || 0),
       },
       guest: {
         key: 'guest',
@@ -2392,31 +2426,32 @@ function AppContent() {
     };
 
     const chartSeries = [seriesConfig[activeSeriesKey] || seriesConfig.total];
-    const chartXAxisTitle = isTodayChart ? 'Gebete' : 'Tage';
+    const chartXAxisTitle = isSelectedDateChart ? 'Gebete' : 'Tage';
 
     const activeSeriesLabel = chartSeries[0]?.label || 'Gesamt';
     const activeSeriesData = chartSeries[0]?.data || [];
     const chartPointRows = chartLabels.map((label, index) => ({ label, value: Number(activeSeriesData[index]) || 0 }));
 
-    const todaySeriesSummary = isTodayChart && chartPointRows.length > 0 ? (() => {
+    const selectedDateSeriesSummary = isSelectedDateChart && chartPointRows.length > 0 ? (() => {
       const highest = chartPointRows.reduce((best, item) => (item.value > best.value ? item : best), chartPointRows[0]);
       const lowest = chartPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), chartPointRows[0]);
       const average = chartPointRows.reduce((sum, item) => sum + item.value, 0) / Math.max(1, chartPointRows.length);
       return { highest, lowest, average };
     })() : null;
 
-    const previousWeekSeriesTotal = (!isTodayChart) ? statsPrevWeekIsos.reduce((sum, iso) => {
+    const previousCompareIsos = statsGraphRange === 'currentWeek' ? statsPrevWeekIsos : statsWeekIsos;
+    const previousWeekSeriesTotal = (!isSelectedDateChart) ? previousCompareIsos.reduce((sum, iso) => {
       const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
       if (activeSeriesKey === 'total') return sum + (totals.total || 0);
       return sum + (totals.tanzeemTotals?.[activeSeriesKey] || 0);
     }, 0) : 0;
 
-    const weekSeriesSummary = (!isTodayChart) && chartPointRows.length > 0 ? (() => {
+    const weekSeriesSummary = (!isSelectedDateChart) && chartPointRows.length > 0 ? (() => {
       const highest = chartPointRows.reduce((best, item) => (item.value > best.value ? item : best), chartPointRows[0]);
       const lowest = chartPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), chartPointRows[0]);
       const total = chartPointRows.reduce((sum, item) => sum + item.value, 0);
       const averagePerDay = total / Math.max(1, chartPointRows.length);
-      const previousAvg = previousWeekSeriesTotal / Math.max(1, statsPrevWeekIsos.length);
+      const previousAvg = previousWeekSeriesTotal / Math.max(1, previousCompareIsos.length);
       const trendPercent = previousAvg > 0 ? ((averagePerDay - previousAvg) / previousAvg) * 100 : 0;
       return { highest, lowest, averagePerDay, trendPercent };
     })() : null;
@@ -2487,8 +2522,7 @@ function AppContent() {
         ) : (
           <>
             {(() => {
-              const cycleRangeMode = (prev) => (prev === 'today' ? 'week' : 'today');
-              const selectedDateSummary = buildUniqueSummary(activeDayAttendance);
+                            const selectedDateSummary = buildUniqueSummary(activeDayAttendance);
               const selectedDateTopMajlis = (() => {
                 const map = {};
                 const byPrayer = activeDayAttendance?.byPrayer || {};
@@ -2504,9 +2538,57 @@ function AppContent() {
                 return buildMajlisRanking(map);
               })();
 
-              const totalSource = statsTotalRange === 'week' ? weekUniqueSummary : selectedDateSummary;
-              const tanzeemSource = statsTanzeemRange === 'week' ? weekUniqueSummary : selectedDateSummary;
-              const topMajlisSource = statsMajlisRange === 'week' ? weekTopMajlis : selectedDateTopMajlis;
+              const buildSummaryForIsos = (isos) => isos.reduce((acc, iso) => {
+                const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
+                acc.total += oneDay.total;
+                acc.guestTotal += oneDay.guestTotal;
+                acc.tanzeemTotals.ansar += oneDay.tanzeemTotals.ansar;
+                acc.tanzeemTotals.khuddam += oneDay.tanzeemTotals.khuddam;
+                acc.tanzeemTotals.atfal += oneDay.tanzeemTotals.atfal;
+                return acc;
+              }, { total: 0, guestTotal: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } });
+
+              const buildTopMajlisForIsos = (isos) => {
+                const map = {};
+                isos.forEach((iso) => {
+                  const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
+                  Object.values(byPrayer).forEach((prayerNode) => {
+                    const tanzeemMap = prayerNode?.tanzeem || {};
+                    STATS_TANZEEM_KEYS.forEach((key) => {
+                      const majlis = tanzeemMap[key]?.majlis || {};
+                      Object.entries(majlis).forEach(([loc, count]) => {
+                        map[loc] = (map[loc] || 0) + (Number(count) || 0);
+                      });
+                    });
+                  });
+                });
+                return buildMajlisRanking(map);
+              };
+
+              const buildPrayerTotalsForIsos = (isos) => {
+                const agg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
+                isos.forEach((iso) => {
+                  const rows = getPrayerCountsForStats(weeklyAttendanceDocs[iso]);
+                  rows.forEach((row) => { agg[row.key] += Number(row.total) || 0; });
+                });
+                return [
+                  { key: 'fajr', label: 'Fajr (الفجر)', total: agg.fajr },
+                  { key: 'sohar', label: 'Sohar (الظهر)', total: agg.sohar },
+                  { key: 'asr', label: 'Asr (العصر)', total: agg.asr },
+                  { key: 'maghrib', label: 'Maghrib (المغرب)', total: agg.maghrib },
+                  { key: 'ishaa', label: 'Ishaa (العشاء)', total: agg.ishaa },
+                ];
+              };
+
+              const getIsosForRange = (rangeMode) => {
+                if (rangeMode === 'currentWeek') return statsWeekIsos;
+                if (rangeMode === 'previousWeek') return statsRollingWeekIsos;
+                return [selectedStatsDateISO];
+              };
+
+              const totalSource = statsTotalRange === 'selectedDate' ? selectedDateSummary : buildSummaryForIsos(getIsosForRange(statsTotalRange));
+              const tanzeemSource = statsTanzeemRange === 'selectedDate' ? selectedDateSummary : buildSummaryForIsos(getIsosForRange(statsTanzeemRange));
+              const topMajlisSource = statsMajlisRange === 'selectedDate' ? selectedDateTopMajlis : buildTopMajlisForIsos(getIsosForRange(statsMajlisRange));
 
               const todayPrayerBars = (() => {
                 if (!activeDayAttendance?.byPrayer) return [];
@@ -2552,11 +2634,11 @@ function AppContent() {
                 ];
               })();
 
-              const prayerBars = statsPrayerRange === 'week' ? weekPrayerTotals : todayPrayerBars;
+              const prayerBars = statsPrayerRange === 'selectedDate' ? todayPrayerBars : buildPrayerTotalsForIsos(getIsosForRange(statsPrayerRange));
 
               return (
                 <>
-                  {(statsTotalRange === 'today' || statsTanzeemRange === 'today' || statsMajlisRange === 'today' || statsPrayerRange === 'today' || statsGraphRange === 'today') ? (
+                  {(statsTotalRange === 'selectedDate' || statsTanzeemRange === 'selectedDate' || statsMajlisRange === 'selectedDate' || statsPrayerRange === 'selectedDate' || statsGraphRange === 'selectedDate') ? (
                     <Pressable onPress={() => setStatsCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                       <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>Datum auswählen · {selectedStatsDateLabel}</Text>
                     </Pressable>
@@ -2567,8 +2649,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTotalRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsTotalRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsTotalRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
+                      <Pressable onPress={() => setStatsTotalRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsTotalRange)}</Text>
                       </Pressable>
                     </View>
                     <Text style={[styles.statsBigValue, { color: theme.text }]}>{totalSource.total}</Text>
@@ -2580,8 +2662,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTanzeemRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsTanzeemRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsTanzeemRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
+                      <Pressable onPress={() => setStatsTanzeemRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsTanzeemRange)}</Text>
                       </Pressable>
                     </View>
                     <View style={styles.tanzeemStatsRow}>
@@ -2603,14 +2685,14 @@ function AppContent() {
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => cycleStatsRangeMode(prev)); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? selectedStatsDateToggleLabel : 'Woche'}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{getRangeToggleLabel(statsGraphRange).replace('<< ', '').replace(' >>', '')}</Text>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => cycleStatsRangeMode(prev)); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
@@ -2621,7 +2703,7 @@ function AppContent() {
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
-                            const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const options = statsGraphRange === 'selectedDate' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
                             const idx = options.indexOf(prev);
                             return options[(idx - 1 + options.length) % options.length];
                           })}
@@ -2632,7 +2714,7 @@ function AppContent() {
                         <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{chartSeries[0]?.label || 'Gesamt'}</Text>
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
-                            const options = statsGraphRange === 'today' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const options = statsGraphRange === 'selectedDate' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
                             const idx = options.indexOf(prev);
                             return options[(idx + 1) % options.length];
                           })}
@@ -2645,15 +2727,15 @@ function AppContent() {
 
                     <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
 
-                    {statsGraphRange === 'today' && todaySeriesSummary ? (
+                    {statsGraphRange === 'selectedDate' && selectedDateSeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet ({activeSeriesLabel}): {todaySeriesSummary.highest.label} ({todaySeriesSummary.highest.value})</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet ({activeSeriesLabel}): {todaySeriesSummary.lowest.label} ({todaySeriesSummary.lowest.value})</Text>
-                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet ({activeSeriesLabel}): {todaySeriesSummary.average.toFixed(1)}</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet ({activeSeriesLabel}): {selectedDateSeriesSummary.highest.label} ({selectedDateSeriesSummary.highest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet ({activeSeriesLabel}): {selectedDateSeriesSummary.lowest.label} ({selectedDateSeriesSummary.lowest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet ({activeSeriesLabel}): {selectedDateSeriesSummary.average.toFixed(1)}</Text>
                       </View>
                     ) : null}
 
-                    {statsGraphRange === 'week' && weekSeriesSummary ? (
+                    {statsGraphRange !== 'selectedDate' && weekSeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag ({activeSeriesLabel}): {weekSeriesSummary.averagePerDay.toFixed(1)}</Text>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag ({activeSeriesLabel}): {weekSeriesSummary.highest.label} ({weekSeriesSummary.highest.value})</Text>
@@ -2662,7 +2744,7 @@ function AppContent() {
                       </View>
                     ) : null}
 
-                    {weeklyStatsLoading && statsGraphRange === 'week' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
+                    {weeklyStatsLoading && statsGraphRange !== 'selectedDate' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -2671,12 +2753,12 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsMajlisRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsMajlisRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
+                      <Pressable onPress={() => setStatsMajlisRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsMajlisRange)}</Text>
                       </Pressable>
                     </View>
                     {topMajlisSource.length === 0 ? (
-                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {statsMajlisRange === 'week' ? 'diese Woche' : 'dieses Datum'}</Text>
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {statsMajlisRange === 'selectedDate' ? 'dieses Datum' : 'diesen Zeitraum'}</Text>
                     ) : (
                       (() => {
                         const maxTop = Math.max(1, ...topMajlisSource.map(([, count]) => count));
@@ -2699,8 +2781,8 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsPrayerRange(cycleRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{statsPrayerRange === 'today' ? todayRangeLabel : '<< Woche >>'}</Text>
+                      <Pressable onPress={() => setStatsPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{getRangeToggleLabel(statsPrayerRange)}</Text>
                       </Pressable>
                     </View>
                     {(() => {
@@ -2722,7 +2804,7 @@ function AppContent() {
                     <View style={styles.statsCardHeaderRow}>
                       <View>
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking (Gebete)</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel('week')}</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel('currentWeek')}</Text>
                       </View>
                       <Pressable
                         onPress={() => {
@@ -2767,7 +2849,7 @@ function AppContent() {
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
                     <Text style={[styles.noteText, { color: theme.muted }]}>Privater Bereich (Zugriffsbeschränkung folgt).</Text>
-                    <Pressable onPress={() => setDetailedIdOverviewVisible(true)} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                    <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); setDetailedFlowTanzeem(''); setDetailedFlowMajlis(''); setDetailedIdSearchQuery(''); setDetailedIdOverviewVisible(true); }} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                       <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>Übersicht öffnen</Text>
                     </Pressable>
                   </View>
@@ -2965,7 +3047,7 @@ function AppContent() {
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Detaillierte ID-Übersicht</Text>
-              <Pressable onPress={() => setDetailedIdOverviewVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+              <Pressable onPress={() => { setDetailedIdOverviewVisible(false); setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
                 <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
               </Pressable>
             </View>
@@ -2980,7 +3062,7 @@ function AppContent() {
                       return (
                         <Pressable
                           key={key}
-                          onPress={() => { setDetailedFlowTanzeem(key); setDetailedFlowMajlis(''); }}
+                          onPress={() => { setDetailedFlowTanzeem(key); setDetailedFlowMajlis(''); setDetailedIdSearchQuery(''); }}
                           style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
                         >
                           <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{TANZEEM_LABELS[key]}</Text>
@@ -3009,6 +3091,7 @@ function AppContent() {
                     </View>
                   ) : null}
 
+                  {detailedFlowMajlis ? (<>
                   <TextInput
                     value={detailedIdSearchQuery}
                     onChangeText={setDetailedIdSearchQuery}
@@ -3024,6 +3107,7 @@ function AppContent() {
                         key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
                         onPress={() => {
                           setSelectedDetailedMember(member);
+                          setDetailedGraphRange('currentWeek');
                           const firstWeek = getLast8Weeks(now)[0];
                           loadDetailedLogsForMember(member.idNumber, firstWeek.startISO, toISO(now));
                         }}
@@ -3035,6 +3119,9 @@ function AppContent() {
                     ))}
                     {detailedIdChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine IDs gefunden.</Text> : null}
                   </View>
+                  </>) : (
+                    <Text style={[styles.noteText, { color: theme.muted, marginTop: 8 }]}>Bitte erst Majlis auswählen, dann werden IDs geladen.</Text>
+                  )}
                 </>
               ) : (
                 <>
@@ -3060,16 +3147,22 @@ function AppContent() {
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Letzte 7 Tage</Text>
+                    <View style={styles.statsCardHeaderRow}>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche (Mo–So)' : 'Letzte Woche (Heute - 7 Tage)'}</Text>
+                      <Pressable onPress={() => setDetailedGraphRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{detailedGraphRange === 'currentWeek' ? '<< Aktuelle Woche >>' : '<< Letzte Woche >>'}</Text>
+                      </Pressable>
+                    </View>
+                    <Text style={[styles.noteText, { color: theme.muted }]}>{`${detailedComparisonSeries[0]?.iso || '—'} - ${detailedComparisonSeries[detailedComparisonSeries.length - 1]?.iso || '—'}`}</Text>
                     <MiniLineChart
-                      labels={detailedDailySeries.map((row) => {
+                      labels={detailedComparisonSeries.map((row) => {
                         const d = parseISO(row.iso);
                         return d ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(d).replace(/\.$/, '') : row.iso;
                       })}
-                      series={[{ key: 'daily', label: 'Gebete/Tag', color: theme.button, thick: true, data: detailedDailySeries.map((row) => row.value) }]}
+                      series={[{ key: 'daily', label: 'Gebete/Tag', color: theme.button, thick: true, data: detailedComparisonSeries.map((row) => row.value) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="Tage"
+                      xAxisTitle="Tage (Mo–So / rollierend)"
                       yMaxValue={5}
                       yTickCount={6}
                     />
