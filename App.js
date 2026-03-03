@@ -312,7 +312,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
 
   return (
     <View style={styles.chartWrap}>
-      <Text style={[styles.chartAxisTitleY, { color: theme.muted }]}>Anzahl</Text>
+      <Text style={[styles.chartAxisTitleY, { color: theme.muted }]}>Anzahl der Gebete</Text>
 
       <View
         onLayout={(event) => setChartWidth(event.nativeEvent.layout.width)}
@@ -772,7 +772,10 @@ function AppContent() {
   const [statsAttendance, setStatsAttendance] = useState(null);
   const [statsGraphRange, setStatsGraphRange] = useState('today');
   const [statsGraphSeries, setStatsGraphSeries] = useState('total');
-  const [statsCardsRange, setStatsCardsRange] = useState('today');
+  const [statsTotalRange, setStatsTotalRange] = useState('today');
+  const [statsTanzeemRange, setStatsTanzeemRange] = useState('today');
+  const [statsMajlisRange, setStatsMajlisRange] = useState('today');
+  const [statsPrayerRange, setStatsPrayerRange] = useState('today');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
@@ -1677,6 +1680,19 @@ function AppContent() {
     ];
   }, [statsWeekIsos, weeklyAttendanceDocs]);
 
+  const formatRangeLabel = (rangeMode) => {
+    if (rangeMode === 'week') {
+      const start = parseISO(statsWeekIsos[0]);
+      const endDate = parseISO(statsWeekIsos[statsWeekIsos.length - 1]);
+      if (!start || !endDate) return 'Woche';
+      const startFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(start);
+      const endFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(endDate);
+      return `Woche · ${startFmt} – ${endFmt}`;
+    }
+    return `Heute · ${germanWeekdayDateLong(now)}`;
+  };
+
+
   const formatMajlisName = (locationKey) => {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
@@ -2209,10 +2225,13 @@ function AppContent() {
         ) : (
           <>
             {(() => {
-              const isWeekCards = statsCardsRange === 'week';
-              const summarySource = isWeekCards ? weekUniqueSummary : todayUniqueSummary;
-              const topMajlisSource = isWeekCards ? weekTopMajlis : (statsView?.topMajlis || []);
-              const cardRangeLabel = isWeekCards ? 'Woche' : 'Heute';
+              const totalIsWeek = statsTotalRange === 'week';
+              const tanzeemIsWeek = statsTanzeemRange === 'week';
+              const majlisIsWeek = statsMajlisRange === 'week';
+              const prayerIsWeek = statsPrayerRange === 'week';
+              const totalSource = totalIsWeek ? weekUniqueSummary : todayUniqueSummary;
+              const tanzeemSource = tanzeemIsWeek ? weekUniqueSummary : todayUniqueSummary;
+              const topMajlisSource = majlisIsWeek ? weekTopMajlis : (statsView?.topMajlis || []);
 
               const todayPrayerBars = (() => {
                 if (!statsAttendance?.byPrayer) return [];
@@ -2251,36 +2270,42 @@ function AppContent() {
                 ];
               })();
 
-              const prayerBars = isWeekCards ? weekPrayerTotals : todayPrayerBars;
+              const prayerBars = prayerIsWeek ? weekPrayerTotals : todayPrayerBars;
 
               return (
                 <>
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
-                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Anwesende</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTotalRange)}</Text>
+                      </View>
+                      <Pressable onPress={() => setStatsTotalRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${totalIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
                       </Pressable>
                     </View>
-                    <Text style={[styles.statsBigValue, { color: theme.text }]}>{summarySource.total}</Text>
+                    <Text style={[styles.statsBigValue, { color: theme.text }]}>{totalSource.total}</Text>
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
-                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsTanzeemRange)}</Text>
+                      </View>
+                      <Pressable onPress={() => setStatsTanzeemRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${tanzeemIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
                       </Pressable>
                     </View>
                     <View style={styles.tanzeemStatsRow}>
                       {['ansar', 'khuddam', 'atfal'].map((key) => (
                         <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                          <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{summarySource.tanzeemTotals[key] || 0}</Text>
+                          <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{tanzeemSource.tanzeemTotals[key] || 0}</Text>
                           <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{TANZEEM_LABELS[key]}</Text>
                         </View>
                       ))}
                       <View style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{summarySource.guestTotal || 0}</Text>
+                        <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{tanzeemSource.guestTotal || 0}</Text>
                         <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>Gäste</Text>
                       </View>
                     </View>
@@ -2359,13 +2384,16 @@ function AppContent() {
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
-                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
+                      </View>
+                      <Pressable onPress={() => setStatsMajlisRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${majlisIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
                       </Pressable>
                     </View>
                     {topMajlisSource.length === 0 ? (
-                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {isWeekCards ? 'diese Woche' : 'heute'}</Text>
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {majlisIsWeek ? 'diese Woche' : 'heute'}</Text>
                     ) : (
                       (() => {
                         const maxTop = Math.max(1, ...topMajlisSource.map(([, count]) => count));
@@ -2384,9 +2412,12 @@ function AppContent() {
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
-                      <Pressable onPress={() => setStatsCardsRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${cardRangeLabel} >>`}</Text>
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
+                      </View>
+                      <Pressable onPress={() => setStatsPrayerRange((prev) => (prev === 'today' ? 'week' : 'today'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${prayerIsWeek ? 'Woche' : 'Heute'} >>`}</Text>
                       </Pressable>
                     </View>
                     {(() => {
@@ -2706,6 +2737,7 @@ const styles = StyleSheet.create({
   statsCardMiniSwitch: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   statsCardMiniSwitchText: { fontSize: 11, fontWeight: '700' },
   statsCardTitle: { fontSize: 13, fontWeight: '700' },
+  statsCardRangeInfo: { marginTop: 2, fontSize: 11, fontWeight: '600' },
   statsBigValue: { fontSize: 40, fontWeight: '800', marginTop: 4 },
   tanzeemStatsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
   tanzeemStatBox: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 12, alignItems: 'center' },
