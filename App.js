@@ -364,7 +364,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
   const plotTop = 18;
   const plotBottom = isCompactChart ? 74 : 52;
   const axisLabelWidth = isCompactChart ? 34 : 42;
-  const edgeInset = useEqualLabelSlots ? (isCompactChart ? 24 : 28) : 0;
+  const edgeInset = isCompactChart ? 24 : 28;
   const plotRightPad = (isCompactChart ? 10 : 14) + edgeInset;
   const tickCount = yTickCount || 5;
 
@@ -563,30 +563,11 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
               </Text>
             );
           }
-          const isFirstLabel = index === 0;
-          const isLastLabel = index === labels.length - 1;
-          const shouldRotateLabel = isCompactChart && !isWeekdayLabel && !isFirstLabel && !isLastLabel;
+          const shouldRotateLabel = isCompactChart && !isWeekdayLabel;
           const labelWidth = isDateLabel
             ? (isCompactChart ? 56 : 92)
             : (isWeekdayLabel ? (isCompactChart ? 24 : 28) : (isCompactChart ? 48 : 64));
           const xRelative = getX(index) - plotLeft;
-          const alignStyle = isFirstLabel
-            ? {
-              left: xRelative,
-              textAlign: 'left',
-              transform: [],
-            }
-            : isLastLabel
-              ? {
-                left: xRelative,
-                textAlign: 'right',
-                transform: [{ translateX: -labelWidth }],
-              }
-              : {
-                left: xRelative - (isWeekdayLabel ? 2 : 0),
-                textAlign: 'center',
-                transform: [{ translateX: -(labelWidth / 2) }],
-              };
           return (
             <Text
               key={`${label}_${index}`}
@@ -597,10 +578,10 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                 {
                   color: theme.muted,
                   position: 'absolute',
-                  left: alignStyle.left,
+                  left: xRelative,
                   width: labelWidth,
-                  textAlign: alignStyle.textAlign,
-                  transform: [...alignStyle.transform, ...(shouldRotateLabel ? [{ rotate: '-24deg' }] : [])],
+                  textAlign: 'center',
+                  transform: [{ translateX: -(labelWidth / 2) }, ...(shouldRotateLabel ? [{ rotate: '-24deg' }] : [])],
                 },
               ]}
             >
