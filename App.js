@@ -1756,9 +1756,15 @@ function AppContent() {
     ));
     filtered.sort((a, b) => (b.count - a.count) || a.idNumber.localeCompare(b.idNumber));
 
-    if (filtered.length <= 5) return filtered;
-    const cutoff = filtered[4]?.count ?? -1;
-    return filtered.filter((row) => row.count >= cutoff);
+    let denseRank = 0;
+    let previousCount = null;
+    return filtered.filter((row) => {
+      if (previousCount !== row.count) {
+        denseRank += 1;
+        previousCount = row.count;
+      }
+      return denseRank <= 5;
+    });
   }, [membersDirectory, statsWeekIsos, weeklyAttendanceDocs, statsWeekRankingFilter]);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
@@ -2565,14 +2571,14 @@ function AppContent() {
                       const maxRankCount = Math.max(1, ...weekRankingRows.map((row) => row.count || 0));
                       let currentRank = 0;
                       let previousCount = null;
-                      return weekRankingRows.map((row, index) => {
+                      return weekRankingRows.map((row) => {
                         const tanzeemLabel = TANZEEM_LABELS[row.tanzeem] || (row.tanzeem ? row.tanzeem.charAt(0).toUpperCase() + row.tanzeem.slice(1) : '—');
                         const majlisLabel = row.majlis || '—';
                         const descriptor = statsWeekRankingFilter === 'total'
                           ? `${row.idNumber} (${tanzeemLabel} · ${majlisLabel})`
                           : `${row.idNumber} (${majlisLabel})`;
                         if (previousCount !== row.count) {
-                          currentRank = index + 1;
+                          currentRank += 1;
                           previousCount = row.count;
                         }
                         return (
