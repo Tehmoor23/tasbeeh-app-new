@@ -296,15 +296,26 @@ const getLast7Days = (baseDate) => {
   return Array.from({ length: 7 }, (_, idx) => toISO(addDays(base, idx - 6)));
 };
 
+const getISOWeekNumber = (date) => {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+};
+
 const getLast8Weeks = (baseDate) => {
   const currentWeekStart = startOfWeekMonday(baseDate);
-  return Array.from({ length: 8 }, (_, idx) => {
-    const start = addDays(currentWeekStart, (idx - 7) * 7);
+  return Array.from({ length: 4 }, (_, idx) => {
+    const start = addDays(currentWeekStart, (idx - 3) * 7);
     const end = addDays(start, 6);
+    const weekNumber = getISOWeekNumber(start);
     return {
       startISO: toISO(start),
       endISO: toISO(end),
-      label: `${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(start)}–${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(end)}`,
+      weekNumber,
+      label: `KW ${weekNumber}`,
+      rangeLabel: `${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(start)}–${new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(end)}`,
     };
   });
 };
@@ -340,7 +351,7 @@ const calculateStatus = (weekTotal, distinctDays) => {
   return { provisional: false, label: '🟢🟢 Exzellent' };
 };
 
-function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse' }) {
+function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitachse', yMaxValue = null, yTickCount = null }) {
   const [chartWidth, setChartWidth] = useState(0);
   const isCompactChart = chartWidth > 0 && chartWidth < 360;
   const chartHeight = isCompactChart ? 320 : 280;
@@ -348,10 +359,10 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
   const plotBottom = isCompactChart ? 74 : 52;
   const axisLabelWidth = isCompactChart ? 34 : 42;
   const plotRightPad = isCompactChart ? 10 : 14;
-  const tickCount = 5;
+  const tickCount = yTickCount || 5;
 
   const allValues = series.flatMap((line) => line.data.map((value) => Number(value) || 0));
-  const maxValueRaw = Math.max(0, ...allValues);
+  const maxValueRaw = Math.max(0, ...allValues, Number(yMaxValue) || 0);
 
   const getNiceStep = (maxValue, ticks) => {
     if (maxValue <= 0) return 1;
@@ -362,8 +373,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
     return nice * magnitude;
   };
 
-  const yStep = getNiceStep(maxValueRaw, tickCount);
-  const maxValue = Math.max(yStep * (tickCount - 1), yStep);
+  const yStep = yMaxValue ? Math.max(1, (Number(yMaxValue) || 1) / Math.max(1, (tickCount - 1))) : getNiceStep(maxValueRaw, tickCount);
+  const maxValue = yMaxValue ? Math.max(1, Number(yMaxValue)) : Math.max(yStep * (tickCount - 1), yStep);
   const yTicks = Array.from({ length: tickCount }, (_, index) => maxValue - index * yStep);
   const pointCount = Math.max(2, labels.length);
 
@@ -1517,12 +1528,14 @@ function AppContent() {
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
-  const statsWeekIsos = useMemo(() => (
-    Array.from({ length: 7 }, (_, index) => toISO(addDays(now, index - 6)))
-  ), [now]);
-  const statsPrevWeekIsos = useMemo(() => (
-    Array.from({ length: 7 }, (_, index) => toISO(addDays(now, index - 13)))
-  ), [now]);
+  const statsWeekIsos = useMemo(() => {
+    const start = startOfWeekMonday(now);
+    return Array.from({ length: 7 }, (_, index) => toISO(addDays(start, index)));
+  }, [now]);
+  const statsPrevWeekIsos = useMemo(() => {
+    const start = addDays(startOfWeekMonday(now), -7);
+    return Array.from({ length: 7 }, (_, index) => toISO(addDays(start, index)));
+  }, [now]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'prayer') return undefined;
@@ -1765,7 +1778,7 @@ function AppContent() {
       if (!start || !endDate) return 'Woche';
       const startFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(start);
       const endFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(endDate);
-      return `Woche · ${startFmt} – ${endFmt}`;
+      return `Woche · ${startFmt} – ${endFmt} · KW ${getISOWeekNumber(start)}`;
     }
     return `Tag · ${selectedStatsDateLabel}`;
   };
@@ -3057,6 +3070,8 @@ function AppContent() {
                       theme={theme}
                       isDarkMode={isDarkMode}
                       xAxisTitle="Tage"
+                      yMaxValue={5}
+                      yTickCount={6}
                     />
                   </View>
 
@@ -3067,7 +3082,7 @@ function AppContent() {
                       series={[{ key: 'weekly', label: 'Gebete/Woche', color: theme.button, thick: true, data: detailedWeeklySeries.map((row) => row.value) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="Wochen (Mo–So)"
+                      xAxisTitle="Letzte 4 Wochen (Mo–So)"
                     />
                   </View>
                 </>
@@ -3264,12 +3279,12 @@ const styles = StyleSheet.create({
   statsRankingBarLabel: { width: 230, fontSize: 12, fontWeight: '600' },
   statsDetailOpenBtn: { marginTop: 10, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   statsDetailOpenBtnText: { fontSize: 13, fontWeight: '700' },
-  detailedIdModalBody: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 },
-  detailedIdSectionWrap: { marginTop: 8, gap: 8 },
+  detailedIdModalBody: { paddingHorizontal: 14, paddingBottom: 18, gap: 8 },
+  detailedIdSectionWrap: { marginTop: 6, gap: 6 },
   detailedIdChipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  detailedIdChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
-  detailedIdListWrap: { marginTop: 10, gap: 8 },
-  detailedIdRow: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12 },
+  detailedIdChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 8 },
+  detailedIdListWrap: { marginTop: 8, gap: 6 },
+  detailedIdRow: { borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridItemTablet: { width: '31.8%', paddingVertical: 24 },
