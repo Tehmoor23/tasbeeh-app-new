@@ -493,8 +493,12 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
 
       <View style={[styles.chartLabelsRow, { marginLeft: axisLabelWidth, marginRight: plotRightPad, height: isCompactChart ? 52 : 20 }]}>
         {chartWidth > 0 ? labels.map((label, index) => {
-          const isDateLabel = String(label || '').includes(',');
-          const labelWidth = isDateLabel ? (isCompactChart ? 56 : 92) : (isCompactChart ? 48 : 64);
+          const rawLabel = String(label || '');
+          const isDateLabel = rawLabel.includes(',');
+          const isWeekdayLabel = /^[A-Za-zÄÖÜäöü]{2,3}$/.test(rawLabel);
+          const labelWidth = isDateLabel
+            ? (isCompactChart ? 56 : 92)
+            : (isWeekdayLabel ? (isCompactChart ? 24 : 28) : (isCompactChart ? 48 : 64));
           const xRelative = getX(index) - plotLeft;
           return (
             <Text
@@ -508,6 +512,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                   position: 'absolute',
                   left: xRelative,
                   width: labelWidth,
+                  textAlign: 'center',
                   transform: [{ translateX: -(labelWidth / 2) }, ...(isCompactChart ? [{ rotate: '-24deg' }] : [])],
                 },
               ]}
@@ -2950,7 +2955,7 @@ function AppContent() {
       </View>
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.5</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.6</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
