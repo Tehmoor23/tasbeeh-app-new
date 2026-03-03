@@ -500,6 +500,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
             ? (isCompactChart ? 56 : 92)
             : (isWeekdayLabel ? (isCompactChart ? 24 : 28) : (isCompactChart ? 48 : 64));
           const xRelative = getX(index) - plotLeft;
+          const clampedCenter = Math.min(Math.max(xRelative, labelWidth / 2), Math.max(labelWidth / 2, plotWidth - (labelWidth / 2)));
           return (
             <Text
               key={`${label}_${index}`}
@@ -510,7 +511,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                 {
                   color: theme.muted,
                   position: 'absolute',
-                  left: xRelative - (isWeekdayLabel ? 2 : 0),
+                  left: clampedCenter - (isWeekdayLabel ? 2 : 0),
                   width: labelWidth,
                   textAlign: 'center',
                   transform: [{ translateX: -(labelWidth / 2) }, ...((isCompactChart && !isWeekdayLabel) ? [{ rotate: '-24deg' }] : [])],
