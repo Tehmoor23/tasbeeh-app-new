@@ -1647,7 +1647,7 @@ function AppContent() {
     });
     return Object.entries(map)
       .filter(([, count]) => count > 0)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
       .slice(0, 8);
   }, [statsWeekIsos, weeklyAttendanceDocs]);
 
@@ -1682,7 +1682,12 @@ function AppContent() {
     return selectedStatsDateISO === todayISO ? `${base} (heute)` : base;
   }, [selectedStatsDateISO, todayISO]);
 
-  const todayRangeLabel = `<< ${selectedStatsDateLabel} >>`;
+  const selectedStatsDateToggleLabel = useMemo(() => {
+    if (!selectedStatsDateISO) return '—';
+    return formatStatsDateShort(selectedStatsDateISO);
+  }, [selectedStatsDateISO]);
+
+  const todayRangeLabel = `<< ${selectedStatsDateToggleLabel} >>`;
 
   const formatRangeLabel = (rangeMode) => {
     if (rangeMode === 'week') {
@@ -2273,7 +2278,7 @@ function AppContent() {
                     });
                   });
                 });
-                return Object.entries(map).filter(([, c]) => c > 0).sort((a, b) => b[1] - a[1]).slice(0, 8);
+                return Object.entries(map).filter(([, c]) => c > 0).sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0])).slice(0, 8);
               })();
 
               const totalSource = statsTotalRange === 'week' ? weekUniqueSummary : selectedDateSummary;
@@ -2380,7 +2385,7 @@ function AppContent() {
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? selectedStatsDateLabel : 'Woche'}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'today' ? selectedStatsDateToggleLabel : 'Woche'}</Text>
                         <Pressable
                           onPress={() => { setStatsGraphRange((prev) => (prev === 'today' ? 'week' : 'today')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
@@ -2580,7 +2585,7 @@ function AppContent() {
       </View>
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.4</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.5</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
