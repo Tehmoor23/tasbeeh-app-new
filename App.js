@@ -1790,8 +1790,8 @@ function AppContent() {
     return `${prefix} · ${startFmt} – ${endFmt}`;
   };
 
-  const currentWeekToggleLabel = `<< Aktuelle Woche (${formatRangeFromIsos(statsWeekIsos, '').replace(/^ · /, '')} · KW ${getISOWeekNumber(parseISO(statsWeekIsos[0] || '') || now)}) >>`;
-  const previousWeekToggleLabel = `<< Letzte Woche (${formatRangeFromIsos(statsRollingWeekIsos, '').replace(/^ · /, '')}) >>`;
+  const currentWeekToggleLabel = '<< Aktuelle Woche >>';
+  const previousWeekToggleLabel = '<< Letzte Woche >>';
   const selectedDateToggleLabel = `<< ${selectedStatsDateToggleLabel} >>`;
 
   const cycleStatsRangeMode = (prev) => {
@@ -2381,22 +2381,20 @@ function AppContent() {
       atfal: '#F59E0B',
       guest: '#A855F7',
     };
-    const isSelectedDateChart = statsGraphRange === 'selectedDate';
-    const activeGraphIsos = statsGraphRange === 'currentWeek' ? statsWeekIsos : (statsGraphRange === 'previousWeek' ? statsRollingWeekIsos : [selectedStatsDateISO]);
+    const graphRangeMode = statsGraphRange === 'previousWeek' ? 'previousWeek' : 'currentWeek';
+    const isSelectedDateChart = false;
+    const activeGraphIsos = graphRangeMode === 'currentWeek' ? statsWeekIsos : statsRollingWeekIsos;
     const graphWeekRows = activeGraphIsos.map((iso) => {
       const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
       const dateObj = parseISO(iso);
       const weekdayShort = dateObj ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '') : iso;
-      const dayMonth = dateObj ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit' }).format(dateObj).replace(/\.$/, '') : '';
-      return { iso, label: dateObj ? `${weekdayShort}, ${dayMonth}` : iso, total: totals.total, tanzeemTotals: totals.tanzeemTotals };
+      return { iso, label: dateObj ? weekdayShort : iso, total: totals.total, tanzeemTotals: totals.tanzeemTotals };
     });
     const chartLabels = isSelectedDateChart
       ? STATS_PRAYER_SEQUENCE.map((item) => item.label)
       : graphWeekRows.map((item) => item.label);
 
-    const seriesCycleOptions = isSelectedDateChart
-      ? ['total', 'ansar', 'khuddam', 'atfal', 'guest']
-      : ['total', 'ansar', 'khuddam', 'atfal'];
+    const seriesCycleOptions = ['total', 'ansar', 'khuddam', 'atfal'];
     const activeSeriesKey = seriesCycleOptions.includes(statsGraphSeries) ? statsGraphSeries : 'total';
 
     const seriesConfig = {
@@ -2693,14 +2691,14 @@ function AppContent() {
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => cycleStatsRangeMode(prev)); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => (prev === 'previousWeek' ? 'currentWeek' : 'previousWeek')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{getRangeToggleLabel(statsGraphRange).replace('<< ', '').replace(' >>', '')}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'previousWeek' ? 'Letzte Woche' : 'Aktuelle Woche'}</Text>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => cycleStatsRangeMode(prev)); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => (prev === 'previousWeek' ? 'currentWeek' : 'previousWeek')); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
@@ -2711,7 +2709,7 @@ function AppContent() {
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
-                            const options = statsGraphRange === 'selectedDate' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
                             const idx = options.indexOf(prev);
                             return options[(idx - 1 + options.length) % options.length];
                           })}
@@ -2722,7 +2720,7 @@ function AppContent() {
                         <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{chartSeries[0]?.label || 'Gesamt'}</Text>
                         <Pressable
                           onPress={() => setStatsGraphSeries((prev) => {
-                            const options = statsGraphRange === 'selectedDate' ? ['total', 'ansar', 'khuddam', 'atfal', 'guest'] : ['total', 'ansar', 'khuddam', 'atfal'];
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
                             const idx = options.indexOf(prev);
                             return options[(idx + 1) % options.length];
                           })}
@@ -2735,7 +2733,7 @@ function AppContent() {
 
                     <MiniLineChart labels={chartLabels} series={chartSeries} theme={theme} isDarkMode={isDarkMode} xAxisTitle={chartXAxisTitle} />
 
-                    {statsGraphRange === 'selectedDate' && selectedDateSeriesSummary ? (
+                    {false && selectedDateSeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet ({activeSeriesLabel}): {selectedDateSeriesSummary.highest.label} ({selectedDateSeriesSummary.highest.value})</Text>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Schwächstes Gebet ({activeSeriesLabel}): {selectedDateSeriesSummary.lowest.label} ({selectedDateSeriesSummary.lowest.value})</Text>
@@ -2743,7 +2741,7 @@ function AppContent() {
                       </View>
                     ) : null}
 
-                    {statsGraphRange !== 'selectedDate' && weekSeriesSummary ? (
+                    {weekSeriesSummary ? (
                       <View style={styles.statsInsightWrap}>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Tag ({activeSeriesLabel}): {weekSeriesSummary.averagePerDay.toFixed(1)}</Text>
                         <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchster Tag ({activeSeriesLabel}): {weekSeriesSummary.highest.label} ({weekSeriesSummary.highest.value})</Text>
@@ -2752,7 +2750,7 @@ function AppContent() {
                       </View>
                     ) : null}
 
-                    {weeklyStatsLoading && statsGraphRange !== 'selectedDate' ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
+                    {weeklyStatsLoading ? <Text style={[styles.noteText, { color: theme.muted }]}>Wochendaten werden aktualisiert…</Text> : null}
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -3133,9 +3131,7 @@ function AppContent() {
                     ))}
                     {detailedIdChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine IDs gefunden.</Text> : null}
                   </View>
-                  </>) : (
-                    <Text style={[styles.noteText, { color: theme.muted, marginTop: 8 }]}>Bitte erst Majlis auswählen, dann werden IDs geladen.</Text>
-                  )}
+                  </>) : null}
                   {!detailedFlowTanzeem || !detailedFlowMajlis ? (
                     <Text style={[styles.detailedGuideHint, { color: theme.button }]}>Bitte Tanzeem und Majlis auswählen, dann erscheinen die IDs.</Text>
                   ) : null}
@@ -3165,7 +3161,7 @@ function AppContent() {
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche (Mo–So)' : 'Letzte Woche (Heute - 7 Tage)'}</Text>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche' : 'Letzte Woche'}</Text>
                       <Pressable onPress={() => setDetailedGraphRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                         <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{detailedGraphRange === 'currentWeek' ? '<< Aktuelle Woche >>' : '<< Letzte Woche >>'}</Text>
                       </Pressable>
@@ -3179,20 +3175,22 @@ function AppContent() {
                       series={[{ key: 'daily', label: 'Gebete/Tag', color: theme.button, thick: true, data: detailedComparisonSeries.map((row) => row.value) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="Tage (Mo–So / rollierend)"
+                      xAxisTitle="Tage"
                       yMaxValue={5}
                       yTickCount={6}
                     />
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Letzte 8 Wochen</Text>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Letzte 4 Wochen</Text>
                     <MiniLineChart
-                      labels={detailedWeeklySeries.map((row) => row.label)}
-                      series={[{ key: 'weekly', label: 'Gebete/Woche', color: theme.button, thick: true, data: detailedWeeklySeries.map((row) => row.value) }]}
+                      labels={[...detailedWeeklySeries]
+                        .reverse()
+                        .map((row) => `${row.startISO === (detailedCurrentWeekIsos[0] || '') ? '● ' : ''}KW ${row.weekNumber}`)}
+                      series={[{ key: 'weekly', label: 'Gebete/Woche', color: theme.button, thick: true, data: [...detailedWeeklySeries].reverse().map((row) => row.value) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="Letzte 4 Wochen (KW + Datum)"
+                      xAxisTitle="KW"
                     />
                   </View>
                 </>
