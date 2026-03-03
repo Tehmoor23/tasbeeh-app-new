@@ -540,6 +540,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
           const isWeekdayLabel = /^[A-Za-zÄÖÜäöü]{2,3}$/.test(rawLabel);
           const isFirstLabel = index === 0;
           const isLastLabel = index === labels.length - 1;
+          const shouldRotateLabel = isCompactChart && !isWeekdayLabel && !isFirstLabel && !isLastLabel;
           const labelWidth = isDateLabel
             ? (isCompactChart ? 56 : 92)
             : (isWeekdayLabel ? (isCompactChart ? 24 : 28) : (isCompactChart ? 48 : 64));
@@ -574,7 +575,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                   left: alignStyle.left,
                   width: labelWidth,
                   textAlign: alignStyle.textAlign,
-                  transform: [...alignStyle.transform, ...((isCompactChart && !isWeekdayLabel) ? [{ rotate: '-24deg' }] : [])],
+                  transform: [...alignStyle.transform, ...(shouldRotateLabel ? [{ rotate: '-24deg' }] : [])],
                 },
               ]}
             >
