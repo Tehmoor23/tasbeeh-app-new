@@ -2118,14 +2118,14 @@ function AppContent() {
     }
   }, [statsExporting, writeStatsWorkbook]);
 
-  const formatMajlisName = (locationKey) => {
+  function formatMajlisName(locationKey) {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
       .split('_')
       .filter(Boolean)
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
-  };
+  }
 
   const weekRankingRows = useMemo(() => {
     const metadataById = new Map();
