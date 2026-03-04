@@ -3351,46 +3351,46 @@ function AppContent() {
                 </>
               )}
             </ScrollView>
-          </SafeAreaView>
-        </View>
-      </Modal>
 
-      <Modal visible={isDetailedCalendarVisible} animationType="slide" transparent onRequestClose={() => setDetailedCalendarVisible(false)}>
-        <View style={styles.privacyModalBackdrop}>
-          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
-            <View style={styles.privacyModalHeader}>
-              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
-              <Pressable onPress={() => setDetailedCalendarVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
-                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
-              </Pressable>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
-              {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
-                <Pressable
-                  onPress={() => { setSelectedStatsDateISO(todayISO); setDetailedCalendarVisible(false); }}
-                  style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
-                >
-                  <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
-                </Pressable>
-              ) : null}
-              {availableStatsDates.length === 0 ? (
-                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Datumswerte verfügbar.</Text>
-              ) : availableStatsDates.map((iso) => {
-                const dateObj = parseISO(iso);
-                const label = dateObj ? formatStatsDateShort(iso) : iso;
-                const isActive = iso === selectedStatsDateISO;
-                const isTodayEntry = iso === todayISO;
-                return (
-                  <Pressable
-                    key={`detailed_${iso}`}
-                    onPress={() => { setSelectedStatsDateISO(iso); setDetailedCalendarVisible(false); }}
-                    style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
-                  >
-                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+            {isDetailedCalendarVisible ? (
+              <View style={styles.detailedInlineCalendarOverlay}>
+                <View style={[styles.detailedInlineCalendarCard, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                  <View style={styles.privacyModalHeader}>
+                    <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
+                    <Pressable onPress={() => setDetailedCalendarVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                      <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+                    </Pressable>
+                  </View>
+                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+                    {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
+                      <Pressable
+                        onPress={() => { setSelectedStatsDateISO(todayISO); setDetailedCalendarVisible(false); }}
+                        style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                      >
+                        <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
+                      </Pressable>
+                    ) : null}
+                    {availableStatsDates.length === 0 ? (
+                      <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Datumswerte verfügbar.</Text>
+                    ) : availableStatsDates.map((iso) => {
+                      const dateObj = parseISO(iso);
+                      const label = dateObj ? formatStatsDateShort(iso) : iso;
+                      const isActive = iso === selectedStatsDateISO;
+                      const isTodayEntry = iso === todayISO;
+                      return (
+                        <Pressable
+                          key={`detailed_${iso}`}
+                          onPress={() => { setSelectedStatsDateISO(iso); setDetailedCalendarVisible(false); }}
+                          style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
+                        >
+                          <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              </View>
+            ) : null}
           </SafeAreaView>
         </View>
       </Modal>
@@ -3590,6 +3590,8 @@ const styles = StyleSheet.create({
   statsDetailOpenBtnText: { fontSize: 13, fontWeight: '700' },
   detailedIdModalBody: { paddingHorizontal: 14, paddingBottom: 18, gap: 8 },
   detailedIdModalBodyCompact: { justifyContent: 'flex-start', paddingTop: 6, paddingBottom: 8 },
+  detailedInlineCalendarOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', padding: 12, zIndex: 5 },
+  detailedInlineCalendarCard: { borderWidth: 1, borderRadius: 16, maxHeight: '82%', overflow: 'hidden' },
   detailedGuideCard: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   detailedGuideTitle: { fontSize: 15, fontWeight: '800' },
   detailedGuideText: { fontSize: 13, marginTop: 4, textAlign: 'center' },
