@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -2086,7 +2086,11 @@ function AppContent() {
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const normalizedMosque = String(activeMosque.label || 'moschee').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     const fileName = `stats_${normalizedMosque}_${startISO}_${endISO}.xlsx`;
-    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
+    const cacheDir = String(FileSystem.cacheDirectory || '');
+    if (!cacheDir) {
+      throw new Error('Dateisystem nicht verfügbar (cacheDirectory fehlt)');
+    }
+    const fileUri = `${cacheDir}${fileName}`;
 
     await FileSystem.writeAsStringAsync(fileUri, base64, {
       encoding: FileSystem.EncodingType.Base64,
@@ -2111,8 +2115,10 @@ function AppContent() {
     try {
       await writeStatsWorkbook(rangeMode);
       setStatsExportModalVisible(false);
-    } catch {
-      setToast('Export fehlgeschlagen');
+    } catch (error) {
+      const message = String(error?.message || '').trim();
+      setToast(message ? `Export fehlgeschlagen: ${message}` : 'Export fehlgeschlagen');
+      console.error('Stats export failed', error);
     } finally {
       setStatsExporting(false);
     }
