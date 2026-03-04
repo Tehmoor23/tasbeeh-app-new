@@ -24,10 +24,15 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 
 const STORAGE_KEYS = {
   darkMode: '@tasbeeh_darkmode',
+  activeMosque: '@tasbeeh_active_mosque',
   programConfigsByDate: '@tasbeeh_program_configs_by_date',
 };
 
-const CITY = 'Bait-Us-Sabuh';
+const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
+const MOSQUE_OPTIONS = [
+  { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
+  { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
+];
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
@@ -772,10 +777,21 @@ const loadFirebaseRuntime = () => {
 };
 
 const firebaseRuntime = hasFirebaseConfig() ? loadFirebaseRuntime() : null;
+let activeMosqueScopeKey = DEFAULT_MOSQUE_KEY;
+
+const getMosqueOptionByKey = (key) => MOSQUE_OPTIONS.find((item) => item.key === key) || MOSQUE_OPTIONS[0];
+const setActiveMosqueScope = (key) => {
+  activeMosqueScopeKey = getMosqueOptionByKey(key).key;
+};
+const resolveScopedCollection = (collection) => {
+  const suffix = getMosqueOptionByKey(activeMosqueScopeKey).suffix;
+  return suffix ? `${collection}_${suffix}` : collection;
+};
 
 async function incrementDocCounters(collection, id, fieldPaths) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const document = `projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}`;
+  const scopedCollection = resolveScopedCollection(collection);
+  const document = `projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${scopedCollection}/${id}`;
   const body = {
     writes: [{
       transform: {
@@ -793,7 +809,7 @@ async function incrementDocCounters(collection, id, fieldPaths) {
 
 async function getDocData(collection, id) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const res = await fetch(docUrl(collection, id));
+  const res = await fetch(docUrl(resolveScopedCollection(collection), id));
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Firestore read failed');
   const json = await res.json();
@@ -802,11 +818,12 @@ async function getDocData(collection, id) {
 
 async function listDocIds(collection, pageSize = 300) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const scopedCollection = resolveScopedCollection(collection);
   let pageToken = '';
   const ids = [];
   do {
     const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}?pageSize=${pageSize}${tokenPart}&key=${FIREBASE_CONFIG.apiKey}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${scopedCollection}?pageSize=${pageSize}${tokenPart}&key=${FIREBASE_CONFIG.apiKey}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Firestore list failed');
     const json = await res.json();
@@ -825,13 +842,13 @@ async function listDocIds(collection, pageSize = 300) {
 async function setDocData(collection, id, data) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const body = { fields: toFirestoreValue(data).mapValue.fields };
-  const res = await fetch(docUrl(collection, id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error('Firestore write failed');
 }
 
 async function deleteDocData(collection, id) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const res = await fetch(docUrl(collection, id), { method: 'DELETE' });
+  const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'DELETE' });
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
@@ -946,6 +963,7 @@ function PrivacySection({ section, theme, isLast }) {
 function AppContent() {
   const [activeTab, setActiveTab] = useState('gebetsplan');
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [activeMosqueKey, setActiveMosqueKey] = useState(DEFAULT_MOSQUE_KEY);
   const [terminalMode, setTerminalMode] = useState('tanzeem');
   const [selectedTanzeem, setSelectedTanzeem] = useState('');
   const [selectedMajlis, setSelectedMajlis] = useState('');
@@ -1006,6 +1024,7 @@ function AppContent() {
   const detailedLogsCacheRef = useRef({});
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
+  const activeMosque = useMemo(() => getMosqueOptionByKey(activeMosqueKey), [activeMosqueKey]);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTablet = width >= 900;
@@ -1018,6 +1037,9 @@ function AppContent() {
     }
     return d;
   }, [refreshTick]);
+  useEffect(() => {
+    setActiveMosqueScope(activeMosqueKey);
+  }, [activeMosqueKey]);
   const todayISO = toISO(now);
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   const programConfigToday = programConfigByDate[todayISO] || null;
@@ -1216,7 +1238,7 @@ function AppContent() {
       };
     }
 
-    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION), PRAYER_OVERRIDE_GLOBAL_DOC_ID);
     const unsubscribe = firebaseRuntime.onSnapshot(
       overrideRef,
       (snapshot) => applyOverride(snapshot.exists() ? snapshot.data() : null),
@@ -1232,7 +1254,7 @@ function AppContent() {
       cancelled = true;
       unsubscribe();
     };
-  }, [todayISO]);
+  }, [todayISO, activeMosqueKey]);
 
   const onOverrideEnabledChange = (value) => {
     setOverrideEnabled(value);
@@ -1376,7 +1398,9 @@ function AppContent() {
     const loadLocal = async () => {
       try {
         const darkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
+        const mosqueRaw = await AsyncStorage.getItem(STORAGE_KEYS.activeMosque);
         if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(isGermanNightDefault());
+        if (mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) setActiveMosqueKey(mosqueRaw); else setActiveMosqueKey(DEFAULT_MOSQUE_KEY);
       } catch (e) {
         console.warn('Failed to load local settings:', e);
       }
@@ -1391,6 +1415,19 @@ function AppContent() {
     ]).start();
     setIsDarkMode(value);
     await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
+  };
+
+  const onSelectMosque = async (key) => {
+    const next = getMosqueOptionByKey(key).key;
+    setActiveMosqueKey(next);
+    await AsyncStorage.setItem(STORAGE_KEYS.activeMosque, next);
+    detailedLogsCacheRef.current = {};
+    setSelectedDetailedMember(null);
+    setDetailedMemberLogs([]);
+    setProgramConfigByDate({});
+    setStatsAttendance(null);
+    setWeeklyAttendanceDocs({});
+    setRefreshTick((v) => v + 1);
   };
 
   useEffect(() => {
@@ -1422,7 +1459,7 @@ function AppContent() {
       return () => { cancelled = true; };
     }
 
-    const programRef = firebaseRuntime.doc(firebaseRuntime.db, PROGRAM_CONFIG_COLLECTION, todayISO);
+    const programRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PROGRAM_CONFIG_COLLECTION), todayISO);
     const unsubscribe = firebaseRuntime.onSnapshot(
       programRef,
       (snapshot) => applyProgramConfig(snapshot.exists() ? snapshot.data() : null),
@@ -1435,7 +1472,7 @@ function AppContent() {
       cancelled = true;
       unsubscribe();
     };
-  }, [todayISO]);
+  }, [todayISO, activeMosqueKey]);
 
   useEffect(() => {
     const todayConfig = programConfigByDate[todayISO] || null;
@@ -1557,7 +1594,7 @@ function AppContent() {
       };
     }
 
-    const attendanceRef = firebaseRuntime.doc(firebaseRuntime.db, 'attendance_daily', todayISO);
+    const attendanceRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection('attendance_daily'), todayISO);
     const unsubscribe = firebaseRuntime.onSnapshot(
       attendanceRef,
       (snapshot) => {
@@ -1576,7 +1613,7 @@ function AppContent() {
       cancelled = true;
       unsubscribe();
     };
-  }, [activeTab, todayISO]);
+  }, [activeTab, todayISO, activeMosqueKey]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
@@ -1606,7 +1643,7 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, todayISO, programConfigToday]);
+  }, [activeTab, statsMode, todayISO, programConfigToday, activeMosqueKey]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
@@ -1654,7 +1691,7 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, statsPrevWeekIsos, statsWeekIsos, statsRollingWeekIsos]);
+  }, [activeTab, statsMode, statsPrevWeekIsos, statsWeekIsos, statsRollingWeekIsos, activeMosqueKey]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'prayer') return;
@@ -1672,7 +1709,7 @@ function AppContent() {
         if (!cancelled) setToast('Datenbankfehler – bitte Internet prüfen');
       });
     return () => { cancelled = true; };
-  }, [activeTab, statsMode]);
+  }, [activeTab, statsMode, activeMosqueKey]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'prayer') return;
@@ -1687,7 +1724,7 @@ function AppContent() {
         if (!cancelled) setToast('Datenbankfehler – bitte Internet prüfen');
       });
     return () => { cancelled = true; };
-  }, [activeTab, statsMode, selectedStatsDateISO, weeklyAttendanceDocs]);
+  }, [activeTab, statsMode, selectedStatsDateISO, weeklyAttendanceDocs, activeMosqueKey]);
 
   const selectedDateAttendance = useMemo(() => (selectedStatsDateISO ? (weeklyAttendanceDocs[selectedStatsDateISO] || null) : null), [selectedStatsDateISO, weeklyAttendanceDocs]);
   const activeDayAttendance = useMemo(() => {
@@ -2302,7 +2339,7 @@ function AppContent() {
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
           <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
-          <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{CITY}</Text></View>
+          <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text></View>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
             const isActive = row.activeKeys.includes(activePrayerKey || '');
@@ -2609,7 +2646,7 @@ function AppContent() {
           <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
           <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
           <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
-          <View style={[styles.statsHeaderLocationChip, { backgroundColor: theme.chipBg }]}><Text style={[styles.statsHeaderLocationChipText, { color: theme.chipText }]}>Bait-Us-Sabuh</Text></View>
+          <View style={[styles.statsHeaderLocationChip, { backgroundColor: theme.chipBg }]}><Text style={[styles.statsHeaderLocationChipText, { color: theme.chipText }]}>{activeMosque.label}</Text></View>
           <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
         </View>
 
@@ -3015,13 +3052,32 @@ function AppContent() {
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
+      </View>
+
+      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Aktive Moschee</Text>
+        <Text style={[styles.noteText, { color: theme.muted, marginTop: 4 }]}>{activeMosque.label}</Text>
+        <View style={styles.statsToggleRow}>
+          {MOSQUE_OPTIONS.map((option) => {
+            const isActive = activeMosqueKey === option.key;
+            return (
+              <Pressable
+                key={option.key}
+                onPress={() => onSelectMosque(option.key)}
+                style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
+              >
+                <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{option.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
-        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
 
         {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
 
@@ -3059,7 +3115,7 @@ function AppContent() {
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
-        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Bait-Us-Sabuh</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
 
         <View style={styles.mergeInputWrap}>
           <TextInput value={manualFajrTime} onChangeText={setManualFajrTime} placeholder="Fajr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
