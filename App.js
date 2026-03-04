@@ -192,6 +192,7 @@ const FIXED_TIMES = {
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+const PRAYER_OVERRIDE_GLOBAL_DOC_ID = 'global';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
@@ -1202,7 +1203,7 @@ function AppContent() {
     };
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
-      getDocData(PRAYER_OVERRIDE_COLLECTION, todayISO)
+      getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID)
         .then((data) => applyOverride(data))
         .catch(() => {
           if (!cancelled) {
@@ -1215,7 +1216,7 @@ function AppContent() {
       };
     }
 
-    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, PRAYER_OVERRIDE_COLLECTION, todayISO);
+    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
     const unsubscribe = firebaseRuntime.onSnapshot(
       overrideRef,
       (snapshot) => applyOverride(snapshot.exists() ? snapshot.data() : null),
@@ -1270,7 +1271,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      await setDocData(PRAYER_OVERRIDE_COLLECTION, todayISO, payload);
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
       setPrayerOverride(normalizePrayerOverride(payload));
       setToast('Override gespeichert ✓');
       setRefreshTick((v) => v + 1);
@@ -1311,7 +1312,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      await setDocData(PRAYER_OVERRIDE_COLLECTION, todayISO, payload);
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
       setPrayerOverride(normalizePrayerOverride(payload));
       setToast('Gespeichert ✓');
       setRefreshTick((v) => v + 1);
@@ -2132,7 +2133,7 @@ function AppContent() {
     const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates)) : null;
     const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
     const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw, runtimeIsRamadanToday);
-    const runtimeOverride = runtimeISO === todayISO ? prayerOverride : null;
+    const runtimeOverride = prayerOverride;
     const runtimeWithManual = applyManualPrayerAdjustments(runtimeBaseTimesToday, runtimeOverride);
     const runtimeTimesToday = applyPrayerTimeOverride(runtimeWithManual, runtimeOverride);
     const runtimeTomorrowISO = toISO(addDays(runtimeNow, 1));
