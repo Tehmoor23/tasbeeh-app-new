@@ -1,7 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -23,7 +21,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as XLSX from 'xlsx';
 
 const STORAGE_KEYS = {
   darkMode: '@tasbeeh_darkmode',
@@ -981,8 +978,6 @@ function AppContent() {
   const [statsMajlisRange, setStatsMajlisRange] = useState('currentWeek');
   const [statsPrayerRange, setStatsPrayerRange] = useState('currentWeek');
   const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
-  const [isStatsExportModalVisible, setStatsExportModalVisible] = useState(false);
-  const [statsExporting, setStatsExporting] = useState(false);
   const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
   const [detailedFlowTanzeem, setDetailedFlowTanzeem] = useState('');
   const [detailedFlowMajlis, setDetailedFlowMajlis] = useState('');
@@ -1930,193 +1925,6 @@ function AppContent() {
     return selectedDateToggleLabel;
   };
 
-  const getStatsExportDataset = useCallback((rangeMode) => {
-    const targetRange = rangeMode === 'previousWeek' ? 'previousWeek' : 'currentWeek';
-    const isos = targetRange === 'currentWeek' ? statsWeekIsos : statsRollingWeekIsos;
-
-    const summary = isos.reduce((acc, iso) => {
-      const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
-      acc.total += oneDay.total;
-      acc.guestTotal += oneDay.guestTotal;
-      acc.tanzeemTotals.ansar += oneDay.tanzeemTotals.ansar;
-      acc.tanzeemTotals.khuddam += oneDay.tanzeemTotals.khuddam;
-      acc.tanzeemTotals.atfal += oneDay.tanzeemTotals.atfal;
-      return acc;
-    }, { total: 0, guestTotal: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } });
-
-    const dayRows = isos.map((iso) => {
-      const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
-      const dateObj = parseISO(iso);
-      const weekdayShort = dateObj
-        ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '')
-        : iso;
-      const normalizedWeekday = weekdayShort.charAt(0).toUpperCase() + weekdayShort.slice(1, 2).toLowerCase();
-      return {
-        tag: normalizedWeekday,
-        iso,
-        anzahlGebete: Number(totals.total) || 0,
-      };
-    });
-
-    const prayerAgg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
-    isos.forEach((iso) => {
-      const rows = getPrayerCountsForStats(weeklyAttendanceDocs[iso]);
-      rows.forEach((row) => {
-        prayerAgg[row.key] += Number(row.total) || 0;
-      });
-    });
-    const prayerRows = [
-      { gebet: 'Fajr', anzahl: prayerAgg.fajr },
-      { gebet: 'Sohr', anzahl: prayerAgg.sohar },
-      { gebet: 'Asr', anzahl: prayerAgg.asr },
-      { gebet: 'Maghrib', anzahl: prayerAgg.maghrib },
-      { gebet: 'Ishaa', anzahl: prayerAgg.ishaa },
-    ];
-
-    const topMajlisRows = (() => {
-      const map = {};
-      isos.forEach((iso) => {
-        const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
-        Object.values(byPrayer).forEach((prayerNode) => {
-          const tanzeemMap = prayerNode?.tanzeem || {};
-          STATS_TANZEEM_KEYS.forEach((key) => {
-            const majlis = tanzeemMap[key]?.majlis || {};
-            Object.entries(majlis).forEach(([loc, count]) => {
-              map[loc] = (map[loc] || 0) + (Number(count) || 0);
-            });
-          });
-        });
-      });
-      return buildMajlisRanking(map).map(([locationKey, count]) => {
-        const majlisName = formatMajlisName(locationKey);
-        const entry = membersDirectory.find((member) => member.majlis === majlisName);
-        return {
-          tanzeem: entry?.tanzeem ? (TANZEEM_LABELS[entry.tanzeem] || entry.tanzeem) : '—',
-          majlis: majlisName,
-          gebeteDieseWoche: Number(count) || 0,
-        };
-      });
-    })();
-
-    return {
-      rangeMode: targetRange,
-      isos,
-      summary,
-      dayRows,
-      prayerRows,
-      topMajlisRows,
-    };
-  }, [statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs, membersDirectory]);
-
-  const hasStatsExportData = useMemo(() => {
-    const current = getStatsExportDataset('currentWeek');
-    const previous = getStatsExportDataset('previousWeek');
-    return current.summary.total > 0 || previous.summary.total > 0;
-  }, [getStatsExportDataset]);
-
-  const writeStatsWorkbook = useCallback(async (rangeMode) => {
-    const dataset = getStatsExportDataset(rangeMode);
-    const startISO = dataset.isos?.[0] || 'na';
-    const endISO = dataset.isos?.[dataset.isos.length - 1] || 'na';
-    if (!dataset.dayRows.length || dataset.summary.total <= 0) {
-      setToast('Keine Daten zum Export verfügbar');
-      return;
-    }
-
-    const workbook = XLSX.utils.book_new();
-    const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
-      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
-    }).format(new Date());
-
-    const overviewRows = [
-      ['Moschee', activeMosque.label],
-      ['Zeitraum', `${startISO} – ${endISO}`],
-      ['Export Zeitstempel', exportTimestamp],
-      [],
-      ['Gesamt Gebete der Woche', Number(dataset.summary.total) || 0],
-      ['Ansar total', Number(dataset.summary.tanzeemTotals.ansar) || 0],
-      ['Khuddam total', Number(dataset.summary.tanzeemTotals.khuddam) || 0],
-      ['Atfal total', Number(dataset.summary.tanzeemTotals.atfal) || 0],
-    ];
-    const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
-    overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
-
-    const dayRows = [
-      ['Tag', 'Anzahl Gebete'],
-      ...dataset.dayRows.map((row) => [row.tag, Number(row.anzahlGebete) || 0]),
-    ];
-    const daySheet = XLSX.utils.aoa_to_sheet(dayRows);
-    daySheet['!cols'] = [{ wch: 14 }, { wch: 18 }];
-
-    const prayerRows = [
-      ['Gebet', 'Anzahl'],
-      ...dataset.prayerRows.map((row) => [row.gebet, Number(row.anzahl) || 0]),
-    ];
-    const prayerSheet = XLSX.utils.aoa_to_sheet(prayerRows);
-    prayerSheet['!cols'] = [{ wch: 16 }, { wch: 12 }];
-
-    XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete pro Tag');
-    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Anzahl pro Gebet');
-
-    if (dataset.topMajlisRows.length) {
-      const topRows = [
-        ['Tanzeem', 'Majlis', 'Gebete diese Woche'],
-        ...dataset.topMajlisRows.map((row) => [row.tanzeem, row.majlis, Number(row.gebeteDieseWoche) || 0]),
-      ];
-      const topSheet = XLSX.utils.aoa_to_sheet(topRows);
-      topSheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 22 }];
-      XLSX.utils.book_append_sheet(workbook, topSheet, 'Top Majlises');
-    }
-
-    const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Gebete pro Tag', 'Anzahl pro Gebet', 'Top Majlises'].forEach((sheetName) => {
-      const ws = workbook.Sheets[sheetName];
-      if (!ws) return;
-      const ref = ws['!ref'];
-      if (!ref) return;
-      const range = XLSX.utils.decode_range(ref);
-      for (let col = range.s.c; col <= range.e.c; col += 1) {
-        const addr = XLSX.utils.encode_cell({ c: col, r: 0 });
-        if (!ws[addr]) continue;
-        ws[addr].s = boldCellStyle;
-      }
-    });
-
-    const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    const normalizedMosque = String(activeMosque.label || 'moschee').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    const fileName = `stats_${normalizedMosque}_${startISO}_${endISO}.xlsx`;
-    const fileUri = `${FileSystem.cacheDirectory}${fileName}`;
-
-    await FileSystem.writeAsStringAsync(fileUri, base64, {
-      encoding: FileSystem.EncodingType.Base64,
-    });
-
-    const canShare = await Sharing.isAvailableAsync();
-    if (!canShare) {
-      setToast('Sharing auf diesem Gerät nicht verfügbar');
-      return;
-    }
-
-    await Sharing.shareAsync(fileUri, {
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      dialogTitle: 'Statistik exportieren',
-      UTI: 'org.openxmlformats.spreadsheetml.sheet',
-    });
-  }, [activeMosque.label, getStatsExportDataset]);
-
-  const handleExportStats = useCallback(async (rangeMode) => {
-    if (statsExporting) return;
-    setStatsExporting(true);
-    try {
-      await writeStatsWorkbook(rangeMode);
-      setStatsExportModalVisible(false);
-    } catch {
-      setToast('Export fehlgeschlagen');
-    } finally {
-      setStatsExporting(false);
-    }
-  }, [statsExporting, writeStatsWorkbook]);
 
   const formatMajlisName = (locationKey) => {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
@@ -2840,22 +2648,6 @@ function AppContent() {
           <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
           <View style={[styles.statsHeaderLocationChip, { backgroundColor: theme.chipBg }]}><Text style={[styles.statsHeaderLocationChipText, { color: theme.chipText }]}>{activeMosque.label}</Text></View>
           <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
-          {!isProgramStatsMode ? (
-            <Pressable
-              onPress={() => setStatsExportModalVisible(true)}
-              disabled={!hasStatsExportData || statsExporting}
-              style={[
-                styles.statsExportBtn,
-                {
-                  borderColor: theme.border,
-                  backgroundColor: (!hasStatsExportData || statsExporting) ? theme.border : theme.bg,
-                  opacity: (!hasStatsExportData || statsExporting) ? 0.7 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{statsExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
-            </Pressable>
-          ) : null}
         </View>
 
         {isProgramStatsMode ? (
@@ -3458,35 +3250,6 @@ function AppContent() {
         </View>
       </Modal>
 
-      <Modal visible={isStatsExportModalVisible} animationType="fade" transparent onRequestClose={() => setStatsExportModalVisible(false)}>
-        <View style={styles.privacyModalBackdrop}>
-          <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-            <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Daten exportieren</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Wählen Sie den Zeitraum für den Excel-Export.</Text>
-            <View style={styles.statsExportModalActions}>
-              <Pressable
-                disabled={statsExporting || !hasStatsExportData}
-                onPress={() => handleExportStats('currentWeek')}
-                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (statsExporting || !hasStatsExportData) ? 0.6 : 1 }]}
-              >
-                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
-              </Pressable>
-              <Pressable
-                disabled={statsExporting || !hasStatsExportData}
-                onPress={() => handleExportStats('previousWeek')}
-                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (statsExporting || !hasStatsExportData) ? 0.6 : 1 }]}
-              >
-                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Letzte Woche (.xlsx)</Text>
-              </Pressable>
-              {!hasStatsExportData ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Daten zum Export verfügbar</Text> : null}
-            </View>
-            <Pressable onPress={() => setStatsExportModalVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
-              <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
 
       <Modal visible={isDetailedIdOverviewVisible} animationType="slide" transparent onRequestClose={() => setDetailedIdOverviewVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
@@ -3850,15 +3613,6 @@ const styles = StyleSheet.create({
   statsHeaderLocationChip: { alignSelf: 'center', borderRadius: 10, paddingVertical: 5, paddingHorizontal: 10, marginTop: 6 },
   statsHeaderLocationChipText: { fontSize: 15, fontWeight: '700' },
   statsHeaderDivider: { marginTop: 10, height: 1, width: '100%' },
-  statsExportBtn: { marginTop: 12, borderWidth: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  statsExportBtnText: { fontSize: 13, fontWeight: '700' },
-  statsExportModalCard: { borderWidth: 1, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 14, gap: 12, width: '100%', maxWidth: 460, alignSelf: 'center' },
-  statsExportModalTitle: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
-  statsExportModalActions: { gap: 8 },
-  statsExportOptionBtn: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center' },
-  statsExportOptionBtnText: { fontSize: 14, fontWeight: '700' },
-  statsExportCloseBtn: { marginTop: 2, borderWidth: 1, borderRadius: 12, paddingVertical: 10, alignItems: 'center' },
-  statsExportCloseBtnText: { fontSize: 13, fontWeight: '700' },
   statsToggleRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
   statsToggleBtn: { flex: 1, borderWidth: 1, borderRadius: 12, paddingVertical: 9, alignItems: 'center' },
   statsToggleBtnText: { fontSize: 12, fontWeight: '700' },
