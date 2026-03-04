@@ -1972,13 +1972,14 @@ function AppContent() {
   const detailedLast7Days = useMemo(() => getLast7Days(now), [now]);
   const detailedLast8Weeks = useMemo(() => getLast8Weeks(now), [now]);
 
-  const loadDetailedLogsForMember = async (idNumber, minISO, maxISO) => {
+  const loadDetailedLogsForMember = async (idNumber, minISO, maxISO, options = {}) => {
+    const { bypassCache = false, silent = false } = options;
     const cacheKey = `${idNumber}_${minISO}_${maxISO}`;
-    if (Array.isArray(detailedLogsCacheRef.current[cacheKey])) {
+    if (!bypassCache && Array.isArray(detailedLogsCacheRef.current[cacheKey])) {
       setDetailedMemberLogs(detailedLogsCacheRef.current[cacheKey]);
       return;
     }
-    setDetailedLogsLoading(true);
+    if (!silent) setDetailedLogsLoading(true);
     try {
       const ids = await listDocIds(MEMBER_DIRECTORY_COLLECTION);
       const relevantIds = ids.filter((docId) => {
@@ -2014,7 +2015,7 @@ function AppContent() {
       setToast('Datenbankfehler – bitte Internet prüfen');
       setDetailedMemberLogs([]);
     } finally {
-      setDetailedLogsLoading(false);
+      if (!silent) setDetailedLogsLoading(false);
     }
   };
 
@@ -2089,6 +2090,22 @@ function AppContent() {
     const maxISO = selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
     loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO);
   }, [selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
+
+  useEffect(() => {
+    if (!isDetailedIdOverviewVisible || !selectedDetailedMember?.idNumber) return undefined;
+    const firstWeek = detailedLast8Weeks[0];
+    if (!firstWeek) return undefined;
+    const minISO = selectedStatsDateISO && selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
+    const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
+
+    const refreshDetailedLogs = () => {
+      loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO, { bypassCache: true, silent: true });
+    };
+
+    refreshDetailedLogs();
+    const timer = setInterval(refreshDetailedLogs, 5000);
+    return () => clearInterval(timer);
+  }, [isDetailedIdOverviewVisible, selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
