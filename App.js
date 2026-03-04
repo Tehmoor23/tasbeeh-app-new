@@ -972,6 +972,7 @@ function AppContent() {
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
   const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
+  const [isDetailedCalendarVisible, setDetailedCalendarVisible] = useState(false);
   const [availableStatsDates, setAvailableStatsDates] = useState([]);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
   const [overrideLoading, setOverrideLoading] = useState(false);
@@ -3176,7 +3177,7 @@ function AppContent() {
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Detaillierte ID-Übersicht</Text>
-              <Pressable onPress={() => { setDetailedIdOverviewVisible(false); setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
+              <Pressable onPress={() => { setDetailedIdOverviewVisible(false); setDetailedCalendarVisible(false); setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
                 <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
               </Pressable>
             </View>
@@ -3333,7 +3334,7 @@ function AppContent() {
                       </Pressable>
                     </View>
                     {detailedPrayerRange === 'selectedDate' ? (
-                      <Pressable onPress={() => setStatsCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 10 }]}>
+                      <Pressable onPress={() => setDetailedCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 10 }]}>
                         <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>{`Datum auswählen · ${selectedStatsDateLabel}`}</Text>
                       </Pressable>
                     ) : null}
@@ -3349,6 +3350,46 @@ function AppContent() {
                   </View>
                 </>
               )}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      <Modal visible={isDetailedCalendarVisible} animationType="slide" transparent onRequestClose={() => setDetailedCalendarVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
+            <View style={styles.privacyModalHeader}>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
+              <Pressable onPress={() => setDetailedCalendarVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+              {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
+                <Pressable
+                  onPress={() => { setSelectedStatsDateISO(todayISO); setDetailedCalendarVisible(false); }}
+                  style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                >
+                  <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
+                </Pressable>
+              ) : null}
+              {availableStatsDates.length === 0 ? (
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Datumswerte verfügbar.</Text>
+              ) : availableStatsDates.map((iso) => {
+                const dateObj = parseISO(iso);
+                const label = dateObj ? formatStatsDateShort(iso) : iso;
+                const isActive = iso === selectedStatsDateISO;
+                const isTodayEntry = iso === todayISO;
+                return (
+                  <Pressable
+                    key={`detailed_${iso}`}
+                    onPress={() => { setSelectedStatsDateISO(iso); setDetailedCalendarVisible(false); }}
+                    style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
+                  >
+                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </SafeAreaView>
         </View>
