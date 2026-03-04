@@ -1950,9 +1950,14 @@ function AppContent() {
       const weekdayShort = dateObj
         ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '')
         : iso;
-      const normalizedWeekday = weekdayShort.charAt(0).toUpperCase() + weekdayShort.slice(1, 2).toLowerCase();
+      const dateLabel = dateObj
+        ? new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj)
+        : iso;
+      const normalizedWeekday = weekdayShort
+        ? weekdayShort.charAt(0).toUpperCase() + weekdayShort.slice(1, 2).toLowerCase()
+        : '—';
       return {
-        tag: normalizedWeekday,
+        tag: `${normalizedWeekday}, ${dateLabel}`,
         iso,
         anzahlGebete: Number(totals.total) || 0,
       };
@@ -1972,6 +1977,7 @@ function AppContent() {
       { gebet: 'Maghrib', anzahl: prayerAgg.maghrib },
       { gebet: 'Ishaa', anzahl: prayerAgg.ishaa },
     ];
+    const totalPrayers = prayerRows.reduce((sum, row) => sum + (Number(row.anzahl) || 0), 0);
 
     const topMajlisRows = (() => {
       const map = {};
@@ -2005,6 +2011,7 @@ function AppContent() {
       dayRows,
       prayerRows,
       topMajlisRows,
+      totalPrayers,
     };
   }, [statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs, membersDirectory]);
 
@@ -2018,6 +2025,15 @@ function AppContent() {
     const dataset = getStatsExportDataset(rangeMode);
     const startISO = dataset.isos?.[0] || 'na';
     const endISO = dataset.isos?.[dataset.isos.length - 1] || 'na';
+    const formatIsoForExport = (iso) => {
+      const dateObj = parseISO(iso);
+      if (!dateObj) return iso;
+      const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '');
+      const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+      return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)}, ${datePart}`;
+    };
+    const startLabel = formatIsoForExport(startISO);
+    const endLabel = formatIsoForExport(endISO);
     if (!dataset.dayRows.length || dataset.summary.total <= 0) {
       setToast('Keine Daten zum Export verfügbar');
       return;
@@ -2030,10 +2046,11 @@ function AppContent() {
 
     const overviewRows = [
       ['Moschee', activeMosque.label],
-      ['Zeitraum', `${startISO} – ${endISO}`],
+      ['Zeitraum', `${startLabel} – ${endLabel}`],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Gesamt Gebete der Woche', Number(dataset.summary.total) || 0],
+      ['Gesamt Gebete der Woche', Number(dataset.totalPrayers) || 0],
+      ['Gesamt Anwesende der Woche', Number(dataset.summary.total) || 0],
       ['Ansar total', Number(dataset.summary.tanzeemTotals.ansar) || 0],
       ['Khuddam total', Number(dataset.summary.tanzeemTotals.khuddam) || 0],
       ['Atfal total', Number(dataset.summary.tanzeemTotals.atfal) || 0],
@@ -2085,7 +2102,27 @@ function AppContent() {
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const normalizedMosque = String(activeMosque.label || 'moschee').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    const fileName = `stats_${normalizedMosque}_${startISO}_${endISO}.xlsx`;
+    const safeStart = startLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
+    const safeEnd = endLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
+    const fileName = `stats_${normalizedMosque}_${safeStart}_${safeEnd}.xlsx`;
+
+    if (Platform.OS === 'web') {
+      if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
+      const binary = globalThis.atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+
     const cacheDir = String(FileSystem.cacheDirectory || '');
     if (!cacheDir) {
       throw new Error('Dateisystem nicht verfügbar (cacheDirectory fehlt)');
