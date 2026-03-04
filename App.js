@@ -3052,14 +3052,19 @@ function AppContent() {
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
+      <View style={[styles.settingsMosqueHighlightCard, { backgroundColor: theme.chipBg, borderColor: theme.rowActiveBorder }]}> 
+        <Text style={[styles.settingsMosqueHighlightTitle, { color: theme.chipText }]}>Aktive Moschee</Text>
+        <Text style={[styles.settingsMosqueHighlightValue, { color: theme.chipText }]}>{activeMosque.label}</Text>
+      </View>
+
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
 
-      <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-        <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Aktive Moschee</Text>
-        <Text style={[styles.noteText, { color: theme.muted, marginTop: 4 }]}>{activeMosque.label}</Text>
-        <View style={styles.statsToggleRow}>
+      <View style={[styles.section, styles.activeMosqueSection, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, styles.activeMosqueSectionTitle, { color: theme.text }]}>Aktive Moschee</Text>
+        <Text style={[styles.noteText, styles.activeMosqueSectionCurrent, { color: theme.muted }]}>{activeMosque.label}</Text>
+        <View style={[styles.statsToggleRow, styles.activeMosqueToggleRow]}>
           {MOSQUE_OPTIONS.map((option) => {
             const isActive = activeMosqueKey === option.key;
             return (
@@ -3514,6 +3519,9 @@ const styles = StyleSheet.create({
   appMetaCopyright: { textAlign: 'center', fontSize: 11, lineHeight: 16 },
   section: { borderRadius: 14, borderWidth: 1, padding: 10, gap: 8, marginBottom: 10, marginTop: 20 },
   settingsHeroCard: { borderRadius: 18, paddingVertical: 22, paddingHorizontal: 18, gap: 16, marginTop: 8, marginBottom: 4 },
+  settingsMosqueHighlightCard: { borderWidth: 1, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', marginTop: 6 },
+  settingsMosqueHighlightTitle: { fontSize: 12, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase' },
+  settingsMosqueHighlightValue: { marginTop: 4, fontSize: 20, fontWeight: '800' },
   settingsHeroTitle: { textAlign: 'center', fontSize: 22, fontWeight: '700', letterSpacing: 0.2 },
   settingsHeroMeta: { textAlign: 'center', fontSize: 13, fontWeight: '500' },
   mergeSwitchWrap: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
@@ -3523,6 +3531,10 @@ const styles = StyleSheet.create({
   mergeInput: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11, textAlign: 'center', fontSize: 15, fontWeight: '600' },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   sectionTitleTablet: { fontSize: 22 },
+  activeMosqueSection: { alignItems: 'center' },
+  activeMosqueSectionTitle: { textAlign: 'center' },
+  activeMosqueSectionCurrent: { marginTop: 4, textAlign: 'center' },
+  activeMosqueToggleRow: { width: '100%', justifyContent: 'center' },
   modeSwitch: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
   modeSwitchText: { fontSize: 14, fontWeight: '700' },
   modeSwitchTextTablet: { fontSize: 20 },
