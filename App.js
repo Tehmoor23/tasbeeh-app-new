@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
@@ -967,6 +967,7 @@ function AppContent() {
   const [detailedMemberLogs, setDetailedMemberLogs] = useState([]);
   const [detailedLogsLoading, setDetailedLogsLoading] = useState(false);
   const [detailedGraphRange, setDetailedGraphRange] = useState('currentWeek');
+  const [detailedPrayerRange, setDetailedPrayerRange] = useState('currentWeek');
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
@@ -2019,7 +2020,42 @@ function AppContent() {
   const detailedDailySeries = useMemo(() => buildDailySeries(detailedMemberLogs, detailedLast7Days), [detailedMemberLogs, detailedLast7Days]);
   const detailedWeeklySeries = useMemo(() => buildWeeklySeries(detailedMemberLogs, detailedLast8Weeks), [detailedMemberLogs, detailedLast8Weeks]);
   const detailedCurrentWeekSeries = useMemo(() => buildDailySeries(detailedMemberLogs, detailedCurrentWeekIsos), [detailedMemberLogs, detailedCurrentWeekIsos]);
-  const detailedComparisonSeries = detailedGraphRange === 'currentWeek' ? detailedCurrentWeekSeries : detailedDailySeries;
+  const detailedComparisonSeries = detailedGraphRange === 'currentWeek' ? detailedCurrentWeekSeries : (detailedGraphRange === 'previousWeek' ? detailedDailySeries : detailedWeeklySeries);
+  const detailedTopRangeLabel = detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche' : (detailedGraphRange === 'previousWeek' ? 'Letzte Woche' : '4-Wochen');
+  const detailedTopRangeToggleLabel = detailedGraphRange === 'currentWeek'
+    ? '<< Aktuelle Woche >>'
+    : (detailedGraphRange === 'previousWeek' ? '<< Letzte Woche >>' : '<< 4-Wochen >>');
+  const detailedTopRangePeriodLabel = useMemo(() => {
+    if (detailedGraphRange === 'fourWeeks') {
+      const first = detailedWeeklySeries[0];
+      const last = detailedWeeklySeries[detailedWeeklySeries.length - 1];
+      if (!first || !last) return 'Zeitraum: —';
+      const startDate = parseISO(first.startISO);
+      const endDate = parseISO(last.endISO);
+      const fmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      return `Zeitraum: ${startDate ? fmt.format(startDate) : first.startISO} – ${endDate ? fmt.format(endDate) : last.endISO}`;
+    }
+    return `${formatIsoWithWeekday(detailedComparisonSeries[0]?.iso)} – ${formatIsoWithWeekday(detailedComparisonSeries[detailedComparisonSeries.length - 1]?.iso)}`;
+  }, [detailedGraphRange, detailedComparisonSeries, detailedWeeklySeries]);
+
+  const detailedPrayerTotalsForIsos = useCallback((isos) => {
+    const isoSet = new Set((isos || []).filter(Boolean));
+    return STATS_PRAYER_SEQUENCE.map(({ key, label }) => ({
+      key,
+      label,
+      total: detailedMemberLogs.reduce((sum, row) => {
+        const prayerKey = String(row?.prayer || '').toLowerCase();
+        if (!isoSet.has(String(row?.date || ''))) return sum;
+        return prayerKey === key ? (sum + 1) : sum;
+      }, 0),
+    }));
+  }, [detailedMemberLogs]);
+
+  const detailedPrayerRows = useMemo(() => {
+    if (detailedPrayerRange === 'selectedDate') return detailedPrayerTotalsForIsos([selectedStatsDateISO]);
+    if (detailedPrayerRange === 'previousWeek') return detailedPrayerTotalsForIsos(detailedLast7Days);
+    return detailedPrayerTotalsForIsos(detailedCurrentWeekIsos);
+  }, [detailedPrayerRange, detailedPrayerTotalsForIsos, selectedStatsDateISO, detailedLast7Days, detailedCurrentWeekIsos]);
 
   const detailedCurrentWeekCount = useMemo(() => {
     const minISO = detailedCurrentWeekIsos[0] || '';
@@ -2042,6 +2078,16 @@ function AppContent() {
     return days.size;
   }, [detailedMemberLogs, detailedCurrentWeekIsos]);
   const detailedStatus = useMemo(() => calculateStatus(detailedCurrentWeekCount, detailedCurrentWeekDistinctDays), [detailedCurrentWeekCount, detailedCurrentWeekDistinctDays]);
+
+  useEffect(() => {
+    if (!selectedDetailedMember?.idNumber || !selectedStatsDateISO) return;
+    const firstWeek = detailedLast8Weeks[0];
+    if (!firstWeek) return;
+    if (selectedStatsDateISO >= firstWeek.startISO && selectedStatsDateISO <= toISO(now)) return;
+    const minISO = selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
+    const maxISO = selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
+    loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO);
+  }, [selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
@@ -3197,8 +3243,11 @@ function AppContent() {
                         onPress={() => {
                           setSelectedDetailedMember(member);
                           setDetailedGraphRange('currentWeek');
+                          setDetailedPrayerRange('currentWeek');
                           const firstWeek = getLast8Weeks(now)[0];
-                          loadDetailedLogsForMember(member.idNumber, firstWeek.startISO, toISO(now));
+                          const minISO = selectedStatsDateISO && selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
+                          const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
+                          loadDetailedLogsForMember(member.idNumber, minISO, maxISO);
                         }}
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
                       >
@@ -3236,38 +3285,66 @@ function AppContent() {
                     <Text style={[styles.noteText, { color: theme.muted, marginTop: 4 }]}>{`Entspricht ca. ${(detailedCurrentWeekCount / 7).toFixed(1)} Gebeten pro Tag (Ø)`}</Text>
                   </View>
 
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche' : 'Letzte Woche'}</Text>
-                      <Pressable onPress={() => setDetailedGraphRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{detailedGraphRange === 'currentWeek' ? '<< Aktuelle Woche >>' : '<< Letzte Woche >>'}</Text>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedTopRangeLabel}</Text>
+                      <Pressable
+                        onPress={() => setDetailedGraphRange((prev) => {
+                          const options = ['currentWeek', 'previousWeek', 'fourWeeks'];
+                          const idx = options.indexOf(prev);
+                          return options[(idx + 1) % options.length];
+                        })}
+                        style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                      >
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{detailedTopRangeToggleLabel}</Text>
                       </Pressable>
                     </View>
-                    <Text style={[styles.noteText, { color: theme.muted }]}>{`${formatIsoWithWeekday(detailedComparisonSeries[0]?.iso)} – ${formatIsoWithWeekday(detailedComparisonSeries[detailedComparisonSeries.length - 1]?.iso)}`}</Text>
+                    <Text style={[styles.noteText, { color: theme.muted }]}>{detailedTopRangePeriodLabel}</Text>
                     <MiniLineChart
-                      labels={detailedComparisonSeries.map((row) => {
-                        const d = parseISO(row.iso);
-                        return d ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(d).replace(/\.$/, '') : row.iso;
-                      })}
-                      series={[{ key: 'daily', label: 'Gebete/Tag', color: theme.button, thick: true, data: detailedComparisonSeries.map((row) => row.value) }]}
+                      labels={detailedGraphRange === 'fourWeeks'
+                        ? detailedComparisonSeries.map((row) => `KW ${row.weekNumber}`)
+                        : detailedComparisonSeries.map((row) => {
+                          const d = parseISO(row.iso);
+                          return d ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(d).replace(/\.$/, '') : row.iso;
+                        })}
+                      series={[{
+                        key: detailedGraphRange === 'fourWeeks' ? 'weekly' : 'daily',
+                        label: detailedGraphRange === 'fourWeeks' ? 'Gebete/Woche' : 'Gebete/Tag',
+                        color: theme.button,
+                        thick: true,
+                        data: detailedComparisonSeries.map((row) => row.value),
+                      }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="Tage"
-                      yMaxValue={5}
-                      yTickCount={6}
+                      xAxisTitle={detailedGraphRange === 'fourWeeks' ? 'Kalenderwochen' : 'Tage'}
+                      yMaxValue={detailedGraphRange === 'fourWeeks' ? 35 : 5}
+                      yTickCount={detailedGraphRange === 'fourWeeks' ? 6 : 6}
                     />
                   </View>
 
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Letzte 4 Wochen</Text>
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                    <View style={styles.statsCardHeaderRow}>
+                      <View>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(detailedPrayerRange)}</Text>
+                      </View>
+                      <Pressable onPress={() => setDetailedPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(detailedPrayerRange)}</Text>
+                      </Pressable>
+                    </View>
+                    {detailedPrayerRange === 'selectedDate' ? (
+                      <Pressable onPress={() => setStatsCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 10 }]}>
+                        <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>{`Datum auswählen · ${selectedStatsDateLabel}`}</Text>
+                      </Pressable>
+                    ) : null}
                     <MiniLineChart
-                      labels={[...detailedWeeklySeries]
-                        .reverse()
-                        .map((row) => `${row.startISO === (detailedCurrentWeekIsos[0] || '') ? '● ' : ''}KW ${row.weekNumber}`)}
-                      series={[{ key: 'weekly', label: 'Gebete/Woche', color: theme.button, thick: true, data: [...detailedWeeklySeries].reverse().map((row) => row.value) }]}
+                      labels={detailedPrayerRows.map((row) => row.label)}
+                      series={[{ key: 'detailedPrayerTotals', label: 'Anzahl pro Gebet', color: theme.button, thick: true, data: detailedPrayerRows.map((row) => row.total) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
-                      xAxisTitle="KW"
+                      xAxisTitle="Gebete"
+                      useEqualLabelSlots
+                      pointLabelFormatter={({ label, value }) => `${label}, ${Number(value) || 0} Gebete`}
                     />
                   </View>
                 </>
