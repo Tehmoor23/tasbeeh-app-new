@@ -988,6 +988,7 @@ function AppContent() {
   const [statsMajlisShowAll, setStatsMajlisShowAll] = useState(false);
   const [isStatsExportModalVisible, setStatsExportModalVisible] = useState(false);
   const [statsExporting, setStatsExporting] = useState(false);
+  const [programExporting, setProgramExporting] = useState(false);
   const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
   const [detailedFlowTanzeem, setDetailedFlowTanzeem] = useState('');
   const [detailedFlowMajlis, setDetailedFlowMajlis] = useState('');
@@ -2210,6 +2211,126 @@ function AppContent() {
     }
   }, [statsExporting, writeStatsWorkbook]);
 
+  const writeProgramWorkbook = useCallback(async () => {
+    const dateLabel = formatIsoWithWeekday(todayISO);
+    const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).format(new Date());
+    const total = Number(programStats?.total) || 0;
+    const tanzeemTotals = {
+      ansar: Number(programStats?.byTanzeem?.ansar) || 0,
+      khuddam: Number(programStats?.byTanzeem?.khuddam) || 0,
+      atfal: Number(programStats?.byTanzeem?.atfal) || 0,
+    };
+    const majlisRowsRaw = Object.entries(programStats?.byMajlis || {})
+      .map(([locationKey, count]) => ({ locationKey, count: Number(count) || 0 }))
+      .filter((row) => row.count > 0)
+      .sort((a, b) => b.count - a.count || String(a.locationKey).localeCompare(String(b.locationKey)));
+
+    if (total <= 0 && majlisRowsRaw.length === 0) {
+      setToast('Keine Programmdaten zum Export verfügbar');
+      return;
+    }
+
+    const workbook = XLSX.utils.book_new();
+    const overviewRows = [
+      ['Moschee', activeMosque.label],
+      ['Datum', dateLabel],
+      ['Programm', programWindow.label || '—'],
+      ['Export Zeitstempel', exportTimestamp],
+      [],
+      ['Gesamt Programmanwesenheit', total],
+      ['Ansar', tanzeemTotals.ansar],
+      ['Khuddam', tanzeemTotals.khuddam],
+      ['Atfal', tanzeemTotals.atfal],
+    ];
+    const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
+    overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
+
+    const tanzeemRows = [
+      ['Tanzeem', 'Anzahl'],
+      ['Ansar', tanzeemTotals.ansar],
+      ['Khuddam', tanzeemTotals.khuddam],
+      ['Atfal', tanzeemTotals.atfal],
+    ];
+    const tanzeemSheet = XLSX.utils.aoa_to_sheet(tanzeemRows);
+    tanzeemSheet['!cols'] = [{ wch: 18 }, { wch: 12 }];
+
+    const majlisRows = [
+      ['Majlis', 'Teilnehmer'],
+      ...majlisRowsRaw.map((row) => [formatMajlisName(row.locationKey), row.count]),
+    ];
+    const majlisSheet = XLSX.utils.aoa_to_sheet(majlisRows);
+    majlisSheet['!cols'] = [{ wch: 30 }, { wch: 14 }];
+
+    XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
+    XLSX.utils.book_append_sheet(workbook, tanzeemSheet, 'Tanzeem Aufteilung');
+    XLSX.utils.book_append_sheet(workbook, majlisSheet, 'Teilnehmer nach Majlis');
+
+    const boldCellStyle = { font: { bold: true } };
+    ['Übersicht', 'Tanzeem Aufteilung', 'Teilnehmer nach Majlis'].forEach((sheetName) => {
+      const ws = workbook.Sheets[sheetName];
+      if (!ws || !ws['!ref']) return;
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let col = range.s.c; col <= range.e.c; col += 1) {
+        const addr = XLSX.utils.encode_cell({ c: col, r: 0 });
+        if (ws[addr]) ws[addr].s = boldCellStyle;
+      }
+    });
+
+    const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+    const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
+    const safeDate = dateLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
+    const fileName = `Programm_Stats_${mosqueNameForFile}_${safeDate}.xlsx`;
+
+    if (Platform.OS === 'web') {
+      if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
+      const binary = globalThis.atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+
+    const cacheDir = String(FileSystem.cacheDirectory || '');
+    if (!cacheDir) throw new Error('Dateisystem nicht verfügbar (cacheDirectory fehlt)');
+    const fileUri = `${cacheDir}${fileName}`;
+    await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+    const canShare = await Sharing.isAvailableAsync();
+    if (!canShare) {
+      setToast('Sharing auf diesem Gerät nicht verfügbar');
+      return;
+    }
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: 'Programmdaten exportieren',
+      UTI: 'org.openxmlformats.spreadsheetml.sheet',
+    });
+  }, [activeMosque.key, activeMosque.label, programStats, programWindow.label, todayISO]);
+
+  const handleExportProgram = useCallback(async () => {
+    if (programExporting) return;
+    setProgramExporting(true);
+    try {
+      await writeProgramWorkbook();
+    } catch (error) {
+      const message = String(error?.message || '').trim();
+      setToast(message ? `Export fehlgeschlagen: ${message}` : 'Export fehlgeschlagen');
+      console.error('Program export failed', error);
+    } finally {
+      setProgramExporting(false);
+    }
+  }, [programExporting, writeProgramWorkbook]);
+
   function formatMajlisName(locationKey) {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
@@ -3113,7 +3234,22 @@ function AppContent() {
             >
               <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{statsExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
             </Pressable>
-          ) : null}
+          ) : (
+            <Pressable
+              onPress={handleExportProgram}
+              disabled={programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0))}
+              style={[
+                styles.statsExportBtn,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: (programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0))) ? theme.border : theme.bg,
+                  opacity: (programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0))) ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{programExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
+            </Pressable>
+          )}
         </View>
 
         {isProgramStatsMode ? (
