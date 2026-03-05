@@ -980,6 +980,7 @@ function AppContent() {
   const [statsTanzeemRange, setStatsTanzeemRange] = useState('currentWeek');
   const [statsMajlisRange, setStatsMajlisRange] = useState('currentWeek');
   const [statsPrayerRange, setStatsPrayerRange] = useState('currentWeek');
+  const [statsPrayerSeries, setStatsPrayerSeries] = useState('total');
   const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
   const [statsMajlisTanzeemFilter, setStatsMajlisTanzeemFilter] = useState('total');
   const [isStatsExportModalVisible, setStatsExportModalVisible] = useState(false);
@@ -1932,8 +1933,10 @@ function AppContent() {
   };
 
   const getStatsExportDataset = useCallback((rangeMode) => {
-    const targetRange = rangeMode === 'previousWeek' ? 'previousWeek' : 'currentWeek';
-    const isos = targetRange === 'currentWeek' ? statsWeekIsos : statsRollingWeekIsos;
+    const targetRange = rangeMode === 'selectedDate' ? 'selectedDate' : (rangeMode === 'previousWeek' ? 'previousWeek' : 'currentWeek');
+    const isos = targetRange === 'currentWeek'
+      ? statsWeekIsos
+      : (targetRange === 'previousWeek' ? statsRollingWeekIsos : [selectedStatsDateISO]);
 
     const summary = isos.reduce((acc, iso) => {
       const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
@@ -1964,19 +1967,30 @@ function AppContent() {
       };
     });
 
-    const prayerAgg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
+    const prayerAgg = {
+      fajr: { total: 0, ansar: 0, khuddam: 0, atfal: 0, guest: 0 },
+      sohar: { total: 0, ansar: 0, khuddam: 0, atfal: 0, guest: 0 },
+      asr: { total: 0, ansar: 0, khuddam: 0, atfal: 0, guest: 0 },
+      maghrib: { total: 0, ansar: 0, khuddam: 0, atfal: 0, guest: 0 },
+      ishaa: { total: 0, ansar: 0, khuddam: 0, atfal: 0, guest: 0 },
+    };
     isos.forEach((iso) => {
       const rows = getPrayerCountsForStats(weeklyAttendanceDocs[iso]);
       rows.forEach((row) => {
-        prayerAgg[row.key] += Number(row.total) || 0;
+        if (!prayerAgg[row.key]) return;
+        prayerAgg[row.key].total += Number(row.total) || 0;
+        prayerAgg[row.key].ansar += Number(row.tanzeemTotals?.ansar) || 0;
+        prayerAgg[row.key].khuddam += Number(row.tanzeemTotals?.khuddam) || 0;
+        prayerAgg[row.key].atfal += Number(row.tanzeemTotals?.atfal) || 0;
+        prayerAgg[row.key].guest += Number(row.guest) || 0;
       });
     });
     const prayerRows = [
-      { gebet: 'Fajr', anzahl: prayerAgg.fajr },
-      { gebet: 'Sohr', anzahl: prayerAgg.sohar },
-      { gebet: 'Asr', anzahl: prayerAgg.asr },
-      { gebet: 'Maghrib', anzahl: prayerAgg.maghrib },
-      { gebet: 'Ishaa', anzahl: prayerAgg.ishaa },
+      { gebet: 'Fajr', anzahl: prayerAgg.fajr.total, ansar: prayerAgg.fajr.ansar, khuddam: prayerAgg.fajr.khuddam, atfal: prayerAgg.fajr.atfal, gaeste: prayerAgg.fajr.guest },
+      { gebet: 'Sohr', anzahl: prayerAgg.sohar.total, ansar: prayerAgg.sohar.ansar, khuddam: prayerAgg.sohar.khuddam, atfal: prayerAgg.sohar.atfal, gaeste: prayerAgg.sohar.guest },
+      { gebet: 'Asr', anzahl: prayerAgg.asr.total, ansar: prayerAgg.asr.ansar, khuddam: prayerAgg.asr.khuddam, atfal: prayerAgg.asr.atfal, gaeste: prayerAgg.asr.guest },
+      { gebet: 'Maghrib', anzahl: prayerAgg.maghrib.total, ansar: prayerAgg.maghrib.ansar, khuddam: prayerAgg.maghrib.khuddam, atfal: prayerAgg.maghrib.atfal, gaeste: prayerAgg.maghrib.guest },
+      { gebet: 'Ishaa', anzahl: prayerAgg.ishaa.total, ansar: prayerAgg.ishaa.ansar, khuddam: prayerAgg.ishaa.khuddam, atfal: prayerAgg.ishaa.atfal, gaeste: prayerAgg.ishaa.guest },
     ];
     const totalPrayers = prayerRows.reduce((sum, row) => sum + (Number(row.anzahl) || 0), 0);
 
@@ -2018,12 +2032,13 @@ function AppContent() {
       topMajlisRows,
       totalPrayers,
     };
-  }, [statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs]);
+  }, [selectedStatsDateISO, statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs]);
 
   const hasStatsExportData = useMemo(() => {
     const current = getStatsExportDataset('currentWeek');
     const previous = getStatsExportDataset('previousWeek');
-    return current.summary.total > 0 || previous.summary.total > 0;
+    const selected = getStatsExportDataset('selectedDate');
+    return current.summary.total > 0 || previous.summary.total > 0 || selected.summary.total > 0;
   }, [getStatsExportDataset]);
 
   const writeStatsWorkbook = useCallback(async (rangeMode) => {
@@ -2072,11 +2087,18 @@ function AppContent() {
     daySheet['!cols'] = [{ wch: 14 }, { wch: 18 }];
 
     const prayerRows = [
-      ['Gebet', 'Anzahl'],
-      ...dataset.prayerRows.map((row) => [row.gebet, Number(row.anzahl) || 0]),
+      ['Gebet', 'Anzahl', 'Ansar', 'Khuddam', 'Atfal', 'Gäste'],
+      ...dataset.prayerRows.map((row) => [
+        row.gebet,
+        Number(row.anzahl) || 0,
+        Number(row.ansar) || 0,
+        Number(row.khuddam) || 0,
+        Number(row.atfal) || 0,
+        Number(row.gaeste) || 0,
+      ]),
     ];
     const prayerSheet = XLSX.utils.aoa_to_sheet(prayerRows);
-    prayerSheet['!cols'] = [{ wch: 16 }, { wch: 12 }];
+    prayerSheet['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete pro Tag');
@@ -2803,9 +2825,9 @@ function AppContent() {
       atfal: '#F59E0B',
       guest: '#A855F7',
     };
-    const graphRangeMode = statsGraphRange === 'previousWeek' ? 'previousWeek' : 'currentWeek';
-    const isSelectedDateChart = false;
-    const activeGraphIsos = graphRangeMode === 'currentWeek' ? statsWeekIsos : statsRollingWeekIsos;
+    const graphRangeMode = statsGraphRange === 'selectedDate' ? 'selectedDate' : (statsGraphRange === 'previousWeek' ? 'previousWeek' : 'currentWeek');
+    const isSelectedDateChart = graphRangeMode === 'selectedDate';
+    const activeGraphIsos = graphRangeMode === 'currentWeek' ? statsWeekIsos : (graphRangeMode === 'previousWeek' ? statsRollingWeekIsos : []);
     const graphWeekRows = activeGraphIsos.map((iso) => {
       const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
       const dateObj = parseISO(iso);
@@ -2867,7 +2889,7 @@ function AppContent() {
       return { highest, lowest, average };
     })() : null;
 
-    const previousCompareIsos = statsGraphRange === 'currentWeek' ? statsPrevWeekIsos : statsWeekIsos;
+    const previousCompareIsos = statsGraphRange === 'currentWeek' ? statsPrevWeekIsos : (statsGraphRange === 'previousWeek' ? statsWeekIsos : []);
     const previousWeekSeriesTotal = (!isSelectedDateChart) ? previousCompareIsos.reduce((sum, iso) => {
       const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
       if (activeSeriesKey === 'total') return sum + (totals.total || 0);
@@ -2996,7 +3018,7 @@ function AppContent() {
                   }));
               };
 
-              const selectedDateTopMajlis = buildTopMajlisBreakdown([activeDayAttendance]);
+              const selectedDateTopMajlis = buildTopMajlisBreakdown(activeDayAttendance ? [activeDayAttendance] : []);
 
               const buildSummaryForIsos = (isos) => isos.reduce((acc, iso) => {
                 const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
@@ -3011,17 +3033,29 @@ function AppContent() {
               const buildTopMajlisForIsos = (isos) => buildTopMajlisBreakdown(isos.map((iso) => weeklyAttendanceDocs[iso]));
 
               const buildPrayerTotalsForIsos = (isos) => {
-                const agg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
+                const agg = {
+                  fajr: { total: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } },
+                  sohar: { total: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } },
+                  asr: { total: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } },
+                  maghrib: { total: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } },
+                  ishaa: { total: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } },
+                };
                 isos.forEach((iso) => {
                   const rows = getPrayerCountsForStats(weeklyAttendanceDocs[iso]);
-                  rows.forEach((row) => { agg[row.key] += Number(row.total) || 0; });
+                  rows.forEach((row) => {
+                    if (!agg[row.key]) return;
+                    agg[row.key].total += Number(row.total) || 0;
+                    agg[row.key].tanzeemTotals.ansar += Number(row.tanzeemTotals?.ansar) || 0;
+                    agg[row.key].tanzeemTotals.khuddam += Number(row.tanzeemTotals?.khuddam) || 0;
+                    agg[row.key].tanzeemTotals.atfal += Number(row.tanzeemTotals?.atfal) || 0;
+                  });
                 });
                 return [
-                  { key: 'fajr', label: 'Fajr (الفجر)', total: agg.fajr },
-                  { key: 'sohar', label: 'Sohar (الظهر)', total: agg.sohar },
-                  { key: 'asr', label: 'Asr (العصر)', total: agg.asr },
-                  { key: 'maghrib', label: 'Maghrib (المغرب)', total: agg.maghrib },
-                  { key: 'ishaa', label: 'Ishaa (العشاء)', total: agg.ishaa },
+                  { key: 'fajr', label: 'Fajr (الفجر)', total: agg.fajr.total, tanzeemTotals: agg.fajr.tanzeemTotals },
+                  { key: 'sohar', label: 'Sohar (الظهر)', total: agg.sohar.total, tanzeemTotals: agg.sohar.tanzeemTotals },
+                  { key: 'asr', label: 'Asr (العصر)', total: agg.asr.total, tanzeemTotals: agg.asr.tanzeemTotals },
+                  { key: 'maghrib', label: 'Maghrib (المغرب)', total: agg.maghrib.total, tanzeemTotals: agg.maghrib.tanzeemTotals },
+                  { key: 'ishaa', label: 'Ishaa (العشاء)', total: agg.ishaa.total, tanzeemTotals: agg.ishaa.tanzeemTotals },
                 ];
               };
 
@@ -3043,9 +3077,20 @@ function AppContent() {
                     key: row.key,
                     label: `${row.label} (${row.key === 'fajr' ? 'الفجر' : row.key === 'sohar' ? 'الظهر' : row.key === 'asr' ? 'العصر' : row.key === 'maghrib' ? 'المغرب' : 'العشاء'})`,
                     total: row.total || 0,
+                    tanzeemTotals: {
+                      ansar: Number(row.tanzeemTotals?.ansar) || 0,
+                      khuddam: Number(row.tanzeemTotals?.khuddam) || 0,
+                      atfal: Number(row.tanzeemTotals?.atfal) || 0,
+                    },
                   }));
                 }
+                const prayerRowsByKey = getPrayerCountsForStats(activeDayAttendance).reduce((acc, row) => {
+                  acc[row.key] = row;
+                  return acc;
+                }, {});
+
                 const getPrayerTotal = (prayerKey) => {
+
                   const prayer = activeDayAttendance.byPrayer?.[prayerKey] || {};
                   const guest = Number(prayer.guest) || 0;
                   const tanzeem = prayer.tanzeem || {};
@@ -3064,31 +3109,35 @@ function AppContent() {
                 const maghribIshaaCarryValue = maghribTotalRaw + ishaaTotalRaw;
 
                 return [
-                  { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr') },
+                  { key: 'fajr', label: 'Fajr (الفجر)', total: getPrayerTotal('fajr'), tanzeemTotals: prayerRowsByKey.fajr?.tanzeemTotals || { ansar: 0, khuddam: 0, atfal: 0 } },
                   ...(soharAsrMergedToday
-                    ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue }]
+                    ? [{ key: 'sohar_asr', label: 'Sohar/Asr (الظهر/العصر)', total: soharAsrCarryValue, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } }]
                     : [
-                      { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw },
-                      { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw },
+                      { key: 'sohar', label: 'Sohar (الظهر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : soharTotalRaw, tanzeemTotals: prayerRowsByKey.sohar?.tanzeemTotals || { ansar: 0, khuddam: 0, atfal: 0 } },
+                      { key: 'asr', label: 'Asr (العصر)', total: hasSoharAsrOverrideToday ? soharAsrCarryValue : asrTotalRaw, tanzeemTotals: prayerRowsByKey.asr?.tanzeemTotals || { ansar: 0, khuddam: 0, atfal: 0 } },
                     ]),
                   ...(maghribIshaaMergedToday
-                    ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue }]
+                    ? [{ key: 'maghrib_ishaa', label: 'Maghrib/Ishaa (المغرب/العشاء)', total: maghribIshaaCarryValue, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } }]
                     : [
-                      { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw },
-                      { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw },
+                      { key: 'maghrib', label: 'Maghrib (المغرب)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : maghribTotalRaw, tanzeemTotals: prayerRowsByKey.maghrib?.tanzeemTotals || { ansar: 0, khuddam: 0, atfal: 0 } },
+                      { key: 'ishaa', label: 'Ishaa (العشاء)', total: hasMaghribIshaaOverrideToday ? maghribIshaaCarryValue : ishaaTotalRaw, tanzeemTotals: prayerRowsByKey.ishaa?.tanzeemTotals || { ansar: 0, khuddam: 0, atfal: 0 } },
                     ]),
                 ];
               })();
 
               const prayerBars = statsPrayerRange === 'selectedDate' ? todayPrayerBars : buildPrayerTotalsForIsos(getIsosForRange(statsPrayerRange));
               const prayerLineLabels = prayerBars.map((item) => item.label.split(' (')[0]);
+              const prayerSeriesLabel = statsPrayerSeries === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsPrayerSeries];
               const prayerLineSeries = [{
                 key: 'prayerTotals',
-                label: 'Anzahl pro Gebet',
+                label: `Anzahl pro Gebet · ${prayerSeriesLabel}`,
                 color: theme.button,
                 thick: true,
-                data: prayerBars.map((item) => Number(item.total) || 0),
+                data: prayerBars.map((item) => (statsPrayerSeries === 'total' ? (Number(item.total) || 0) : (Number(item.tanzeemTotals?.[statsPrayerSeries]) || 0))),
               }];
+              const prayerRangeValueLabel = statsPrayerRange === 'currentWeek'
+                ? 'Aktuelle Woche'
+                : (statsPrayerRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel);
 
               return (
                 <>
@@ -3135,14 +3184,63 @@ function AppContent() {
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={styles.statsCardHeaderRow}>
-                      <View>
-                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                    <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                        <Pressable
+                          onPress={() => {
+                            setStatsPrayerRange((prev) => {
+                              const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+                              const idx = options.indexOf(prev);
+                              return options[(idx - 1 + options.length) % options.length];
+                            });
+                            setStatsPrayerSeries('total');
+                          }}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{prayerRangeValueLabel}</Text>
+                        <Pressable
+                          onPress={() => {
+                            setStatsPrayerRange((prev) => {
+                              const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+                              const idx = options.indexOf(prev);
+                              return options[(idx + 1) % options.length];
+                            });
+                            setStatsPrayerSeries('total');
+                          }}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
                       </View>
-                      <Pressable onPress={() => setStatsPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsPrayerRange)}</Text>
-                      </Pressable>
+                    </View>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                        <Pressable
+                          onPress={() => setStatsPrayerSeries((prev) => {
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx - 1 + options.length) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{prayerSeriesLabel}</Text>
+                        <Pressable
+                          onPress={() => setStatsPrayerSeries((prev) => {
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx + 1) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
+                      </View>
                     </View>
                     <MiniLineChart
                       labels={prayerLineLabels}
@@ -3153,6 +3251,9 @@ function AppContent() {
                       useEqualLabelSlots
                       pointLabelFormatter={({ label, value }) => `${label}, ${Number(value) || 0} Gebete`}
                     />
+                    {prayerBars.length === 0 ? (
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {statsPrayerRange === 'selectedDate' ? 'dieses Datum' : 'diesen Zeitraum'}</Text>
+                    ) : null}
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -3160,14 +3261,14 @@ function AppContent() {
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => (prev === 'previousWeek' ? 'currentWeek' : 'previousWeek')); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => { const options = ['currentWeek', 'previousWeek', 'selectedDate']; const idx = options.indexOf(prev); return options[(idx - 1 + options.length) % options.length]; }); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'previousWeek' ? 'Letzte Woche' : 'Aktuelle Woche'}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'currentWeek' ? 'Aktuelle Woche' : (statsGraphRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
                         <Pressable
-                          onPress={() => { setStatsGraphRange((prev) => (prev === 'previousWeek' ? 'currentWeek' : 'previousWeek')); setStatsGraphSeries('total'); }}
+                          onPress={() => { setStatsGraphRange((prev) => { const options = ['currentWeek', 'previousWeek', 'selectedDate']; const idx = options.indexOf(prev); return options[(idx + 1) % options.length]; }); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
@@ -3592,6 +3693,13 @@ function AppContent() {
                 style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (statsExporting || !hasStatsExportData) ? 0.6 : 1 }]}
               >
                 <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Letzte Woche (.xlsx)</Text>
+              </Pressable>
+              <Pressable
+                disabled={statsExporting || !selectedStatsDateISO}
+                onPress={() => handleExportStats('selectedDate')}
+                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (statsExporting || !selectedStatsDateISO) ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>{`Ausgewähltes Datum (${selectedStatsDateToggleLabel}) (.xlsx)`}</Text>
               </Pressable>
               {!hasStatsExportData ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Daten zum Export verfügbar</Text> : null}
             </View>
