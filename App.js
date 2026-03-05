@@ -2116,8 +2116,8 @@ function AppContent() {
     prayerSheet['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, daySheet, 'Anzahl der Gebete nach Tage');
-    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Anzahl der Gebete nach Gebetszeiten');
+    XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete nach Tage');
+    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Gebete nach Gebetszeiten');
 
     if (dataset.topMajlisRows.length) {
       const topRows = [
@@ -2132,11 +2132,11 @@ function AppContent() {
       ];
       const topSheet = XLSX.utils.aoa_to_sheet(topRows);
       topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(workbook, topSheet, 'Anzahl der Gebete nach Majlis');
+      XLSX.utils.book_append_sheet(workbook, topSheet, 'Gebete nach Majlis');
     }
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Anzahl der Gebete nach Tage', 'Anzahl der Gebete nach Gebetszeiten', 'Anzahl der Gebete nach Majlis'].forEach((sheetName) => {
+    ['Übersicht', 'Gebete nach Tage', 'Gebete nach Gebetszeiten', 'Gebete nach Majlis'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws) return;
       const ref = ws['!ref'];
@@ -2475,12 +2475,12 @@ function AppContent() {
     logsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, daySheet, 'Anzahl der Gebete nach Tage');
-    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Anzahl der Gebete nach Gebetszeiten');
+    XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete nach Tage');
+    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Gebete nach Gebetszeiten');
     XLSX.utils.book_append_sheet(workbook, logsSheet, 'Gebetsprotokoll');
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Anzahl der Gebete nach Tage', 'Anzahl der Gebete nach Gebetszeiten', 'Gebetsprotokoll'].forEach((sheetName) => {
+    ['Übersicht', 'Gebete nach Tage', 'Gebete nach Gebetszeiten', 'Gebetsprotokoll'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws || !ws['!ref']) return;
       const range = XLSX.utils.decode_range(ws['!ref']);
