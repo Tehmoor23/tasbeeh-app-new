@@ -983,7 +983,9 @@ function AppContent() {
   const [statsPrayerRange, setStatsPrayerRange] = useState('currentWeek');
   const [statsPrayerSeries, setStatsPrayerSeries] = useState('total');
   const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
+  const [statsWeekRankingRange, setStatsWeekRankingRange] = useState('currentWeek');
   const [statsMajlisTanzeemFilter, setStatsMajlisTanzeemFilter] = useState('total');
+  const [statsMajlisShowAll, setStatsMajlisShowAll] = useState(false);
   const [isStatsExportModalVisible, setStatsExportModalVisible] = useState(false);
   const [statsExporting, setStatsExporting] = useState(false);
   const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
@@ -2018,7 +2020,6 @@ function AppContent() {
       });
       return Object.entries(map)
         .sort((a, b) => b[1].total - a[1].total)
-        .slice(0, 10)
         .map(([locationKey, value]) => ({
           majlis: formatMajlisName(locationKey),
           gebeteDieseWoche: Number(value.total) || 0,
@@ -2227,8 +2228,9 @@ function AppContent() {
       });
     });
 
+    const rankingIsos = statsWeekRankingRange === 'previousWeek' ? statsRollingWeekIsos : statsWeekIsos;
     const countsById = new Map();
-    statsWeekIsos.forEach((iso) => {
+    rankingIsos.forEach((iso) => {
       const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
       Object.values(byPrayer).forEach((prayerNode) => {
         const memberDetails = prayerNode?.memberDetails || {};
@@ -2267,7 +2269,7 @@ function AppContent() {
       }
       return denseRank <= 3;
     });
-  }, [membersDirectory, statsWeekIsos, weeklyAttendanceDocs, statsWeekRankingFilter]);
+  }, [membersDirectory, statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs, statsWeekRankingFilter, statsWeekRankingRange]);
 
   const detailedMajlisOptions = useMemo(() => {
     if (!detailedFlowTanzeem) return [];
@@ -3375,22 +3377,28 @@ function AppContent() {
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
-                          onPress={() => setStatsMajlisRange((prev) => {
-                            const options = ['currentWeek', 'previousWeek', 'selectedDate'];
-                            const idx = options.indexOf(prev);
-                            return options[(idx - 1 + options.length) % options.length];
-                          })}
+                          onPress={() => {
+                            setStatsMajlisRange((prev) => {
+                              const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+                              const idx = options.indexOf(prev);
+                              return options[(idx - 1 + options.length) % options.length];
+                            });
+                            setStatsMajlisShowAll(false);
+                          }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
                         <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsMajlisRange === 'currentWeek' ? 'Aktuelle Woche' : (statsMajlisRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
                         <Pressable
-                          onPress={() => setStatsMajlisRange((prev) => {
-                            const options = ['currentWeek', 'previousWeek', 'selectedDate'];
-                            const idx = options.indexOf(prev);
-                            return options[(idx + 1) % options.length];
-                          })}
+                          onPress={() => {
+                            setStatsMajlisRange((prev) => {
+                              const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+                              const idx = options.indexOf(prev);
+                              return options[(idx + 1) % options.length];
+                            });
+                            setStatsMajlisShowAll(false);
+                          }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
@@ -3400,22 +3408,28 @@ function AppContent() {
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
-                          onPress={() => setStatsMajlisTanzeemFilter((prev) => {
-                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
-                            const idx = options.indexOf(prev);
-                            return options[(idx - 1 + options.length) % options.length];
-                          })}
+                          onPress={() => {
+                            setStatsMajlisTanzeemFilter((prev) => {
+                              const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                              const idx = options.indexOf(prev);
+                              return options[(idx - 1 + options.length) % options.length];
+                            });
+                            setStatsMajlisShowAll(false);
+                          }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
                         <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{topMajlisFilterLabel}</Text>
                         <Pressable
-                          onPress={() => setStatsMajlisTanzeemFilter((prev) => {
-                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
-                            const idx = options.indexOf(prev);
-                            return options[(idx + 1) % options.length];
-                          })}
+                          onPress={() => {
+                            setStatsMajlisTanzeemFilter((prev) => {
+                              const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                              const idx = options.indexOf(prev);
+                              return options[(idx + 1) % options.length];
+                            });
+                            setStatsMajlisShowAll(false);
+                          }}
                           style={styles.statsCyclerArrowBtn}
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
@@ -3432,44 +3446,84 @@ function AppContent() {
                         };
                         const sortedRows = [...topMajlisSource]
                           .map((row) => ({ ...row, currentCount: getMajlisCount(row) }))
-                          .sort((a, b) => b.currentCount - a.currentCount || String(a.locationKey).localeCompare(String(b.locationKey)))
-                          .slice(0, 10);
-                        const maxTop = Math.max(1, ...sortedRows.map((row) => row.currentCount));
-                        return sortedRows.map((row) => {
-                          const count = row.currentCount;
-                          return (
-                            <View key={row.locationKey} style={styles.majlisBarRow}>
-                              <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(row.locationKey)}</Text>
-                              <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
-                                <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
-                              </View>
-                              <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
-                            </View>
-                          );
-                        });
+                          .sort((a, b) => b.currentCount - a.currentCount || String(a.locationKey).localeCompare(String(b.locationKey)));
+                        const visibleRows = statsMajlisShowAll ? sortedRows : sortedRows.slice(0, 10);
+                        const maxTop = Math.max(1, ...visibleRows.map((row) => row.currentCount));
+                        return (
+                          <>
+                            {visibleRows.map((row) => {
+                              const count = row.currentCount;
+                              return (
+                                <View key={row.locationKey} style={styles.majlisBarRow}>
+                                  <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(row.locationKey)}</Text>
+                                  <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                                    <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
+                                  </View>
+                                  <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
+                                </View>
+                              );
+                            })}
+                            {sortedRows.length > 10 ? (
+                              <Pressable
+                                onPress={() => setStatsMajlisShowAll((prev) => !prev)}
+                                style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 10 }]}
+                              >
+                                <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>{statsMajlisShowAll ? 'Weniger anzeigen' : `Mehr anzeigen (${sortedRows.length - 10} weitere)`}</Text>
+                              </Pressable>
+                            ) : null}
+                          </>
+                        );
                       })()
                     )}
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <View style={styles.statsCardHeaderRow}>
-                      <View>
-                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking (Gebete)</Text>
-                        <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel('currentWeek')}</Text>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking (Gebete)</Text>
+                    <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsWeekRankingRange)}</Text>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                        <Pressable
+                          onPress={() => setStatsWeekRankingRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsWeekRankingRange === 'currentWeek' ? 'Aktuelle Woche' : 'Letzte Woche'}</Text>
+                        <Pressable
+                          onPress={() => setStatsWeekRankingRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
                       </View>
-                      <Pressable
-                        onPress={() => {
-                          const options = ['total', 'ansar', 'khuddam', 'atfal'];
-                          const idx = options.indexOf(statsWeekRankingFilter);
-                          setStatsWeekRankingFilter(options[(idx + 1) % options.length]);
-                        }}
-                        style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}
-                      >
-                        <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{`<< ${statsWeekRankingFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsWeekRankingFilter]} >>`}</Text>
-                      </Pressable>
+                    </View>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+                        <Pressable
+                          onPress={() => setStatsWeekRankingFilter((prev) => {
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx - 1 + options.length) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsWeekRankingFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsWeekRankingFilter]}</Text>
+                        <Pressable
+                          onPress={() => setStatsWeekRankingFilter((prev) => {
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx + 1) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
+                      </View>
                     </View>
                     {weekRankingRows.length === 0 ? (
-                      <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten für diese Woche</Text>
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Keine Daten für diesen Zeitraum</Text>
                     ) : (() => {
                       const maxRankCount = Math.max(1, ...weekRankingRows.map((row) => row.count || 0));
                       let currentRank = 0;
