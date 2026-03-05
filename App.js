@@ -2436,9 +2436,13 @@ function AppContent() {
     const endLabel = formatIsoWithWeekday(endISO);
 
     const workbook = XLSX.utils.book_new();
+    const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).format(new Date());
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Zeitraum', `${startLabel} – ${endLabel}`],
+      ['Export Zeitstempel', exportTimestamp],
       ['ID', selectedDetailedMember.idNumber],
       ['Tanzeem', TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—'],
       ['Majlis', selectedDetailedMember.majlis || '—'],
