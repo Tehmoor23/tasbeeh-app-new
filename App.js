@@ -1995,9 +1995,7 @@ function AppContent() {
       });
       return buildMajlisRanking(map).map(([locationKey, count]) => {
         const majlisName = formatMajlisName(locationKey);
-        const entry = membersDirectory.find((member) => member.majlis === majlisName);
         return {
-          tanzeem: entry?.tanzeem ? (TANZEEM_LABELS[entry.tanzeem] || entry.tanzeem) : '—',
           majlis: majlisName,
           gebeteDieseWoche: Number(count) || 0,
         };
@@ -2013,7 +2011,7 @@ function AppContent() {
       topMajlisRows,
       totalPrayers,
     };
-  }, [statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs, membersDirectory]);
+  }, [statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs]);
 
   const hasStatsExportData = useMemo(() => {
     const current = getStatsExportDataset('currentWeek');
@@ -2051,6 +2049,7 @@ function AppContent() {
       [],
       ['Gesamt Gebete der Woche', Number(dataset.totalPrayers) || 0],
       ['Gesamt Anwesende der Woche', Number(dataset.summary.total) || 0],
+      ['Gäste total', Number(dataset.summary.guestTotal) || 0],
       ['Ansar total', Number(dataset.summary.tanzeemTotals.ansar) || 0],
       ['Khuddam total', Number(dataset.summary.tanzeemTotals.khuddam) || 0],
       ['Atfal total', Number(dataset.summary.tanzeemTotals.atfal) || 0],
@@ -2078,11 +2077,11 @@ function AppContent() {
 
     if (dataset.topMajlisRows.length) {
       const topRows = [
-        ['Tanzeem', 'Majlis', 'Gebete diese Woche'],
-        ...dataset.topMajlisRows.map((row) => [row.tanzeem, row.majlis, Number(row.gebeteDieseWoche) || 0]),
+        ['Majlis', 'Gebete diese Woche'],
+        ...dataset.topMajlisRows.map((row) => [row.majlis, Number(row.gebeteDieseWoche) || 0]),
       ];
       const topSheet = XLSX.utils.aoa_to_sheet(topRows);
-      topSheet['!cols'] = [{ wch: 14 }, { wch: 28 }, { wch: 22 }];
+      topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }];
       XLSX.utils.book_append_sheet(workbook, topSheet, 'Top Majlises');
     }
 
@@ -2101,10 +2100,10 @@ function AppContent() {
     });
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    const normalizedMosque = String(activeMosque.label || 'moschee').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
     const safeStart = startLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
     const safeEnd = endLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
-    const fileName = `stats_${normalizedMosque}_${safeStart}_${safeEnd}.xlsx`;
+    const fileName = `Stats_${mosqueNameForFile}_${safeStart}_${safeEnd}.xlsx`;
 
     if (Platform.OS === 'web') {
       if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
