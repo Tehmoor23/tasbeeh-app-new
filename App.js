@@ -3167,7 +3167,7 @@ function AppContent() {
               const comparePrayerBars = prayerCompareRange ? buildPrayerTotalsForIsos(getIsosForRange(prayerCompareRange)) : [];
               const comparePrayerValues = comparePrayerBars.map((item) => (statsPrayerSeries === 'total' ? (Number(item.total) || 0) : (Number(item.tanzeemTotals?.[statsPrayerSeries]) || 0)));
               const comparePrayerAverage = comparePrayerValues.reduce((sum, val) => sum + (Number(val) || 0), 0) / Math.max(1, comparePrayerValues.length || 1);
-              const prayerTrendPercent = prayerSummary && comparePrayerRange && comparePrayerAverage > 0
+              const prayerTrendPercent = prayerSummary && prayerCompareRange && comparePrayerAverage > 0
                 ? ((prayerSummary.averagePerPrayer - comparePrayerAverage) / comparePrayerAverage) * 100
                 : null;
 
