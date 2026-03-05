@@ -3980,7 +3980,7 @@ function AppContent() {
 
       <View style={styles.appMetaWrap}>
         <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.8</Text>
-        <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor B. All rights reserved.</Text>
+        <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
   );
