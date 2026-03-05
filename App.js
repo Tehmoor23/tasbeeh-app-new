@@ -2418,12 +2418,7 @@ function AppContent() {
     };
   }, [detailedCurrentWeekIsos, detailedLast7Days, detailedMemberLogs]);
 
-  const hasDetailedExportData = useMemo(() => {
-    if (!selectedDetailedMember) return false;
-    const current = getDetailedExportDataset('currentWeek');
-    const previous = getDetailedExportDataset('previousWeek');
-    return current.total > 0 || previous.total > 0;
-  }, [getDetailedExportDataset, selectedDetailedMember]);
+  const hasDetailedExportData = useMemo(() => Boolean(selectedDetailedMember), [selectedDetailedMember]);
 
   const writeDetailedWorkbook = useCallback(async (rangeMode) => {
     if (!selectedDetailedMember) {
@@ -3976,41 +3971,12 @@ function AppContent() {
 
 
 
-      <Modal visible={isDetailedExportModalVisible} animationType="fade" transparent onRequestClose={() => setDetailedExportModalVisible(false)}>
-        <View style={styles.privacyModalBackdrop}>
-          <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-            <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Detaillierte ID exportieren</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Wählen Sie den Zeitraum für den Excel-Export.</Text>
-            <View style={styles.statsExportModalActions}>
-              <Pressable
-                disabled={detailedExporting || !hasDetailedExportData}
-                onPress={() => handleExportDetailed('currentWeek')}
-                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
-              >
-                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
-              </Pressable>
-              <Pressable
-                disabled={detailedExporting || !hasDetailedExportData}
-                onPress={() => handleExportDetailed('previousWeek')}
-                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
-              >
-                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Letzte Woche (.xlsx)</Text>
-              </Pressable>
-              {!hasDetailedExportData ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Daten zum Export verfügbar</Text> : null}
-            </View>
-            <Pressable onPress={() => setDetailedExportModalVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
-              <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
       <Modal visible={isDetailedIdOverviewVisible} animationType="slide" transparent onRequestClose={() => setDetailedIdOverviewVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Detaillierte ID-Übersicht</Text>
-              <Pressable onPress={() => { setDetailedIdOverviewVisible(false); setDetailedCalendarVisible(false); setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
+              <Pressable onPress={() => { setDetailedIdOverviewVisible(false); setDetailedCalendarVisible(false); setDetailedExportModalVisible(false); setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
                 <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
               </Pressable>
             </View>
@@ -4098,18 +4064,9 @@ function AppContent() {
                 </>
               ) : (
                 <>
-                  <View style={[styles.statsToggleRow, { marginTop: 0 }]}>
-                    <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg, flex: 1 }]}>
-                      <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Zurück</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => setDetailedExportModalVisible(true)}
-                      disabled={!hasDetailedExportData || detailedExporting}
-                      style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: (!hasDetailedExportData || detailedExporting) ? theme.border : theme.bg, flex: 1, opacity: (!hasDetailedExportData || detailedExporting) ? 0.7 : 1 }]}
-                    >
-                      <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{detailedExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
-                    </Pressable>
-                  </View>
+                  <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
+                    <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Zurück</Text>
+                  </Pressable>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>ID {selectedDetailedMember.idNumber}</Text>
@@ -4190,9 +4147,45 @@ function AppContent() {
                       pointLabelFormatter={({ label, value }) => `${label}, ${Number(value) || 0} Gebete`}
                     />
                   </View>
+
+                  <Pressable
+                    onPress={() => setDetailedExportModalVisible(true)}
+                    disabled={detailedExporting || !hasDetailedExportData}
+                    style={[styles.statsExportBtn, { borderColor: theme.border, backgroundColor: (detailedExporting || !hasDetailedExportData) ? theme.border : theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.7 : 1 }]}
+                  >
+                    <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{detailedExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
+                  </Pressable>
                 </>
               )}
             </ScrollView>
+
+            {isDetailedExportModalVisible ? (
+              <View style={styles.detailedInlineCalendarOverlay}>
+                <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                  <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Detaillierte ID exportieren</Text>
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Wählen Sie den Zeitraum für den Excel-Export.</Text>
+                  <View style={styles.statsExportModalActions}>
+                    <Pressable
+                      disabled={detailedExporting || !hasDetailedExportData}
+                      onPress={() => handleExportDetailed('currentWeek')}
+                      style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
+                    >
+                      <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
+                    </Pressable>
+                    <Pressable
+                      disabled={detailedExporting || !hasDetailedExportData}
+                      onPress={() => handleExportDetailed('previousWeek')}
+                      style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
+                    >
+                      <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Letzte Woche (.xlsx)</Text>
+                    </Pressable>
+                  </View>
+                  <Pressable onPress={() => setDetailedExportModalVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
+                    <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
 
             {isDetailedCalendarVisible ? (
               <View style={styles.detailedInlineCalendarOverlay}>
