@@ -277,6 +277,7 @@ const getDailyTotalsForStats = (attendanceData) => {
   const prayers = getPrayerCountsForStats(attendanceData);
   return {
     total: prayers.reduce((sum, row) => sum + (row.total || 0), 0),
+    guestTotal: prayers.reduce((sum, row) => sum + (row.guest || 0), 0),
     tanzeemTotals: STATS_TANZEEM_KEYS.reduce((acc, key) => {
       acc[key] = prayers.reduce((sum, row) => sum + (row.tanzeemTotals?.[key] || 0), 0);
       return acc;
@@ -1964,6 +1965,10 @@ function AppContent() {
         tag: `${normalizedWeekday}, ${dateLabel}`,
         iso,
         anzahlGebete: Number(totals.total) || 0,
+        ansar: Number(totals.tanzeemTotals?.ansar) || 0,
+        khuddam: Number(totals.tanzeemTotals?.khuddam) || 0,
+        atfal: Number(totals.tanzeemTotals?.atfal) || 0,
+        gaeste: Number(totals.guestTotal) || 0,
       };
     });
 
@@ -2080,11 +2085,18 @@ function AppContent() {
     overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
 
     const dayRows = [
-      ['Tag', 'Anzahl Gebete'],
-      ...dataset.dayRows.map((row) => [row.tag, Number(row.anzahlGebete) || 0]),
+      ['Tag', 'Anzahl Gebete', 'Ansar', 'Khuddam', 'Atfal', 'Gäste'],
+      ...dataset.dayRows.map((row) => [
+        row.tag,
+        Number(row.anzahlGebete) || 0,
+        Number(row.ansar) || 0,
+        Number(row.khuddam) || 0,
+        Number(row.atfal) || 0,
+        Number(row.gaeste) || 0,
+      ]),
     ];
     const daySheet = XLSX.utils.aoa_to_sheet(dayRows);
-    daySheet['!cols'] = [{ wch: 14 }, { wch: 18 }];
+    daySheet['!cols'] = [{ wch: 18 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
 
     const prayerRows = [
       ['Gebet', 'Anzahl', 'Ansar', 'Khuddam', 'Atfal', 'Gäste'],
@@ -3128,16 +3140,36 @@ function AppContent() {
               const prayerBars = statsPrayerRange === 'selectedDate' ? todayPrayerBars : buildPrayerTotalsForIsos(getIsosForRange(statsPrayerRange));
               const prayerLineLabels = prayerBars.map((item) => item.label.split(' (')[0]);
               const prayerSeriesLabel = statsPrayerSeries === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsPrayerSeries];
+              const prayerSeriesColorMap = {
+                total: chartPalette.total,
+                ansar: chartPalette.ansar,
+                khuddam: chartPalette.khuddam,
+                atfal: chartPalette.atfal,
+              };
               const prayerLineSeries = [{
                 key: 'prayerTotals',
                 label: `Anzahl pro Gebet · ${prayerSeriesLabel}`,
-                color: theme.button,
+                color: prayerSeriesColorMap[statsPrayerSeries] || theme.button,
                 thick: true,
                 data: prayerBars.map((item) => (statsPrayerSeries === 'total' ? (Number(item.total) || 0) : (Number(item.tanzeemTotals?.[statsPrayerSeries]) || 0))),
               }];
               const prayerRangeValueLabel = statsPrayerRange === 'currentWeek'
                 ? 'Aktuelle Woche'
                 : (statsPrayerRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel);
+              const prayerPointRows = prayerLineLabels.map((label, index) => ({ label, value: Number(prayerLineSeries[0]?.data?.[index]) || 0 }));
+              const prayerSummary = prayerPointRows.length > 0 ? (() => {
+                const highest = prayerPointRows.reduce((best, item) => (item.value > best.value ? item : best), prayerPointRows[0]);
+                const lowest = prayerPointRows.reduce((worst, item) => (item.value < worst.value ? item : worst), prayerPointRows[0]);
+                const averagePerPrayer = prayerPointRows.reduce((sum, item) => sum + item.value, 0) / Math.max(1, prayerPointRows.length);
+                return { highest, lowest, averagePerPrayer };
+              })() : null;
+              const prayerCompareRange = statsPrayerRange === 'currentWeek' ? 'previousWeek' : (statsPrayerRange === 'previousWeek' ? 'currentWeek' : null);
+              const comparePrayerBars = prayerCompareRange ? buildPrayerTotalsForIsos(getIsosForRange(prayerCompareRange)) : [];
+              const comparePrayerValues = comparePrayerBars.map((item) => (statsPrayerSeries === 'total' ? (Number(item.total) || 0) : (Number(item.tanzeemTotals?.[statsPrayerSeries]) || 0)));
+              const comparePrayerAverage = comparePrayerValues.reduce((sum, val) => sum + (Number(val) || 0), 0) / Math.max(1, comparePrayerValues.length || 1);
+              const prayerTrendPercent = prayerSummary && comparePrayerRange && comparePrayerAverage > 0
+                ? ((prayerSummary.averagePerPrayer - comparePrayerAverage) / comparePrayerAverage) * 100
+                : null;
 
               return (
                 <>
@@ -3251,13 +3283,23 @@ function AppContent() {
                       useEqualLabelSlots
                       pointLabelFormatter={({ label, value }) => `${label}, ${Number(value) || 0} Gebete`}
                     />
+                    {prayerSummary ? (
+                      <View style={styles.statsInsightWrap}>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Durchschnitt pro Gebet ({prayerSeriesLabel}): {prayerSummary.averagePerPrayer.toFixed(1)}</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Höchstes Gebet ({prayerSeriesLabel}): {prayerSummary.highest.label} ({prayerSummary.highest.value})</Text>
+                        <Text style={[styles.statsInsightText, { color: theme.text }]}>Niedrigstes Gebet ({prayerSeriesLabel}): {prayerSummary.lowest.label} ({prayerSummary.lowest.value})</Text>
+                        {prayerTrendPercent !== null ? (
+                          <Text style={[styles.statsInsightText, { color: theme.text }]}>Trend vs. {statsPrayerRange === 'currentWeek' ? 'letzte Woche' : 'aktuelle Woche'} ({prayerSeriesLabel}): {prayerTrendPercent >= 0 ? '+' : ''}{prayerTrendPercent.toFixed(1)}%</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
                     {prayerBars.length === 0 ? (
                       <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {statsPrayerRange === 'selectedDate' ? 'dieses Datum' : 'diesen Zeitraum'}</Text>
                     ) : null}
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Live Verlauf</Text>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl der Gebete nach Tage</Text>
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                         <Pressable
