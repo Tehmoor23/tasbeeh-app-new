@@ -2221,6 +2221,7 @@ function AppContent() {
       ansar: Number(programStats?.byTanzeem?.ansar) || 0,
       khuddam: Number(programStats?.byTanzeem?.khuddam) || 0,
       atfal: Number(programStats?.byTanzeem?.atfal) || 0,
+      guest: Number(programStats?.guestTotal) || 0,
     };
     const majlisRowsRaw = Object.entries(programStats?.byMajlis || {})
       .map(([locationKey, count]) => ({ locationKey, count: Number(count) || 0 }))
@@ -2243,6 +2244,7 @@ function AppContent() {
       ['Ansar', tanzeemTotals.ansar],
       ['Khuddam', tanzeemTotals.khuddam],
       ['Atfal', tanzeemTotals.atfal],
+      ['Gäste', tanzeemTotals.guest],
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
@@ -2252,6 +2254,7 @@ function AppContent() {
       ['Ansar', tanzeemTotals.ansar],
       ['Khuddam', tanzeemTotals.khuddam],
       ['Atfal', tanzeemTotals.atfal],
+      ['Gäste', tanzeemTotals.guest],
     ];
     const tanzeemSheet = XLSX.utils.aoa_to_sheet(tanzeemRows);
     tanzeemSheet['!cols'] = [{ wch: 18 }, { wch: 12 }];
@@ -3976,7 +3979,7 @@ function AppContent() {
       </View>
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.7</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.8</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
