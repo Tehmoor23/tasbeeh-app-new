@@ -981,6 +981,7 @@ function AppContent() {
   const [statsMajlisRange, setStatsMajlisRange] = useState('currentWeek');
   const [statsPrayerRange, setStatsPrayerRange] = useState('currentWeek');
   const [statsWeekRankingFilter, setStatsWeekRankingFilter] = useState('total');
+  const [statsMajlisTanzeemFilter, setStatsMajlisTanzeemFilter] = useState('total');
   const [isStatsExportModalVisible, setStatsExportModalVisible] = useState(false);
   const [statsExporting, setStatsExporting] = useState(false);
   const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
@@ -1988,18 +1989,24 @@ function AppContent() {
           STATS_TANZEEM_KEYS.forEach((key) => {
             const majlis = tanzeemMap[key]?.majlis || {};
             Object.entries(majlis).forEach(([loc, count]) => {
-              map[loc] = (map[loc] || 0) + (Number(count) || 0);
+              if (!map[loc]) map[loc] = { total: 0, byTanzeem: { ansar: 0, khuddam: 0, atfal: 0 } };
+              const numericCount = Number(count) || 0;
+              map[loc].total += numericCount;
+              map[loc].byTanzeem[key] += numericCount;
             });
           });
         });
       });
-      return buildMajlisRanking(map).map(([locationKey, count]) => {
-        const majlisName = formatMajlisName(locationKey);
-        return {
-          majlis: majlisName,
-          gebeteDieseWoche: Number(count) || 0,
-        };
-      });
+      return Object.entries(map)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 10)
+        .map(([locationKey, value]) => ({
+          majlis: formatMajlisName(locationKey),
+          gebeteDieseWoche: Number(value.total) || 0,
+          davonAnsar: Number(value.byTanzeem.ansar) || 0,
+          davonKhuddam: Number(value.byTanzeem.khuddam) || 0,
+          davonAtfal: Number(value.byTanzeem.atfal) || 0,
+        }));
     })();
 
     return {
@@ -2077,11 +2084,17 @@ function AppContent() {
 
     if (dataset.topMajlisRows.length) {
       const topRows = [
-        ['Majlis', 'Gebete diese Woche'],
-        ...dataset.topMajlisRows.map((row) => [row.majlis, Number(row.gebeteDieseWoche) || 0]),
+        ['Majlis', 'Gebete diese Woche', 'davon Ansar', 'davon Khuddam', 'davon Atfal'],
+        ...dataset.topMajlisRows.map((row) => [
+          row.majlis,
+          Number(row.gebeteDieseWoche) || 0,
+          Number(row.davonAnsar) || 0,
+          Number(row.davonKhuddam) || 0,
+          Number(row.davonAtfal) || 0,
+        ]),
       ];
       const topSheet = XLSX.utils.aoa_to_sheet(topRows);
-      topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }];
+      topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(workbook, topSheet, 'Top Majlises');
     }
 
@@ -2954,20 +2967,38 @@ function AppContent() {
           <>
             {(() => {
                             const selectedDateSummary = buildUniqueSummary(activeDayAttendance);
-              const selectedDateTopMajlis = (() => {
+              const buildTopMajlisBreakdown = (docs) => {
                 const map = {};
-                const byPrayer = activeDayAttendance?.byPrayer || {};
-                Object.values(byPrayer).forEach((prayerNode) => {
-                  const tanzeemMap = prayerNode?.tanzeem || {};
-                  STATS_TANZEEM_KEYS.forEach((key) => {
-                    const majlis = tanzeemMap[key]?.majlis || {};
-                    Object.entries(majlis).forEach(([loc, count]) => {
-                      map[loc] = (map[loc] || 0) + (Number(count) || 0);
+                docs.forEach((attendance) => {
+                  const byPrayer = attendance?.byPrayer || {};
+                  Object.values(byPrayer).forEach((prayerNode) => {
+                    const tanzeemMap = prayerNode?.tanzeem || {};
+                    STATS_TANZEEM_KEYS.forEach((key) => {
+                      const majlis = tanzeemMap[key]?.majlis || {};
+                      Object.entries(majlis).forEach(([loc, count]) => {
+                        if (!map[loc]) map[loc] = { total: 0, byTanzeem: { ansar: 0, khuddam: 0, atfal: 0 } };
+                        const numericCount = Number(count) || 0;
+                        map[loc].total += numericCount;
+                        map[loc].byTanzeem[key] += numericCount;
+                      });
                     });
                   });
                 });
-                return buildMajlisRanking(map);
-              })();
+                return Object.entries(map)
+                  .sort((a, b) => b[1].total - a[1].total)
+                  .slice(0, 10)
+                  .map(([locationKey, value]) => ({
+                    locationKey,
+                    total: Number(value.total) || 0,
+                    byTanzeem: {
+                      ansar: Number(value.byTanzeem.ansar) || 0,
+                      khuddam: Number(value.byTanzeem.khuddam) || 0,
+                      atfal: Number(value.byTanzeem.atfal) || 0,
+                    },
+                  }));
+              };
+
+              const selectedDateTopMajlis = buildTopMajlisBreakdown([activeDayAttendance]);
 
               const buildSummaryForIsos = (isos) => isos.reduce((acc, iso) => {
                 const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
@@ -2979,22 +3010,7 @@ function AppContent() {
                 return acc;
               }, { total: 0, guestTotal: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } });
 
-              const buildTopMajlisForIsos = (isos) => {
-                const map = {};
-                isos.forEach((iso) => {
-                  const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
-                  Object.values(byPrayer).forEach((prayerNode) => {
-                    const tanzeemMap = prayerNode?.tanzeem || {};
-                    STATS_TANZEEM_KEYS.forEach((key) => {
-                      const majlis = tanzeemMap[key]?.majlis || {};
-                      Object.entries(majlis).forEach(([loc, count]) => {
-                        map[loc] = (map[loc] || 0) + (Number(count) || 0);
-                      });
-                    });
-                  });
-                });
-                return buildMajlisRanking(map);
-              };
+              const buildTopMajlisForIsos = (isos) => buildTopMajlisBreakdown(isos.map((iso) => weeklyAttendanceDocs[iso]));
 
               const buildPrayerTotalsForIsos = (isos) => {
                 const agg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
@@ -3020,6 +3036,7 @@ function AppContent() {
               const totalSource = statsTotalRange === 'selectedDate' ? selectedDateSummary : buildSummaryForIsos(getIsosForRange(statsTotalRange));
               const tanzeemSource = statsTanzeemRange === 'selectedDate' ? selectedDateSummary : buildSummaryForIsos(getIsosForRange(statsTanzeemRange));
               const topMajlisSource = statsMajlisRange === 'selectedDate' ? selectedDateTopMajlis : buildTopMajlisForIsos(getIsosForRange(statsMajlisRange));
+              const topMajlisFilterLabel = statsMajlisTanzeemFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[statsMajlisTanzeemFilter];
 
               const todayPrayerBars = (() => {
                 if (!activeDayAttendance?.byPrayer) return [];
@@ -3217,20 +3234,52 @@ function AppContent() {
                         <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsMajlisRange)}</Text>
                       </Pressable>
                     </View>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <Pressable
+                          onPress={() => setStatsMajlisTanzeemFilter((prev) => {
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx - 1 + options.length) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{topMajlisFilterLabel}</Text>
+                        <Pressable
+                          onPress={() => setStatsMajlisTanzeemFilter((prev) => {
+                            const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx + 1) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
+                      </View>
+                    </View>
                     {topMajlisSource.length === 0 ? (
                       <Text style={[styles.noteText, { color: theme.muted }]}>Noch keine Anwesenheit für {statsMajlisRange === 'selectedDate' ? 'dieses Datum' : 'diesen Zeitraum'}</Text>
                     ) : (
                       (() => {
-                        const maxTop = Math.max(1, ...topMajlisSource.map(([, count]) => count));
-                        return topMajlisSource.map(([locationKey, count]) => (
-                          <View key={locationKey} style={styles.majlisBarRow}>
-                            <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
-                            <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
-                              <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
+                        const getMajlisCount = (row) => {
+                          if (statsMajlisTanzeemFilter === 'total') return Number(row.total) || 0;
+                          return Number(row.byTanzeem?.[statsMajlisTanzeemFilter]) || 0;
+                        };
+                        const maxTop = Math.max(1, ...topMajlisSource.map((row) => getMajlisCount(row)));
+                        return topMajlisSource.map((row) => {
+                          const count = getMajlisCount(row);
+                          return (
+                            <View key={row.locationKey} style={styles.majlisBarRow}>
+                              <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(row.locationKey)}</Text>
+                              <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                                <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${(count / maxTop) * 100}%` }]} />
+                              </View>
+                              <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
                             </View>
-                            <Text style={[styles.majlisBarValue, { color: theme.text }]}>{count}</Text>
-                          </View>
-                        ));
+                          );
+                        });
                       })()
                     )}
                   </View>
