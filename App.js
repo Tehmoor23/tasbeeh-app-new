@@ -2985,8 +2985,6 @@ function AppContent() {
                   });
                 });
                 return Object.entries(map)
-                  .sort((a, b) => b[1].total - a[1].total)
-                  .slice(0, 10)
                   .map(([locationKey, value]) => ({
                     locationKey,
                     total: Number(value.total) || 0,
@@ -3230,9 +3228,31 @@ function AppContent() {
                         <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
-                      <Pressable onPress={() => setStatsMajlisRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-                        <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(statsMajlisRange)}</Text>
-                      </Pressable>
+                    </View>
+                    <View style={styles.statsToggleRow}>
+                      <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                        <Pressable
+                          onPress={() => setStatsMajlisRange((prev) => {
+                            const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx - 1 + options.length) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                        </Pressable>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsMajlisRange === 'currentWeek' ? 'Aktuelle Woche' : (statsMajlisRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
+                        <Pressable
+                          onPress={() => setStatsMajlisRange((prev) => {
+                            const options = ['currentWeek', 'previousWeek', 'selectedDate'];
+                            const idx = options.indexOf(prev);
+                            return options[(idx + 1) % options.length];
+                          })}
+                          style={styles.statsCyclerArrowBtn}
+                        >
+                          <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                        </Pressable>
+                      </View>
                     </View>
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}>
@@ -3267,9 +3287,13 @@ function AppContent() {
                           if (statsMajlisTanzeemFilter === 'total') return Number(row.total) || 0;
                           return Number(row.byTanzeem?.[statsMajlisTanzeemFilter]) || 0;
                         };
-                        const maxTop = Math.max(1, ...topMajlisSource.map((row) => getMajlisCount(row)));
-                        return topMajlisSource.map((row) => {
-                          const count = getMajlisCount(row);
+                        const sortedRows = [...topMajlisSource]
+                          .map((row) => ({ ...row, currentCount: getMajlisCount(row) }))
+                          .sort((a, b) => b.currentCount - a.currentCount || String(a.locationKey).localeCompare(String(b.locationKey)))
+                          .slice(0, 10);
+                        const maxTop = Math.max(1, ...sortedRows.map((row) => row.currentCount));
+                        return sortedRows.map((row) => {
+                          const count = row.currentCount;
                           return (
                             <View key={row.locationKey} style={styles.majlisBarRow}>
                               <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(row.locationKey)}</Text>
