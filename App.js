@@ -997,6 +997,8 @@ function AppContent() {
   const [detailedLogsLoading, setDetailedLogsLoading] = useState(false);
   const [detailedGraphRange, setDetailedGraphRange] = useState('currentWeek');
   const [detailedPrayerRange, setDetailedPrayerRange] = useState('currentWeek');
+  const [isDetailedExportModalVisible, setDetailedExportModalVisible] = useState(false);
+  const [detailedExporting, setDetailedExporting] = useState(false);
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
@@ -2114,8 +2116,8 @@ function AppContent() {
     prayerSheet['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete pro Tag');
-    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Anzahl pro Gebet');
+    XLSX.utils.book_append_sheet(workbook, daySheet, 'Anzahl der Gebete nach Tage');
+    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Anzahl der Gebete nach Gebetszeiten');
 
     if (dataset.topMajlisRows.length) {
       const topRows = [
@@ -2130,11 +2132,11 @@ function AppContent() {
       ];
       const topSheet = XLSX.utils.aoa_to_sheet(topRows);
       topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(workbook, topSheet, 'Top Majlises');
+      XLSX.utils.book_append_sheet(workbook, topSheet, 'Anzahl der Gebete nach Majlis');
     }
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Gebete pro Tag', 'Anzahl pro Gebet', 'Top Majlises'].forEach((sheetName) => {
+    ['Übersicht', 'Anzahl der Gebete nach Tage', 'Anzahl der Gebete nach Gebetszeiten', 'Anzahl der Gebete nach Majlis'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws) return;
       const ref = ws['!ref'];
@@ -2380,6 +2382,172 @@ function AppContent() {
     return detailedPrayerTotalsForIsos(detailedCurrentWeekIsos);
   }, [detailedPrayerRange, detailedPrayerTotalsForIsos, selectedStatsDateISO, detailedLast7Days, detailedCurrentWeekIsos]);
 
+
+
+  const getDetailedExportDataset = useCallback((rangeMode) => {
+    const isos = rangeMode === 'previousWeek' ? detailedLast7Days : detailedCurrentWeekIsos;
+    const logs = (detailedMemberLogs || []).filter((row) => isos.includes(row.date));
+    const dailyMap = new Map(isos.map((iso) => [iso, 0]));
+    logs.forEach((row) => {
+      dailyMap.set(row.date, (dailyMap.get(row.date) || 0) + 1);
+    });
+    const dayRows = isos.map((iso) => ({
+      iso,
+      tag: formatIsoWithWeekday(iso),
+      anzahl: Number(dailyMap.get(iso)) || 0,
+    }));
+
+    const prayerAgg = { fajr: 0, sohar: 0, asr: 0, maghrib: 0, ishaa: 0 };
+    logs.forEach((row) => {
+      const key = String(row?.prayer || '').toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(prayerAgg, key)) prayerAgg[key] += 1;
+    });
+    const prayerRows = STATS_PRAYER_SEQUENCE.map((item) => ({
+      key: item.key,
+      label: item.label,
+      anzahl: Number(prayerAgg[item.key]) || 0,
+    }));
+
+    return {
+      rangeMode,
+      isos,
+      logs,
+      dayRows,
+      prayerRows,
+      total: logs.length,
+    };
+  }, [detailedCurrentWeekIsos, detailedLast7Days, detailedMemberLogs]);
+
+  const hasDetailedExportData = useMemo(() => {
+    if (!selectedDetailedMember) return false;
+    const current = getDetailedExportDataset('currentWeek');
+    const previous = getDetailedExportDataset('previousWeek');
+    return current.total > 0 || previous.total > 0;
+  }, [getDetailedExportDataset, selectedDetailedMember]);
+
+  const writeDetailedWorkbook = useCallback(async (rangeMode) => {
+    if (!selectedDetailedMember) {
+      setToast('Bitte zuerst eine ID auswählen');
+      return;
+    }
+    const dataset = getDetailedExportDataset(rangeMode);
+    if (!dataset.total) {
+      setToast('Keine Daten zum Export verfügbar');
+      return;
+    }
+    const startISO = dataset.isos[0] || '';
+    const endISO = dataset.isos[dataset.isos.length - 1] || '';
+    const startLabel = formatIsoWithWeekday(startISO);
+    const endLabel = formatIsoWithWeekday(endISO);
+
+    const workbook = XLSX.utils.book_new();
+    const overviewRows = [
+      ['Moschee', activeMosque.label],
+      ['Zeitraum', `${startLabel} – ${endLabel}`],
+      ['ID', selectedDetailedMember.idNumber],
+      ['Tanzeem', TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—'],
+      ['Majlis', selectedDetailedMember.majlis || '—'],
+      ['Gesamt Gebete', Number(dataset.total) || 0],
+    ];
+    const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
+    overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
+
+    const dayRows = [
+      ['Tag', 'Anzahl der Gebete nach Tage'],
+      ...dataset.dayRows.map((row) => [row.tag, Number(row.anzahl) || 0]),
+    ];
+    const daySheet = XLSX.utils.aoa_to_sheet(dayRows);
+    daySheet['!cols'] = [{ wch: 22 }, { wch: 20 }];
+
+    const prayerRows = [
+      ['Gebetszeit', 'Anzahl der Gebete nach Gebetszeiten'],
+      ...dataset.prayerRows.map((row) => [row.label, Number(row.anzahl) || 0]),
+    ];
+    const prayerSheet = XLSX.utils.aoa_to_sheet(prayerRows);
+    prayerSheet['!cols'] = [{ wch: 22 }, { wch: 32 }];
+
+    const logRows = [
+      ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'],
+      ...dataset.logs.map((row) => [
+        formatIsoWithWeekday(row.date),
+        STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayer)?.label || row.prayer,
+        selectedDetailedMember.idNumber,
+        TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—',
+        selectedDetailedMember.majlis || '—',
+      ]),
+    ];
+    const logsSheet = XLSX.utils.aoa_to_sheet(logRows);
+    logsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
+
+    XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
+    XLSX.utils.book_append_sheet(workbook, daySheet, 'Anzahl der Gebete nach Tage');
+    XLSX.utils.book_append_sheet(workbook, prayerSheet, 'Anzahl der Gebete nach Gebetszeiten');
+    XLSX.utils.book_append_sheet(workbook, logsSheet, 'Gebetsprotokoll');
+
+    const boldCellStyle = { font: { bold: true } };
+    ['Übersicht', 'Anzahl der Gebete nach Tage', 'Anzahl der Gebete nach Gebetszeiten', 'Gebetsprotokoll'].forEach((sheetName) => {
+      const ws = workbook.Sheets[sheetName];
+      if (!ws || !ws['!ref']) return;
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let col = range.s.c; col <= range.e.c; col += 1) {
+        const addr = XLSX.utils.encode_cell({ c: col, r: 0 });
+        if (ws[addr]) ws[addr].s = boldCellStyle;
+      }
+    });
+
+    const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+    const safeStart = startLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
+    const safeEnd = endLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
+    const fileName = `Detaillierte_ID_Uebersicht_${selectedDetailedMember.idNumber}_${safeStart}_${safeEnd}.xlsx`;
+
+    if (Platform.OS === 'web') {
+      if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
+      const binary = globalThis.atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+
+    const cacheDir = String(FileSystem.cacheDirectory || '');
+    if (!cacheDir) throw new Error('Dateisystem nicht verfügbar (cacheDirectory fehlt)');
+    const fileUri = `${cacheDir}${fileName}`;
+    await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+
+    const canShare = await Sharing.isAvailableAsync();
+    if (!canShare) {
+      setToast('Sharing auf diesem Gerät nicht verfügbar');
+      return;
+    }
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: 'Detaillierte ID exportieren',
+      UTI: 'org.openxmlformats.spreadsheetml.sheet',
+    });
+  }, [activeMosque.label, getDetailedExportDataset, selectedDetailedMember]);
+
+  const handleExportDetailed = useCallback(async (rangeMode) => {
+    if (detailedExporting) return;
+    setDetailedExporting(true);
+    try {
+      await writeDetailedWorkbook(rangeMode);
+      setDetailedExportModalVisible(false);
+    } catch (error) {
+      const message = String(error?.message || '').trim();
+      setToast(message ? `Export fehlgeschlagen: ${message}` : 'Export fehlgeschlagen');
+      console.error('Detailed export failed', error);
+    } finally {
+      setDetailedExporting(false);
+    }
+  }, [detailedExporting, writeDetailedWorkbook]);
   const detailedCurrentWeekCount = useMemo(() => {
     const minISO = detailedCurrentWeekIsos[0] || '';
     const maxISO = detailedCurrentWeekIsos[detailedCurrentWeekIsos.length - 1] || '';
@@ -3150,7 +3318,7 @@ function AppContent() {
               };
               const prayerLineSeries = [{
                 key: 'prayerTotals',
-                label: `Anzahl pro Gebet · ${prayerSeriesLabel}`,
+                label: `Anzahl der Gebete nach Gebetszeiten · ${prayerSeriesLabel}`,
                 color: prayerSeriesColorMap[statsPrayerSeries] || theme.button,
                 thick: true,
                 data: prayerBars.map((item) => (statsPrayerSeries === 'total' ? (Number(item.total) || 0) : (Number(item.tanzeemTotals?.[statsPrayerSeries]) || 0))),
@@ -3218,7 +3386,7 @@ function AppContent() {
                   </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl der Gebete nach Gebetszeiten</Text>
                     <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsPrayerRange)}</Text>
                     <View style={styles.statsToggleRow}>
                       <View style={[styles.statsCycler, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
@@ -3370,7 +3538,7 @@ function AppContent() {
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <View>
-                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (alle Gebete)</Text>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl der Gebete nach Majlis</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
                     </View>
@@ -3807,6 +3975,36 @@ function AppContent() {
       </Modal>
 
 
+
+      <Modal visible={isDetailedExportModalVisible} animationType="fade" transparent onRequestClose={() => setDetailedExportModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+            <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Detaillierte ID exportieren</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Wählen Sie den Zeitraum für den Excel-Export.</Text>
+            <View style={styles.statsExportModalActions}>
+              <Pressable
+                disabled={detailedExporting || !hasDetailedExportData}
+                onPress={() => handleExportDetailed('currentWeek')}
+                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
+              </Pressable>
+              <Pressable
+                disabled={detailedExporting || !hasDetailedExportData}
+                onPress={() => handleExportDetailed('previousWeek')}
+                style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Letzte Woche (.xlsx)</Text>
+              </Pressable>
+              {!hasDetailedExportData ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Daten zum Export verfügbar</Text> : null}
+            </View>
+            <Pressable onPress={() => setDetailedExportModalVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
+              <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={isDetailedIdOverviewVisible} animationType="slide" transparent onRequestClose={() => setDetailedIdOverviewVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
@@ -3900,9 +4098,18 @@ function AppContent() {
                 </>
               ) : (
                 <>
-                  <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
-                    <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Zurück</Text>
-                  </Pressable>
+                  <View style={[styles.statsToggleRow, { marginTop: 0 }]}>
+                    <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); }} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg, flex: 1 }]}>
+                      <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Zurück</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => setDetailedExportModalVisible(true)}
+                      disabled={!hasDetailedExportData || detailedExporting}
+                      style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: (!hasDetailedExportData || detailedExporting) ? theme.border : theme.bg, flex: 1, opacity: (!hasDetailedExportData || detailedExporting) ? 0.7 : 1 }]}
+                    >
+                      <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{detailedExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
+                    </Pressable>
+                  </View>
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>ID {selectedDetailedMember.idNumber}</Text>
@@ -3923,7 +4130,7 @@ function AppContent() {
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{detailedTopRangeLabel}</Text>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl der Gebete nach Tage</Text>
                       <Pressable
                         onPress={() => setDetailedGraphRange((prev) => {
                           const options = ['currentWeek', 'previousWeek', 'fourWeeks'];
@@ -3935,7 +4142,7 @@ function AppContent() {
                         <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{detailedTopRangeToggleLabel}</Text>
                       </Pressable>
                     </View>
-                    <Text style={[styles.noteText, { color: theme.muted }]}>{detailedTopRangePeriodLabel}</Text>
+                    <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{`${detailedTopRangeLabel} · ${detailedTopRangePeriodLabel}`}</Text>
                     <MiniLineChart
                       labels={detailedGraphRange === 'fourWeeks'
                         ? detailedComparisonSeries.map((row) => `KW ${row.weekNumber}`)
@@ -3961,7 +4168,7 @@ function AppContent() {
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <View style={styles.statsCardHeaderRow}>
                       <View>
-                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl pro Gebet</Text>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl der Gebete nach Gebetszeiten</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(detailedPrayerRange)}</Text>
                       </View>
                       <Pressable onPress={() => setDetailedPrayerRange(cycleStatsRangeMode)} style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}>
@@ -3975,7 +4182,7 @@ function AppContent() {
                     ) : null}
                     <MiniLineChart
                       labels={detailedPrayerRows.map((row) => row.label)}
-                      series={[{ key: 'detailedPrayerTotals', label: 'Anzahl pro Gebet', color: theme.button, thick: true, data: detailedPrayerRows.map((row) => row.total) }]}
+                      series={[{ key: 'detailedPrayerTotals', label: 'Anzahl der Gebete nach Gebetszeiten', color: theme.button, thick: true, data: detailedPrayerRows.map((row) => row.total) }]}
                       theme={theme}
                       isDarkMode={isDarkMode}
                       xAxisTitle="Gebete"
