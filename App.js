@@ -1109,7 +1109,7 @@ function AppContent() {
   const localSessionActiveRef = useRef(false);
   const [adminManageName, setAdminManageName] = useState('');
   const [adminManagePassword, setAdminManagePassword] = useState('');
-  const [adminManageMosqueKey, setAdminManageMosqueKey] = useState(DEFAULT_MOSQUE_KEY);
+  const [adminManageMosqueKeys, setAdminManageMosqueKeys] = useState([DEFAULT_MOSQUE_KEY]);
   const [adminManagePermissions, setAdminManagePermissions] = useState({ ...DEFAULT_ACCOUNT_PERMISSIONS });
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
@@ -1141,11 +1141,22 @@ function AppContent() {
     canExportData: isSuperAdmin || Boolean(currentAccount?.permissions?.canExportData),
   };
 
+  const getAllowedMosqueKeys = useCallback((account) => {
+    if (!account || account.isSuperAdmin) return [];
+    const list = Array.isArray(account.mosqueIds) && account.mosqueIds.length
+      ? account.mosqueIds
+      : (account.mosqueId ? [account.mosqueId] : []);
+    return list
+      .map((key) => String(key || ''))
+      .filter((key, index, arr) => key && arr.indexOf(key) === index);
+  }, []);
+
   const accountMatchesActiveMosque = useCallback((account) => {
     if (!account) return false;
     if (account.isSuperAdmin) return true;
-    return String(account.mosqueId || '') === String(activeMosque.key || '');
-  }, [activeMosque.key]);
+    const allowed = getAllowedMosqueKeys(account);
+    return allowed.includes(String(activeMosque.key || ''));
+  }, [activeMosque.key, getAllowedMosqueKeys]);
 
   const visibleTabs = useMemo(() => TAB_ITEMS.filter((tab) => (tab.key !== 'settings' || effectivePermissions.canEditSettings)), [effectivePermissions.canEditSettings]);
 
@@ -1278,8 +1289,9 @@ function AppContent() {
           createdBy: 'bootstrap-local',
         }).catch(() => {});
       }
-      if (!fallbackAccount.isSuperAdmin && fallbackAccount.mosqueId) {
-        setActiveMosqueKey(String(fallbackAccount.mosqueId));
+      const fallbackAllowedMosques = getAllowedMosqueKeys(fallbackAccount);
+      if (!fallbackAccount.isSuperAdmin && fallbackAllowedMosques.length) {
+        setActiveMosqueKey(String(fallbackAllowedMosques[0]));
       }
       localSessionActiveRef.current = true;
       setCurrentAccount(fallbackAccount);
@@ -1300,8 +1312,12 @@ function AppContent() {
       const cred = await firebaseRuntime.authApi.signInWithEmailAndPassword(firebaseRuntime.auth, buildAccountAuthEmail(name), password);
       const account = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
       if (!account?.active) throw new Error('Account ist nicht aktiv');
-      if (!account.isSuperAdmin && account.mosqueId) {
-        setActiveMosqueKey(String(account.mosqueId));
+      const allowedMosques = getAllowedMosqueKeys(account);
+      if (!account.isSuperAdmin && allowedMosques.length) {
+        const nextMosque = allowedMosques.includes(String(activeMosqueKey))
+          ? String(activeMosqueKey)
+          : String(allowedMosques[0]);
+        setActiveMosqueKey(nextMosque);
       }
       if (account.authUid && String(account.authUid) !== String(cred?.user?.uid || '')) {
         await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
@@ -1329,7 +1345,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [loginNameInput, loginPasswordInput]);
+  }, [activeMosqueKey, getAllowedMosqueKeys, loginNameInput, loginPasswordInput]);
 
   const logoutAccount = useCallback(async () => {
     localSessionActiveRef.current = false;
@@ -1399,6 +1415,13 @@ function AppContent() {
       setToast('Ungültiger Name');
       return;
     }
+    const selectedMosqueIds = adminManageMosqueKeys
+      .map((key) => String(key || ''))
+      .filter((key, index, arr) => key && arr.indexOf(key) === index);
+    if (!selectedMosqueIds.length) {
+      setToast('Bitte mindestens eine Moschee auswählen');
+      return;
+    }
     let secondaryAuth = null;
     let authUid = null;
     let localOnly = !firebaseRuntime?.authApi;
@@ -1434,7 +1457,8 @@ function AppContent() {
         authUid,
         localPassword: null,
         localPasswordHash: localOnly ? await hashLocalPassword(password, docId) : null,
-        mosqueId: adminManageMosqueKey,
+        mosqueId: selectedMosqueIds[0],
+        mosqueIds: selectedMosqueIds,
         permissions: { ...adminManagePermissions },
         isSuperAdmin: false,
         active: true,
@@ -1443,6 +1467,7 @@ function AppContent() {
       });
       setAdminManageName('');
       setAdminManagePassword('');
+      setAdminManageMosqueKeys([DEFAULT_MOSQUE_KEY]);
       setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
       setToast(localOnly ? 'Account erstellt ✓ (lokal)' : 'Account erstellt ✓');
       await loadAdminAccounts();
@@ -1460,7 +1485,7 @@ function AppContent() {
       }
       setAdminAccountsLoading(false);
     }
-  }, [adminManageMosqueKey, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
+  }, [adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
 
   const deleteManagedAccount = useCallback((account) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin) return;
@@ -1933,8 +1958,13 @@ function AppContent() {
           setCurrentAccount(null);
           return;
         }
-        if (!account.isSuperAdmin && account.mosqueId) setActiveMosqueKey(String(account.mosqueId));
-        else if (!accountMatchesActiveMosque(account)) {
+        const allowedMosques = getAllowedMosqueKeys(account);
+        if (!account.isSuperAdmin && allowedMosques.length) {
+          const nextMosque = allowedMosques.includes(String(activeMosqueKey))
+            ? String(activeMosqueKey)
+            : String(allowedMosques[0]);
+          setActiveMosqueKey(nextMosque);
+        } else if (!accountMatchesActiveMosque(account)) {
           await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
           setCurrentAccount(null);
           return;
@@ -1946,7 +1976,7 @@ function AppContent() {
       }
     });
     return () => unsubscribe();
-  }, [accountMatchesActiveMosque]);
+  }, [accountMatchesActiveMosque, activeMosqueKey, getAllowedMosqueKeys]);
 
   useEffect(() => {
     if (activeTab === 'settings' && !effectivePermissions.canEditSettings) {
@@ -1961,11 +1991,12 @@ function AppContent() {
 
   useEffect(() => {
     if (!currentAccount || isSuperAdmin) return;
-    const assigned = String(currentAccount.mosqueId || '');
-    if (assigned && assigned !== activeMosqueKey) {
-      setActiveMosqueKey(assigned);
+    const allowed = getAllowedMosqueKeys(currentAccount);
+    if (!allowed.length) return;
+    if (!allowed.includes(String(activeMosqueKey))) {
+      setActiveMosqueKey(String(allowed[0]));
     }
-  }, [activeMosqueKey, currentAccount, isSuperAdmin]);
+  }, [activeMosqueKey, currentAccount, getAllowedMosqueKeys, isSuperAdmin]);
 
   useEffect(() => {
     const loadLocal = async () => {
@@ -1991,7 +2022,10 @@ function AppContent() {
   };
 
   const onSelectMosque = async (key) => {
-    if (currentAccount && !isSuperAdmin) return;
+    if (currentAccount && !isSuperAdmin) {
+      const allowed = getAllowedMosqueKeys(currentAccount);
+      if (!allowed.includes(String(key || ''))) return;
+    }
     const next = getMosqueOptionByKey(key).key;
     setActiveMosqueKey(next);
     await AsyncStorage.setItem(STORAGE_KEYS.activeMosque, next);
@@ -4587,8 +4621,19 @@ function AppContent() {
           </View>
           <View style={styles.statsToggleRow}>
             {MOSQUE_OPTIONS.map((mosque) => (
-              <Pressable key={mosque.key} onPress={() => setAdminManageMosqueKey(mosque.key)} style={[styles.statsToggleBtn, { borderColor: adminManageMosqueKey === mosque.key ? theme.button : theme.border, backgroundColor: adminManageMosqueKey === mosque.key ? theme.button : theme.bg }]}>
-                <Text style={[styles.statsToggleBtnText, { color: adminManageMosqueKey === mosque.key ? theme.buttonText : theme.text }]}>{mosque.label}</Text>
+              <Pressable
+                key={mosque.key}
+                onPress={() => setAdminManageMosqueKeys((prev) => {
+                  const exists = prev.includes(mosque.key);
+                  if (exists) {
+                    const next = prev.filter((key) => key !== mosque.key);
+                    return next.length ? next : prev;
+                  }
+                  return [...prev, mosque.key];
+                })}
+                style={[styles.statsToggleBtn, { borderColor: adminManageMosqueKeys.includes(mosque.key) ? theme.button : theme.border, backgroundColor: adminManageMosqueKeys.includes(mosque.key) ? theme.button : theme.bg }]}
+              >
+                <Text style={[styles.statsToggleBtnText, { color: adminManageMosqueKeys.includes(mosque.key) ? theme.buttonText : theme.text }]}>{mosque.label}</Text>
               </Pressable>
             ))}
           </View>
@@ -4609,7 +4654,17 @@ function AppContent() {
                 <View style={styles.statsCardHeaderRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: theme.text, fontWeight: '700' }}>{account.name}</Text>
-                    <Text style={{ color: theme.muted }}>{account.isSuperAdmin ? 'Super-Admin' : (MOSQUE_OPTIONS.find((m) => m.key === account.mosqueId)?.label || account.mosqueId || '—')}</Text>
+                    <Text style={{ color: theme.muted }}>{account.isSuperAdmin
+                      ? 'Super-Admin'
+                      : (() => {
+                        const keys = Array.isArray(account.mosqueIds) && account.mosqueIds.length
+                          ? account.mosqueIds
+                          : (account.mosqueId ? [account.mosqueId] : []);
+                        if (!keys.length) return '—';
+                        return keys
+                          .map((key) => MOSQUE_OPTIONS.find((m) => m.key === key)?.label || key)
+                          .join(' · ');
+                      })()}</Text>
                   </View>
                   {!account.isSuperAdmin ? (
                     <Pressable onPress={() => deleteManagedAccount(account)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.card }]}>
