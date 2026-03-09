@@ -1407,23 +1407,32 @@ function AppContent() {
 
   const deleteManagedAccount = useCallback((account) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin) return;
-    Alert.alert('Account löschen', `Soll der Account ${account.name} gelöscht werden?`, [
-      { text: 'Abbrechen', style: 'cancel' },
-      {
-        text: 'Löschen',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, normalizeAccountNameKey(account.name));
-            setToast('Account gelöscht (Auth-Zugang ggf. separat entfernen)');
-            await loadAdminAccounts();
-          } catch (error) {
-            console.error('deleteManagedAccount failed', error);
-            setToast('Account konnte nicht gelöscht werden');
-          }
-        },
-      },
-    ]);
+
+    const performDelete = async () => {
+      try {
+        const docId = String(account.nameKey || normalizeAccountNameKey(account.name));
+        await deleteGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+        setToast('Account gelöscht (Auth-Zugang ggf. separat entfernen)');
+        await loadAdminAccounts();
+      } catch (error) {
+        console.error('deleteManagedAccount failed', error);
+        setToast('Account konnte nicht gelöscht werden');
+      }
+    };
+
+    const canUseAlert = Platform.OS !== 'web';
+    if (canUseAlert) {
+      Alert.alert('Account löschen', `Soll der Account ${account.name} gelöscht werden?`, [
+        { text: 'Abbrechen', style: 'cancel' },
+        { text: 'Löschen', style: 'destructive', onPress: performDelete },
+      ]);
+      return;
+    }
+
+    const confirmed = typeof globalThis?.confirm === 'function'
+      ? globalThis.confirm(`Soll der Account ${account.name} gelöscht werden?`)
+      : true;
+    if (confirmed) performDelete();
   }, [isSuperAdmin, loadAdminAccounts]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
@@ -4578,13 +4587,11 @@ function AppContent() {
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </Pressable>
       {currentAccount ? (
-        <View style={styles.accountSessionInlineWrap}>
-          <View style={[styles.accountSessionInline, { borderColor: theme.border, backgroundColor: theme.card }]}> 
-            <Text style={[styles.accountSessionInlineName, { color: theme.text }]} numberOfLines={1}>{currentAccount.name}</Text>
-            <Pressable onPress={logoutAccount} style={({ pressed }) => [styles.accountSessionInlineLogoutBtn, pressed && styles.buttonPressed]}>
-              <Text style={styles.accountSessionInlineLogoutText}>Logout</Text>
-            </Pressable>
-          </View>
+        <View style={styles.accountSessionCenterWrap}>
+          <Text style={[styles.accountSessionCenterName, { color: theme.text }]} numberOfLines={1}>{currentAccount.name}</Text>
+          <Pressable onPress={logoutAccount} style={({ pressed }) => [styles.accountSessionCenterLogoutBtn, pressed && styles.buttonPressed]}>
+            <Text style={[styles.accountSessionCenterLogoutText, { color: theme.muted }]}>Logout</Text>
+          </Pressable>
         </View>
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
@@ -5003,11 +5010,10 @@ const styles = StyleSheet.create({
   basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }), transform: [{ translateY: 8 }] },
   logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 8 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
-  accountSessionInlineWrap: { width: '100%', alignItems: 'flex-end', paddingRight: 16, marginTop: 2, marginBottom: 6 },
-  accountSessionInline: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 999, paddingLeft: 10, paddingRight: 6, paddingVertical: 5, gap: 8, maxWidth: '72%' },
-  accountSessionInlineName: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
-  accountSessionInlineLogoutBtn: { backgroundColor: '#111111', borderRadius: 999, paddingVertical: 4, paddingHorizontal: 10 },
-  accountSessionInlineLogoutText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
+  accountSessionCenterWrap: { alignItems: 'center', marginTop: 2, marginBottom: 8 },
+  accountSessionCenterName: { fontSize: 13, fontWeight: '700' },
+  accountSessionCenterLogoutBtn: { marginTop: 2, paddingVertical: 2, paddingHorizontal: 8 },
+  accountSessionCenterLogoutText: { fontSize: 12, fontWeight: '600' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   contentTablet: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26, gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
