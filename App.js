@@ -1320,17 +1320,30 @@ function AppContent() {
   }, [activeTab]);
 
   const changeOwnPassword = useCallback(async () => {
-    if (!passwordChangeInput.trim()) {
+    const nextPassword = passwordChangeInput.trim();
+    if (!nextPassword) {
       setToast('Bitte neues Passwort eingeben');
       return;
     }
-    if (!firebaseRuntime?.auth?.currentUser || !firebaseRuntime?.authApi?.updatePassword) {
-      setToast('Passwortänderung aktuell nicht möglich');
-      return;
-    }
+
     try {
       setAuthLoading(true);
-      await firebaseRuntime.authApi.updatePassword(firebaseRuntime.auth.currentUser, passwordChangeInput.trim());
+
+      const canUseFirebasePasswordChange = Boolean(firebaseRuntime?.auth?.currentUser && firebaseRuntime?.authApi?.updatePassword && !localSessionActiveRef.current);
+      if (canUseFirebasePasswordChange) {
+        await firebaseRuntime.authApi.updatePassword(firebaseRuntime.auth.currentUser, nextPassword);
+      } else {
+        const docId = normalizeAccountNameKey(currentAccount?.nameKey || currentAccount?.name || '');
+        if (!docId) throw new Error('missing-account');
+        await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+          ...(currentAccount || {}),
+          nameKey: docId,
+          localPassword: nextPassword,
+          updatedAt: new Date().toISOString(),
+        });
+        setCurrentAccount((prev) => (prev ? { ...prev, localPassword: nextPassword } : prev));
+      }
+
       setPasswordChangeInput('');
       setToast('Passwort geändert ✓');
     } catch (error) {
@@ -1340,7 +1353,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [passwordChangeInput]);
+  }, [currentAccount, passwordChangeInput]);
 
   const createManagedAccount = useCallback(async () => {
     if (!isSuperAdmin) return;
