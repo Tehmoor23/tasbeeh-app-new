@@ -81,6 +81,23 @@ const TAB_ITEMS = [
   { key: 'settings', label: '⚙️' },
 ];
 
+
+
+const ADMIN_ACCOUNTS_COLLECTION = 'admin_accounts_global';
+const SUPER_ADMIN_NAME = 'admin';
+const SUPER_ADMIN_DEFAULT_PASSWORD = 'Admin@12345';
+const DEFAULT_ACCOUNT_PERMISSIONS = {
+  canEditSettings: false,
+  canViewIdStats: false,
+  canExportData: false,
+};
+const allPermissionsEnabled = () => ({ canEditSettings: true, canViewIdStats: true, canExportData: true });
+const normalizeAccountNameKey = (name) => String(name || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_\-äöüß]/gi, '');
+const buildAccountAuthEmail = (name) => {
+  const key = normalizeAccountNameKey(name);
+  return `${key || 'user'}@tasbeeh.local`;
+};
+
 const PRAYER_LABELS = {
   fajr: 'Fajr',
   sohar: 'Sohar',
@@ -773,8 +790,16 @@ const loadFirebaseRuntime = () => {
   try {
     const { getApp, getApps, initializeApp } = require('firebase/app');
     const { doc, getFirestore, onSnapshot } = require('firebase/firestore');
+    const auth = require('firebase/auth');
     const firebaseApp = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
-    return { db: getFirestore(firebaseApp), doc, onSnapshot };
+    return {
+      app: firebaseApp,
+      db: getFirestore(firebaseApp),
+      doc,
+      onSnapshot,
+      authApi: auth,
+      auth: auth.getAuth(firebaseApp),
+    };
   } catch {
     return null;
   }
@@ -853,6 +878,50 @@ async function setDocData(collection, id, data) {
 async function deleteDocData(collection, id) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
+}
+
+
+async function getGlobalDocData(collection, id) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const res = await fetch(docUrl(collection, id));
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Firestore read failed');
+  const json = await res.json();
+  return fromFirestoreValue({ mapValue: { fields: json.fields || {} } });
+}
+
+async function listGlobalDocIds(collection, pageSize = 300) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  let pageToken = '';
+  const ids = [];
+  do {
+    const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}?pageSize=${pageSize}${tokenPart}&key=${FIREBASE_CONFIG.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Firestore list failed');
+    const json = await res.json();
+    const docs = Array.isArray(json.documents) ? json.documents : [];
+    docs.forEach((doc) => {
+      const fullName = String(doc?.name || '');
+      const id = fullName.split('/').pop();
+      if (id) ids.push(id);
+    });
+    pageToken = String(json.nextPageToken || '');
+  } while (pageToken);
+  return ids;
+}
+
+async function setGlobalDocData(collection, id, data) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const body = { fields: toFirestoreValue(data).mapValue.fields };
+  const res = await fetch(docUrl(collection, id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error('Firestore write failed');
+}
+
+async function deleteGlobalDocData(collection, id) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const res = await fetch(docUrl(collection, id), { method: 'DELETE' });
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
@@ -1020,6 +1089,21 @@ function AppContent() {
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [attendanceMode, setAttendanceMode] = useState('prayer');
   const [statsMode, setStatsMode] = useState('prayer');
+
+  const [isAdminLoginVisible, setAdminLoginVisible] = useState(false);
+  const [loginNameInput, setLoginNameInput] = useState('');
+  const [loginPasswordInput, setLoginPasswordInput] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [currentAccount, setCurrentAccount] = useState(null);
+  const [adminTapCount, setAdminTapCount] = useState(0);
+  const [adminManageName, setAdminManageName] = useState('');
+  const [adminManagePassword, setAdminManagePassword] = useState('');
+  const [adminManageMosqueKey, setAdminManageMosqueKey] = useState(DEFAULT_MOSQUE_KEY);
+  const [adminManagePermissions, setAdminManagePermissions] = useState({ ...DEFAULT_ACCOUNT_PERMISSIONS });
+  const [adminAccounts, setAdminAccounts] = useState([]);
+  const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
+  const [passwordChangeInput, setPasswordChangeInput] = useState('');
+
   const [programNameInput, setProgramNameInput] = useState('');
   const [programStartInput, setProgramStartInput] = useState('');
   const [programConfigByDate, setProgramConfigByDate] = useState({});
@@ -1038,6 +1122,263 @@ function AppContent() {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const activeMosque = useMemo(() => getMosqueOptionByKey(activeMosqueKey), [activeMosqueKey]);
+
+  const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
+  const effectivePermissions = {
+    canEditSettings: isSuperAdmin || Boolean(currentAccount?.permissions?.canEditSettings),
+    canViewIdStats: isSuperAdmin || Boolean(currentAccount?.permissions?.canViewIdStats),
+    canExportData: isSuperAdmin || Boolean(currentAccount?.permissions?.canExportData),
+  };
+
+  const accountMatchesActiveMosque = useCallback((account) => {
+    if (!account) return false;
+    if (account.isSuperAdmin) return true;
+    return String(account.mosqueId || '') === String(activeMosque.key || '');
+  }, [activeMosque.key]);
+
+  const visibleTabs = useMemo(() => TAB_ITEMS.filter((tab) => (tab.key !== 'settings' || effectivePermissions.canEditSettings)), [effectivePermissions.canEditSettings]);
+
+  const getSecondaryAuth = useCallback(() => {
+    if (!firebaseRuntime?.authApi) return null;
+    const { getApps, getApp, initializeApp } = require('firebase/app');
+    const secondaryName = '__admin_creator__';
+    const secondaryApp = getApps().find((app) => app.name === secondaryName) || initializeApp(FIREBASE_CONFIG, secondaryName);
+    return firebaseRuntime.authApi.getAuth(secondaryApp);
+  }, []);
+
+  const loadAdminAccounts = useCallback(async () => {
+    if (!isSuperAdmin) return;
+    try {
+      setAdminAccountsLoading(true);
+      const ids = await listGlobalDocIds(ADMIN_ACCOUNTS_COLLECTION);
+      const docs = await Promise.all(ids.map((id) => getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, id)));
+      const rows = docs
+        .filter(Boolean)
+        .map((entry) => ({ ...entry, key: normalizeAccountNameKey(entry.name || '') }))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+      setAdminAccounts(rows);
+    } catch (error) {
+      console.error('loadAdminAccounts failed', error);
+      setToast('Accounts konnten nicht geladen werden');
+    } finally {
+      setAdminAccountsLoading(false);
+    }
+  }, [isSuperAdmin]);
+
+  const ensureSuperAdminBootstrap = useCallback(async () => {
+    if (!firebaseRuntime?.authApi || !hasFirebaseConfig()) return;
+    const docId = normalizeAccountNameKey(SUPER_ADMIN_NAME);
+    try {
+      const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+      if (existing) return;
+      const secondaryAuth = getSecondaryAuth();
+      let uid = '';
+      try {
+        const cred = await firebaseRuntime.authApi.createUserWithEmailAndPassword(secondaryAuth, buildAccountAuthEmail(SUPER_ADMIN_NAME), SUPER_ADMIN_DEFAULT_PASSWORD);
+        uid = String(cred?.user?.uid || '');
+        if (firebaseRuntime.authApi.updateProfile) {
+          await firebaseRuntime.authApi.updateProfile(cred.user, { displayName: SUPER_ADMIN_NAME });
+        }
+      } catch (error) {
+        if (String(error?.code || '').includes('email-already-in-use')) {
+          uid = '';
+        } else {
+          throw error;
+        }
+      } finally {
+        if (secondaryAuth?.currentUser) {
+          await firebaseRuntime.authApi.signOut(secondaryAuth).catch(() => {});
+        }
+      }
+      await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+        name: SUPER_ADMIN_NAME,
+        nameKey: docId,
+        authEmail: buildAccountAuthEmail(SUPER_ADMIN_NAME),
+        authUid: uid || null,
+        mosqueId: null,
+        permissions: allPermissionsEnabled(),
+        isSuperAdmin: true,
+        active: true,
+        createdAt: new Date().toISOString(),
+        createdBy: 'bootstrap',
+      });
+    } catch (error) {
+      console.error('ensureSuperAdminBootstrap failed', error);
+    }
+  }, [getSecondaryAuth]);
+
+  const loginWithHiddenModal = useCallback(async () => {
+    const name = loginNameInput.trim();
+    const password = loginPasswordInput;
+    if (!name || !password) {
+      setToast('Bitte Name und Passwort eingeben');
+      return;
+    }
+    if (!firebaseRuntime?.authApi) {
+      setToast('Firebase Auth ist nicht verfügbar');
+      return;
+    }
+    const docId = normalizeAccountNameKey(name);
+    try {
+      setAuthLoading(true);
+      const cred = await firebaseRuntime.authApi.signInWithEmailAndPassword(firebaseRuntime.auth, buildAccountAuthEmail(name), password);
+      const account = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+      if (!account?.active) throw new Error('Account ist nicht aktiv');
+      if (!account.isSuperAdmin && account.mosqueId) {
+        setActiveMosqueKey(String(account.mosqueId));
+      }
+      if (account.authUid && String(account.authUid) !== String(cred?.user?.uid || '')) {
+        await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
+        throw new Error('Account-Zuordnung ungültig');
+      }
+      setCurrentAccount(account);
+      setAdminLoginVisible(false);
+      setLoginPasswordInput('');
+      setToast(`Eingeloggt als ${account.name}`);
+    } catch (error) {
+      const message = String(error?.message || '').trim();
+      setToast(message || 'Login fehlgeschlagen');
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [activeMosque.key, loginNameInput, loginPasswordInput]);
+
+  const logoutAccount = useCallback(async () => {
+    if (!firebaseRuntime?.authApi) return;
+    try {
+      await firebaseRuntime.authApi.signOut(firebaseRuntime.auth);
+    } catch {}
+    setCurrentAccount(null);
+    setPasswordChangeInput('');
+    if (activeTab === 'settings') setActiveTab('gebetsplan');
+    setToast('Abgemeldet');
+  }, [activeTab]);
+
+  const changeOwnPassword = useCallback(async () => {
+    if (!passwordChangeInput.trim()) {
+      setToast('Bitte neues Passwort eingeben');
+      return;
+    }
+    if (!firebaseRuntime?.auth?.currentUser || !firebaseRuntime?.authApi?.updatePassword) {
+      setToast('Passwortänderung aktuell nicht möglich');
+      return;
+    }
+    try {
+      setAuthLoading(true);
+      await firebaseRuntime.authApi.updatePassword(firebaseRuntime.auth.currentUser, passwordChangeInput.trim());
+      setPasswordChangeInput('');
+      setToast('Passwort geändert ✓');
+    } catch (error) {
+      const code = String(error?.code || '');
+      if (code.includes('requires-recent-login')) setToast('Bitte neu einloggen und erneut versuchen');
+      else setToast('Passwort konnte nicht geändert werden');
+    } finally {
+      setAuthLoading(false);
+    }
+  }, [passwordChangeInput]);
+
+  const createManagedAccount = useCallback(async () => {
+    if (!isSuperAdmin) return;
+    const name = adminManageName.trim();
+    const password = adminManagePassword;
+    if (!name || !password) {
+      setToast('Name und Passwort sind erforderlich');
+      return;
+    }
+    const docId = normalizeAccountNameKey(name);
+    if (!docId) {
+      setToast('Ungültiger Name');
+      return;
+    }
+    try {
+      setAdminAccountsLoading(true);
+      const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+      if (existing) {
+        setToast('Name existiert bereits');
+        return;
+      }
+      const secondaryAuth = getSecondaryAuth();
+      const cred = await firebaseRuntime.authApi.createUserWithEmailAndPassword(secondaryAuth, buildAccountAuthEmail(name), password);
+      if (firebaseRuntime.authApi.updateProfile) {
+        await firebaseRuntime.authApi.updateProfile(cred.user, { displayName: name });
+      }
+      await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+        name,
+        nameKey: docId,
+        authEmail: buildAccountAuthEmail(name),
+        authUid: String(cred?.user?.uid || ''),
+        mosqueId: adminManageMosqueKey,
+        permissions: { ...adminManagePermissions },
+        isSuperAdmin: false,
+        active: true,
+        createdAt: new Date().toISOString(),
+        createdBy: currentAccount?.name || SUPER_ADMIN_NAME,
+      });
+      await firebaseRuntime.authApi.signOut(secondaryAuth).catch(() => {});
+      setAdminManageName('');
+      setAdminManagePassword('');
+      setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
+      setToast('Account erstellt ✓');
+      await loadAdminAccounts();
+    } catch (error) {
+      const code = String(error?.code || '');
+      if (code.includes('email-already-in-use')) setToast('Name existiert bereits');
+      else setToast('Account konnte nicht erstellt werden');
+      console.error('createManagedAccount failed', error);
+    } finally {
+      setAdminAccountsLoading(false);
+    }
+  }, [adminManageMosqueKey, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
+
+  const deleteManagedAccount = useCallback((account) => {
+    if (!isSuperAdmin || !account || account.isSuperAdmin) return;
+    Alert.alert('Account löschen', `Soll der Account ${account.name} gelöscht werden?`, [
+      { text: 'Abbrechen', style: 'cancel' },
+      {
+        text: 'Löschen',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, normalizeAccountNameKey(account.name));
+            setToast('Account gelöscht (Auth-Zugang ggf. separat entfernen)');
+            await loadAdminAccounts();
+          } catch (error) {
+            console.error('deleteManagedAccount failed', error);
+            setToast('Account konnte nicht gelöscht werden');
+          }
+        },
+      },
+    ]);
+  }, [isSuperAdmin, loadAdminAccounts]);
+
+  const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
+    if (!isSuperAdmin || !account || account.isSuperAdmin) return;
+    try {
+      await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, normalizeAccountNameKey(account.name), {
+        ...account,
+        permissions: { ...nextPermissions },
+        updatedAt: new Date().toISOString(),
+      });
+      await loadAdminAccounts();
+      setToast('Rechte aktualisiert ✓');
+    } catch (error) {
+      console.error('updateManagedPermissions failed', error);
+      setToast('Rechte konnten nicht aktualisiert werden');
+    }
+  }, [isSuperAdmin, loadAdminAccounts]);
+
+  const handleLogoPress = useCallback(() => {
+    setActiveTab('gebetsplan');
+    setAdminTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 3) {
+        setAdminLoginVisible(true);
+        return 0;
+      }
+      return next;
+    });
+  }, []);
+
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const isTablet = width >= 900;
@@ -1278,6 +1619,7 @@ function AppContent() {
   };
 
   const savePrayerOverride = async () => {
+    if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const cleanSoharAsr = overrideSoharAsrTime.trim();
     const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
 
@@ -1318,6 +1660,7 @@ function AppContent() {
   };
 
   const saveManualPrayerTimes = async () => {
+    if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const manualEntries = {
       fajr: manualFajrTime.trim(),
       sohar: manualSoharTime.trim(),
@@ -1407,6 +1750,70 @@ function AppContent() {
     return () => clearTimeout(timer);
   }, [now, timesToday, programConfigToday, programWindow.isActive]);
 
+
+  useEffect(() => {
+    if (!adminTapCount) return undefined;
+    const timer = setTimeout(() => setAdminTapCount(0), 1200);
+    return () => clearTimeout(timer);
+  }, [adminTapCount]);
+
+  useEffect(() => {
+    ensureSuperAdminBootstrap();
+  }, [ensureSuperAdminBootstrap]);
+
+  useEffect(() => {
+    if (!firebaseRuntime?.authApi || !firebaseRuntime?.auth) return undefined;
+    const unsubscribe = firebaseRuntime.authApi.onAuthStateChanged(firebaseRuntime.auth, async (user) => {
+      if (!user) {
+        setCurrentAccount(null);
+        return;
+      }
+      const nameKey = normalizeAccountNameKey(user.displayName || user.email?.split('@')[0] || '');
+      if (!nameKey) {
+        setCurrentAccount(null);
+        return;
+      }
+      try {
+        const account = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, nameKey);
+        if (!account?.active) {
+          await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
+          setCurrentAccount(null);
+          return;
+        }
+        if (!account.isSuperAdmin && account.mosqueId) setActiveMosqueKey(String(account.mosqueId));
+        else if (!accountMatchesActiveMosque(account)) {
+          await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
+          setCurrentAccount(null);
+          return;
+        }
+        setCurrentAccount(account);
+      } catch (error) {
+        console.error('Auth account load failed', error);
+        setCurrentAccount(null);
+      }
+    });
+    return () => unsubscribe();
+  }, [accountMatchesActiveMosque]);
+
+  useEffect(() => {
+    if (activeTab === 'settings' && !effectivePermissions.canEditSettings) {
+      setActiveTab('gebetsplan');
+    }
+  }, [activeTab, effectivePermissions.canEditSettings]);
+
+  useEffect(() => {
+    if (isSuperAdmin) loadAdminAccounts();
+  }, [isSuperAdmin, loadAdminAccounts]);
+
+
+  useEffect(() => {
+    if (!currentAccount || isSuperAdmin) return;
+    const assigned = String(currentAccount.mosqueId || '');
+    if (assigned && assigned !== activeMosqueKey) {
+      setActiveMosqueKey(assigned);
+    }
+  }, [activeMosqueKey, currentAccount, isSuperAdmin]);
+
   useEffect(() => {
     const loadLocal = async () => {
       try {
@@ -1431,6 +1838,7 @@ function AppContent() {
   };
 
   const onSelectMosque = async (key) => {
+    if (currentAccount && !isSuperAdmin) return;
     const next = getMosqueOptionByKey(key).key;
     setActiveMosqueKey(next);
     await AsyncStorage.setItem(STORAGE_KEYS.activeMosque, next);
@@ -1494,6 +1902,7 @@ function AppContent() {
   }, [programConfigByDate, todayISO]);
 
   const saveProgramForToday = async () => {
+    if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const name = String(programNameInput || '').trim();
     const startTime = String(programStartInput || '').trim();
     if (!name || !isValidTime(startTime)) {
@@ -1518,6 +1927,7 @@ function AppContent() {
   };
 
   const clearProgramForToday = async () => {
+    if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const next = { ...programConfigByDate };
     delete next[todayISO];
     setProgramConfigByDate(next);
@@ -2197,6 +2607,7 @@ function AppContent() {
   }, [activeMosque.label, getStatsExportDataset]);
 
   const handleExportStats = useCallback(async (rangeMode) => {
+    if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
     if (statsExporting) return;
     setStatsExporting(true);
     try {
@@ -2209,7 +2620,7 @@ function AppContent() {
     } finally {
       setStatsExporting(false);
     }
-  }, [statsExporting, writeStatsWorkbook]);
+  }, [effectivePermissions.canExportData, statsExporting, writeStatsWorkbook]);
 
   const writeProgramWorkbook = useCallback(async () => {
     const dateLabel = formatIsoWithWeekday(todayISO);
@@ -2321,6 +2732,7 @@ function AppContent() {
   }, [activeMosque.key, activeMosque.label, programStats, programWindow.label, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
+    if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
     if (programExporting) return;
     setProgramExporting(true);
     try {
@@ -2332,7 +2744,7 @@ function AppContent() {
     } finally {
       setProgramExporting(false);
     }
-  }, [programExporting, writeProgramWorkbook]);
+  }, [effectivePermissions.canExportData, programExporting, writeProgramWorkbook]);
 
   function formatMajlisName(locationKey) {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
@@ -2658,6 +3070,7 @@ function AppContent() {
   }, [activeMosque.label, getDetailedExportDataset, selectedDetailedMember]);
 
   const handleExportDetailed = useCallback(async (rangeMode) => {
+    if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
     if (detailedExporting) return;
     setDetailedExporting(true);
     try {
@@ -2670,7 +3083,7 @@ function AppContent() {
     } finally {
       setDetailedExporting(false);
     }
-  }, [detailedExporting, writeDetailedWorkbook]);
+  }, [detailedExporting, effectivePermissions.canExportData, writeDetailedWorkbook]);
   const detailedCurrentWeekCount = useMemo(() => {
     const minISO = detailedCurrentWeekIsos[0] || '';
     const maxISO = detailedCurrentWeekIsos[detailedCurrentWeekIsos.length - 1] || '';
@@ -3222,7 +3635,7 @@ function AppContent() {
           <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
           <View style={[styles.statsHeaderLocationChip, { backgroundColor: theme.chipBg }]}><Text style={[styles.statsHeaderLocationChipText, { color: theme.chipText }]}>{activeMosque.label}</Text></View>
           <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
-          {!isProgramStatsMode ? (
+          {!isProgramStatsMode && effectivePermissions.canExportData ? (
             <Pressable
               onPress={() => setStatsExportModalVisible(true)}
               disabled={!hasStatsExportData || statsExporting}
@@ -3237,7 +3650,7 @@ function AppContent() {
             >
               <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{statsExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
             </Pressable>
-          ) : (
+          ) : (isProgramStatsMode && effectivePermissions.canExportData ? (
             <Pressable
               onPress={handleExportProgram}
               disabled={programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0))}
@@ -3252,7 +3665,7 @@ function AppContent() {
             >
               <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{programExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
             </Pressable>
-          )}
+          ) : null)}
         </View>
 
         {isProgramStatsMode ? (
@@ -3857,6 +4270,7 @@ function AppContent() {
                     })()}
                   </View>
 
+                  {effectivePermissions.canViewIdStats ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
                     <Text style={[styles.noteText, { color: theme.muted }]}>Privater Bereich (Zugriffsbeschränkung folgt).</Text>
@@ -3864,6 +4278,7 @@ function AppContent() {
                       <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>Übersicht öffnen</Text>
                     </Pressable>
                   </View>
+                  ) : null}
                 </>
               );
             })()}
@@ -3978,8 +4393,90 @@ function AppContent() {
         </Pressable>
       </View>
 
+
+      {currentAccount ? (
+        <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Account</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${currentAccount.name} · ${isSuperAdmin ? 'Super-Admin' : activeMosque.label}`}</Text>
+          <View style={styles.mergeInputWrap}>
+            <TextInput value={passwordChangeInput} onChangeText={setPasswordChangeInput} placeholder="Neues Passwort" placeholderTextColor={theme.muted} autoCapitalize="none" secureTextEntry style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          </View>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={changeOwnPassword}>
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Passwort ändern</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={logoutAccount}>
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Logout</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {isSuperAdmin ? (
+        <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Accountverwaltung</Text>
+          <View style={styles.mergeInputWrap}>
+            <TextInput value={adminManageName} onChangeText={setAdminManageName} placeholder="Name (Login)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+            <TextInput value={adminManagePassword} onChangeText={setAdminManagePassword} placeholder="Passwort" placeholderTextColor={theme.muted} secureTextEntry autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          </View>
+          <View style={styles.statsToggleRow}>
+            {MOSQUE_OPTIONS.map((mosque) => (
+              <Pressable key={mosque.key} onPress={() => setAdminManageMosqueKey(mosque.key)} style={[styles.statsToggleBtn, { borderColor: adminManageMosqueKey === mosque.key ? theme.button : theme.border, backgroundColor: adminManageMosqueKey === mosque.key ? theme.button : theme.bg }]}>
+                <Text style={[styles.statsToggleBtnText, { color: adminManageMosqueKey === mosque.key ? theme.buttonText : theme.text }]}>{mosque.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Einstellungen ändern</Text><Switch value={adminManagePermissions.canEditSettings} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canEditSettings: v }))} /></View>
+          <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>ID-Statistiken sehen</Text><Switch value={adminManagePermissions.canViewIdStats} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canViewIdStats: v }))} /></View>
+          <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Daten exportieren</Text><Switch value={adminManagePermissions.canExportData} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canExportData: v }))} /></View>
+          <View style={styles.statsToggleRow}>
+            <Pressable onPress={() => setAdminManagePermissions(allPermissionsEnabled())} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}><Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Alle Rechte</Text></Pressable>
+            <Pressable onPress={() => setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS })} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}><Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Alles entfernen</Text></Pressable>
+          </View>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: adminAccountsLoading ? 0.7 : 1 }], pressed && styles.buttonPressed]} onPress={createManagedAccount} disabled={adminAccountsLoading}>
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{adminAccountsLoading ? 'Lädt…' : 'Account erstellen'}</Text>
+          </Pressable>
+          <View style={[styles.statsCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+            <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Bestehende Accounts</Text>
+            {adminAccounts.map((account) => (
+              <View key={account.nameKey || account.name} style={{ marginTop: 8, gap: 6 }}>
+                <View style={styles.statsCardHeaderRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontWeight: '700' }}>{account.name}</Text>
+                    <Text style={{ color: theme.muted }}>{account.isSuperAdmin ? 'Super-Admin' : (MOSQUE_OPTIONS.find((m) => m.key === account.mosqueId)?.label || account.mosqueId || '—')}</Text>
+                  </View>
+                  {!account.isSuperAdmin ? (
+                    <Pressable onPress={() => deleteManagedAccount(account)} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                      <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Löschen</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {!account.isSuperAdmin ? (
+                  <View style={styles.statsToggleRow}>
+                    {[
+                      ['canEditSettings', 'Settings'],
+                      ['canViewIdStats', 'ID-Stats'],
+                      ['canExportData', 'Export'],
+                    ].map(([permKey, label]) => {
+                      const isOn = Boolean(account?.permissions?.[permKey]);
+                      return (
+                        <Pressable
+                          key={`${account.name}_${permKey}`}
+                          onPress={() => updateManagedPermissions(account, { ...(account.permissions || {}), [permKey]: !isOn })}
+                          style={[styles.statsToggleBtn, { borderColor: isOn ? theme.button : theme.border, backgroundColor: isOn ? theme.button : theme.bg }]}
+                        >
+                          <Text style={[styles.statsToggleBtnText, { color: isOn ? theme.buttonText : theme.text }]}>{label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.8</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.7</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
@@ -3992,24 +4489,46 @@ function AppContent() {
       ? renderTerminal()
       : activeTab === 'stats'
         ? renderStats()
-        : renderSettings();
+        : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
-      <Pressable style={styles.logoWrap} onPress={() => setActiveTab('gebetsplan')}>
+      <Pressable style={styles.logoWrap} onPress={handleLogoPress}>
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </Pressable>
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
-        {TAB_ITEMS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
             <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
           </Pressable>
         ))}
       </View>
+
+
+      <Modal visible={isAdminLoginVisible} animationType="fade" transparent onRequestClose={() => setAdminLoginVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+            <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Account Login</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Interner Zugang</Text>
+            <View style={styles.mergeInputWrap}>
+              <TextInput value={loginNameInput} onChangeText={setLoginNameInput} placeholder="Name" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+              <TextInput value={loginPasswordInput} onChangeText={setLoginPasswordInput} placeholder="Passwort" placeholderTextColor={theme.muted} autoCapitalize="none" secureTextEntry style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+            </View>
+            <View style={styles.statsExportModalActions}>
+              <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: authLoading ? 0.7 : 1 }]}> 
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
+              </Pressable>
+              <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
+                <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
 
       <Modal visible={isPrivacyModalVisible} animationType="slide" transparent onRequestClose={() => setPrivacyModalVisible(false)}>
@@ -4293,7 +4812,7 @@ function AppContent() {
 
                   <Pressable
                     onPress={() => setDetailedExportModalVisible(true)}
-                    disabled={detailedExporting || !hasDetailedExportData}
+                    disabled={detailedExporting || !hasDetailedExportData || !effectivePermissions.canExportData}
                     style={[styles.statsExportBtn, { borderColor: theme.border, backgroundColor: (detailedExporting || !hasDetailedExportData) ? theme.border : theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.7 : 1 }]}
                   >
                     <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{detailedExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
@@ -4309,14 +4828,14 @@ function AppContent() {
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Wählen Sie den Zeitraum für den Excel-Export.</Text>
                   <View style={styles.statsExportModalActions}>
                     <Pressable
-                      disabled={detailedExporting || !hasDetailedExportData}
+                      disabled={detailedExporting || !hasDetailedExportData || !effectivePermissions.canExportData}
                       onPress={() => handleExportDetailed('currentWeek')}
                       style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
                     >
                       <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
                     </Pressable>
                     <Pressable
-                      disabled={detailedExporting || !hasDetailedExportData}
+                      disabled={detailedExporting || !hasDetailedExportData || !effectivePermissions.canExportData}
                       onPress={() => handleExportDetailed('previousWeek')}
                       style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
                     >
