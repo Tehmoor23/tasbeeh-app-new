@@ -1291,6 +1291,8 @@ function AppContent() {
       if (isAuthConfigurationError(error)) {
         const didFallbackLogin = await localAccountLogin();
         if (didFallbackLogin) return;
+        setToast('Login aktuell nicht möglich');
+        return;
       }
       const code = String(error?.code || '').toLowerCase();
       const message = String(error?.message || '').trim();
