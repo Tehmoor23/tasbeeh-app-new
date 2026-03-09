@@ -32,6 +32,8 @@ const STORAGE_KEYS = {
   programConfigsByDate: '@tasbeeh_program_configs_by_date',
 };
 
+const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
+
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
@@ -744,7 +746,6 @@ const getGermanHour = () => {
   } catch {}
   return new Date().getHours();
 };
-const isGermanNightDefault = () => { const h = getGermanHour(); return h >= 22 || h < 6; };
 const hasFirebaseConfig = () => FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.projectId).includes('YOUR_') && !String(FIREBASE_CONFIG.apiKey).includes('YOUR_');
 const withPressEffect = (style) => ({ pressed }) => [style, pressed && styles.buttonPressed];
 
@@ -2014,10 +2015,11 @@ function AppContent() {
   useEffect(() => {
     const loadLocal = async () => {
       try {
-        const darkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
         const mosqueRaw = await AsyncStorage.getItem(STORAGE_KEYS.activeMosque);
-        if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(isGermanNightDefault());
-        if (mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) setActiveMosqueKey(mosqueRaw); else setActiveMosqueKey(DEFAULT_MOSQUE_KEY);
+        const initialMosqueKey = (mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) ? mosqueRaw : DEFAULT_MOSQUE_KEY;
+        setActiveMosqueKey(initialMosqueKey);
+        const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(initialMosqueKey));
+        if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(false);
       } catch (e) {
         console.warn('Failed to load local settings:', e);
       }
@@ -2025,13 +2027,26 @@ function AppContent() {
     loadLocal();
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadMosqueTheme = async () => {
+      try {
+        const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(activeMosqueKey));
+        if (cancelled) return;
+        if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(false);
+      } catch {}
+    };
+    loadMosqueTheme();
+    return () => { cancelled = true; };
+  }, [activeMosqueKey]);
+
   const onToggleDarkMode = async (value) => {
     Animated.sequence([
       Animated.timing(themePulseAnim, { toValue: 0.96, duration: 140, useNativeDriver: true }),
       Animated.spring(themePulseAnim, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }),
     ]).start();
     setIsDarkMode(value);
-    await AsyncStorage.setItem(STORAGE_KEYS.darkMode, value ? '1' : '0');
+    await AsyncStorage.setItem(getDarkModeStorageKey(activeMosqueKey), value ? '1' : '0');
   };
 
   const onSelectMosque = async (key) => {
@@ -4574,7 +4589,7 @@ function AppContent() {
             onPress={saveMosquePreference}
             disabled={mosquePreferenceSaving}
           >
-            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{mosquePreferenceSaving ? 'Speichert…' : 'Moschee speichern'}</Text>
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{mosquePreferenceSaving ? 'Speichert…' : 'Speichern'}</Text>
           </Pressable>
         ) : null}
       </View>
