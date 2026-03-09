@@ -1100,6 +1100,7 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [currentAccount, setCurrentAccount] = useState(null);
   const [adminTapCount, setAdminTapCount] = useState(0);
+  const localSessionActiveRef = useRef(false);
   const [adminManageName, setAdminManageName] = useState('');
   const [adminManagePassword, setAdminManagePassword] = useState('');
   const [adminManageMosqueKey, setAdminManageMosqueKey] = useState(DEFAULT_MOSQUE_KEY);
@@ -1254,6 +1255,7 @@ function AppContent() {
       if (!fallbackAccount.isSuperAdmin && fallbackAccount.mosqueId) {
         setActiveMosqueKey(String(fallbackAccount.mosqueId));
       }
+      localSessionActiveRef.current = true;
       setCurrentAccount(fallbackAccount);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
@@ -1279,6 +1281,7 @@ function AppContent() {
         await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
         throw new Error('Account-Zuordnung ungültig');
       }
+      localSessionActiveRef.current = false;
       setCurrentAccount(account);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
@@ -1296,6 +1299,7 @@ function AppContent() {
   }, [loginNameInput, loginPasswordInput]);
 
   const logoutAccount = useCallback(async () => {
+    localSessionActiveRef.current = false;
     if (firebaseRuntime?.authApi) {
       try {
         await firebaseRuntime.authApi.signOut(firebaseRuntime.auth);
@@ -1853,9 +1857,11 @@ function AppContent() {
     if (!firebaseRuntime?.authApi || !firebaseRuntime?.auth) return undefined;
     const unsubscribe = firebaseRuntime.authApi.onAuthStateChanged(firebaseRuntime.auth, async (user) => {
       if (!user) {
+        if (localSessionActiveRef.current) return;
         setCurrentAccount(null);
         return;
       }
+      localSessionActiveRef.current = false;
       const nameKey = normalizeAccountNameKey(user.displayName || user.email?.split('@')[0] || '');
       if (!nameKey) {
         setCurrentAccount(null);
