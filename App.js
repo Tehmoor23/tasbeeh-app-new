@@ -1223,11 +1223,13 @@ function AppContent() {
       return;
     }
     const docId = normalizeAccountNameKey(name);
-    const localSuperAdminLogin = async () => {
-      if (normalizeAccountNameKey(name) !== normalizeAccountNameKey(SUPER_ADMIN_NAME) || password !== SUPER_ADMIN_DEFAULT_PASSWORD) {
+    const localAccountLogin = async () => {
+      const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId).catch(() => null);
+      const isDefaultSuperAdmin = normalizeAccountNameKey(name) === normalizeAccountNameKey(SUPER_ADMIN_NAME) && password === SUPER_ADMIN_DEFAULT_PASSWORD;
+      if (!existing && !isDefaultSuperAdmin) {
         return false;
       }
-      const fallbackAccount = {
+      const fallbackAccount = existing || {
         name: SUPER_ADMIN_NAME,
         nameKey: normalizeAccountNameKey(SUPER_ADMIN_NAME),
         mosqueId: null,
@@ -1235,25 +1237,32 @@ function AppContent() {
         isSuperAdmin: true,
         active: true,
       };
-      const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId).catch(() => null);
-      if (!existing) {
+      const matchesLocalPassword = isDefaultSuperAdmin
+        || (existing?.localPassword && String(existing.localPassword) === String(password));
+      if (!matchesLocalPassword) return false;
+      if (!fallbackAccount?.active) return false;
+      if (!existing && isDefaultSuperAdmin) {
         await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
           ...fallbackAccount,
           authEmail: buildAccountAuthEmail(SUPER_ADMIN_NAME),
           authUid: null,
+          localPassword: SUPER_ADMIN_DEFAULT_PASSWORD,
           createdAt: new Date().toISOString(),
           createdBy: 'bootstrap-local',
         }).catch(() => {});
       }
-      setCurrentAccount(existing || fallbackAccount);
+      if (!fallbackAccount.isSuperAdmin && fallbackAccount.mosqueId) {
+        setActiveMosqueKey(String(fallbackAccount.mosqueId));
+      }
+      setCurrentAccount(fallbackAccount);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
-      setToast(`Eingeloggt als ${SUPER_ADMIN_NAME}`);
+      setToast(`Eingeloggt als ${fallbackAccount.name || name}`);
       return true;
     };
 
     if (!firebaseRuntime?.authApi) {
-      const didFallbackLogin = await localSuperAdminLogin();
+      const didFallbackLogin = await localAccountLogin();
       if (!didFallbackLogin) setToast('Login fehlgeschlagen');
       return;
     }
@@ -1276,7 +1285,7 @@ function AppContent() {
       setToast(`Eingeloggt als ${account.name}`);
     } catch (error) {
       if (isAuthConfigurationError(error)) {
-        const didFallbackLogin = await localSuperAdminLogin();
+        const didFallbackLogin = await localAccountLogin();
         if (didFallbackLogin) return;
       }
       const message = String(error?.message || '').trim();
@@ -1335,6 +1344,8 @@ function AppContent() {
       return;
     }
     let secondaryAuth = null;
+    let authUid = null;
+    let localOnly = !firebaseRuntime?.authApi;
     try {
       setAdminAccountsLoading(true);
       const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
@@ -1342,16 +1353,30 @@ function AppContent() {
         setToast('Name existiert bereits');
         return;
       }
-      secondaryAuth = getSecondaryAuth();
-      const cred = await firebaseRuntime.authApi.createUserWithEmailAndPassword(secondaryAuth, buildAccountAuthEmail(name), password);
-      if (firebaseRuntime.authApi.updateProfile) {
-        await firebaseRuntime.authApi.updateProfile(cred.user, { displayName: name });
+      if (!localOnly && password.length >= 6) {
+        secondaryAuth = getSecondaryAuth();
+        try {
+          const cred = await firebaseRuntime.authApi.createUserWithEmailAndPassword(secondaryAuth, buildAccountAuthEmail(name), password);
+          authUid = String(cred?.user?.uid || '') || null;
+          if (firebaseRuntime.authApi.updateProfile) {
+            await firebaseRuntime.authApi.updateProfile(cred.user, { displayName: name });
+          }
+        } catch (error) {
+          if (isAuthConfigurationError(error)) {
+            localOnly = true;
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        localOnly = true;
       }
       await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
         name,
         nameKey: docId,
         authEmail: buildAccountAuthEmail(name),
-        authUid: String(cred?.user?.uid || ''),
+        authUid,
+        localPassword: localOnly ? password : null,
         mosqueId: adminManageMosqueKey,
         permissions: { ...adminManagePermissions },
         isSuperAdmin: false,
@@ -1362,7 +1387,7 @@ function AppContent() {
       setAdminManageName('');
       setAdminManagePassword('');
       setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
-      setToast('Account erstellt ✓');
+      setToast(localOnly ? 'Account erstellt ✓ (lokal)' : 'Account erstellt ✓');
       await loadAdminAccounts();
     } catch (error) {
       const code = String(error?.code || '');
@@ -1378,7 +1403,7 @@ function AppContent() {
       }
       setAdminAccountsLoading(false);
     }
-  }, [adminManageMosqueKey, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
+  }, [adminManageMosqueKey, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
 
   const deleteManagedAccount = useCallback((account) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin) return;
@@ -1418,6 +1443,10 @@ function AppContent() {
   }, [isSuperAdmin, loadAdminAccounts]);
 
   const handleLogoPress = useCallback(() => {
+    if (currentAccount) {
+      setToast(`Bereits eingeloggt als ${currentAccount.name}`);
+      return;
+    }
     setActiveTab('gebetsplan');
     setAdminTapCount((prev) => {
       const next = prev + 1;
@@ -1427,7 +1456,7 @@ function AppContent() {
       }
       return next;
     });
-  }, []);
+  }, [currentAccount]);
 
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -4549,12 +4578,13 @@ function AppContent() {
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </Pressable>
       {currentAccount ? (
-        <View style={[styles.accountSessionBar, { borderColor: theme.border, backgroundColor: theme.card }]}> 
-          <Text style={[styles.accountSessionName, { color: theme.text }]} numberOfLines={1}>{currentAccount.name}</Text>
-          <Text style={[styles.accountSessionRole, { color: theme.muted }]} numberOfLines={1}>{isSuperAdmin ? 'Super-Admin' : activeMosque.label}</Text>
-          <Pressable onPress={logoutAccount} style={({ pressed }) => [styles.accountSessionLogoutBtn, { borderColor: theme.border, backgroundColor: theme.bg }, pressed && styles.buttonPressed]}>
-            <Text style={[styles.accountSessionLogoutText, { color: theme.text }]}>Logout</Text>
-          </Pressable>
+        <View style={styles.accountSessionInlineWrap}>
+          <View style={[styles.accountSessionInline, { borderColor: theme.border, backgroundColor: theme.card }]}> 
+            <Text style={[styles.accountSessionInlineName, { color: theme.text }]} numberOfLines={1}>{currentAccount.name}</Text>
+            <Pressable onPress={logoutAccount} style={({ pressed }) => [styles.accountSessionInlineLogoutBtn, pressed && styles.buttonPressed]}>
+              <Text style={styles.accountSessionInlineLogoutText}>Logout</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
@@ -4578,8 +4608,8 @@ function AppContent() {
               <TextInput value={loginPasswordInput} onChangeText={setLoginPasswordInput} placeholder="Passwort" placeholderTextColor={theme.muted} autoCapitalize="none" secureTextEntry style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
             </View>
             <View style={styles.statsExportModalActions}>
-              <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: authLoading ? 0.7 : 1 }]}> 
-                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
+              <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: '#000000', backgroundColor: '#000000', opacity: authLoading ? 0.7 : 1 }]}> 
+                <Text style={[styles.statsExportOptionBtnText, { color: '#FFFFFF' }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
               </Pressable>
               <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
                 <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
@@ -4973,11 +5003,11 @@ const styles = StyleSheet.create({
   basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }), transform: [{ translateY: 8 }] },
   logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 8 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
-  accountSessionBar: { marginHorizontal: 18, marginTop: 4, marginBottom: 8, borderWidth: 1, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', gap: 2 },
-  accountSessionName: { fontSize: 15, fontWeight: '700' },
-  accountSessionRole: { fontSize: 12, fontWeight: '600' },
-  accountSessionLogoutBtn: { marginTop: 8, borderWidth: 1, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 16 },
-  accountSessionLogoutText: { fontSize: 13, fontWeight: '700' },
+  accountSessionInlineWrap: { width: '100%', alignItems: 'flex-end', paddingRight: 16, marginTop: 2, marginBottom: 6 },
+  accountSessionInline: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderRadius: 999, paddingLeft: 10, paddingRight: 6, paddingVertical: 5, gap: 8, maxWidth: '72%' },
+  accountSessionInlineName: { fontSize: 12, fontWeight: '700', flexShrink: 1 },
+  accountSessionInlineLogoutBtn: { backgroundColor: '#111111', borderRadius: 999, paddingVertical: 4, paddingHorizontal: 10 },
+  accountSessionInlineLogoutText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   contentTablet: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26, gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
