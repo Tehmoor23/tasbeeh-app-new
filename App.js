@@ -2019,7 +2019,11 @@ function AppContent() {
         const initialMosqueKey = (mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) ? mosqueRaw : DEFAULT_MOSQUE_KEY;
         setActiveMosqueKey(initialMosqueKey);
         const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(initialMosqueKey));
-        if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(false);
+        const fallbackDarkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
+        const resolved = (darkRaw === '1' || darkRaw === '0')
+          ? darkRaw
+          : ((fallbackDarkRaw === '1' || fallbackDarkRaw === '0') ? fallbackDarkRaw : null);
+        if (resolved) setIsDarkMode(resolved === '1'); else setIsDarkMode(false);
       } catch (e) {
         console.warn('Failed to load local settings:', e);
       }
@@ -2032,8 +2036,12 @@ function AppContent() {
     const loadMosqueTheme = async () => {
       try {
         const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(activeMosqueKey));
+        const fallbackDarkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
         if (cancelled) return;
-        if (darkRaw === '1' || darkRaw === '0') setIsDarkMode(darkRaw === '1'); else setIsDarkMode(false);
+        const resolved = (darkRaw === '1' || darkRaw === '0')
+          ? darkRaw
+          : ((fallbackDarkRaw === '1' || fallbackDarkRaw === '0') ? fallbackDarkRaw : null);
+        if (resolved) setIsDarkMode(resolved === '1'); else setIsDarkMode(false);
       } catch {}
     };
     loadMosqueTheme();
@@ -2046,7 +2054,10 @@ function AppContent() {
       Animated.spring(themePulseAnim, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }),
     ]).start();
     setIsDarkMode(value);
-    await AsyncStorage.setItem(getDarkModeStorageKey(activeMosqueKey), value ? '1' : '0');
+    await AsyncStorage.multiSet([
+      [getDarkModeStorageKey(activeMosqueKey), value ? '1' : '0'],
+      [STORAGE_KEYS.darkMode, value ? '1' : '0'],
+    ]);
   };
 
   const onSelectMosque = async (key) => {
