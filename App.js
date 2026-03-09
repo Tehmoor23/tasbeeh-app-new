@@ -1113,6 +1113,7 @@ function AppContent() {
   const [adminManagePermissions, setAdminManagePermissions] = useState({ ...DEFAULT_ACCOUNT_PERMISSIONS });
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
+  const [mosquePreferenceSaving, setMosquePreferenceSaving] = useState(false);
   const [passwordChangeInput, setPasswordChangeInput] = useState('');
 
   const [programNameInput, setProgramNameInput] = useState('');
@@ -1157,6 +1158,25 @@ function AppContent() {
     const allowed = getAllowedMosqueKeys(account);
     return allowed.includes(String(activeMosque.key || ''));
   }, [activeMosque.key, getAllowedMosqueKeys]);
+
+  const resolveAccountMosquePreference = useCallback((account) => {
+    const preferred = String(account?.preferredMosqueId || '');
+    if (account?.isSuperAdmin) {
+      if (preferred && MOSQUE_OPTIONS.some((item) => item.key === preferred)) return preferred;
+      return DEFAULT_MOSQUE_KEY;
+    }
+    const allowed = getAllowedMosqueKeys(account);
+    if (!allowed.length) return DEFAULT_MOSQUE_KEY;
+    if (preferred && allowed.includes(preferred)) return preferred;
+    if (allowed.includes(DEFAULT_MOSQUE_KEY)) return DEFAULT_MOSQUE_KEY;
+    return String(allowed[0]);
+  }, [getAllowedMosqueKeys]);
+
+  const canPersistMosquePreference = useMemo(() => {
+    if (!currentAccount) return false;
+    if (isSuperAdmin) return true;
+    return getAllowedMosqueKeys(currentAccount).length > 1;
+  }, [currentAccount, getAllowedMosqueKeys, isSuperAdmin]);
 
   const visibleTabs = useMemo(() => TAB_ITEMS.filter((tab) => (tab.key !== 'settings' || effectivePermissions.canEditSettings)), [effectivePermissions.canEditSettings]);
 
@@ -1289,9 +1309,9 @@ function AppContent() {
           createdBy: 'bootstrap-local',
         }).catch(() => {});
       }
-      const fallbackAllowedMosques = getAllowedMosqueKeys(fallbackAccount);
-      if (!fallbackAccount.isSuperAdmin && fallbackAllowedMosques.length) {
-        setActiveMosqueKey(String(fallbackAllowedMosques[0]));
+      const preferredMosqueKey = resolveAccountMosquePreference(fallbackAccount);
+      if (preferredMosqueKey) {
+        setActiveMosqueKey(String(preferredMosqueKey));
       }
       localSessionActiveRef.current = true;
       setCurrentAccount(fallbackAccount);
@@ -1312,13 +1332,8 @@ function AppContent() {
       const cred = await firebaseRuntime.authApi.signInWithEmailAndPassword(firebaseRuntime.auth, buildAccountAuthEmail(name), password);
       const account = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
       if (!account?.active) throw new Error('Account ist nicht aktiv');
-      const allowedMosques = getAllowedMosqueKeys(account);
-      if (!account.isSuperAdmin && allowedMosques.length) {
-        const nextMosque = allowedMosques.includes(String(activeMosqueKey))
-          ? String(activeMosqueKey)
-          : String(allowedMosques[0]);
-        setActiveMosqueKey(nextMosque);
-      }
+      const nextMosque = resolveAccountMosquePreference(account);
+      if (nextMosque) setActiveMosqueKey(String(nextMosque));
       if (account.authUid && String(account.authUid) !== String(cred?.user?.uid || '')) {
         await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
         throw new Error('Account-Zuordnung ungültig');
@@ -1345,7 +1360,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [activeMosqueKey, getAllowedMosqueKeys, loginNameInput, loginPasswordInput]);
+  }, [loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
 
   const logoutAccount = useCallback(async () => {
     localSessionActiveRef.current = false;
@@ -1459,6 +1474,7 @@ function AppContent() {
         localPasswordHash: localOnly ? await hashLocalPassword(password, docId) : null,
         mosqueId: selectedMosqueIds[0],
         mosqueIds: selectedMosqueIds,
+        preferredMosqueId: selectedMosqueIds.includes(DEFAULT_MOSQUE_KEY) ? DEFAULT_MOSQUE_KEY : selectedMosqueIds[0],
         permissions: { ...adminManagePermissions },
         isSuperAdmin: false,
         active: true,
@@ -1958,12 +1974,9 @@ function AppContent() {
           setCurrentAccount(null);
           return;
         }
-        const allowedMosques = getAllowedMosqueKeys(account);
-        if (!account.isSuperAdmin && allowedMosques.length) {
-          const nextMosque = allowedMosques.includes(String(activeMosqueKey))
-            ? String(activeMosqueKey)
-            : String(allowedMosques[0]);
-          setActiveMosqueKey(nextMosque);
+        const nextMosque = resolveAccountMosquePreference(account);
+        if (nextMosque) {
+          setActiveMosqueKey(String(nextMosque));
         } else if (!accountMatchesActiveMosque(account)) {
           await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
           setCurrentAccount(null);
@@ -1976,7 +1989,7 @@ function AppContent() {
       }
     });
     return () => unsubscribe();
-  }, [accountMatchesActiveMosque, activeMosqueKey, getAllowedMosqueKeys]);
+  }, [accountMatchesActiveMosque, resolveAccountMosquePreference]);
 
   useEffect(() => {
     if (activeTab === 'settings' && !effectivePermissions.canEditSettings) {
@@ -2037,6 +2050,40 @@ function AppContent() {
     setWeeklyAttendanceDocs({});
     setRefreshTick((v) => v + 1);
   };
+
+  const saveMosquePreference = useCallback(async () => {
+    if (!currentAccount) return;
+    if (!isSuperAdmin) {
+      const allowed = getAllowedMosqueKeys(currentAccount);
+      if (allowed.length <= 1) {
+        setToast('Keine speicherbare Auswahl');
+        return;
+      }
+      if (!allowed.includes(String(activeMosqueKey || ''))) {
+        setToast('Auswahl nicht erlaubt');
+        return;
+      }
+    }
+
+    const docId = normalizeAccountNameKey(currentAccount?.nameKey || currentAccount?.name || '');
+    if (!docId) return;
+    try {
+      setMosquePreferenceSaving(true);
+      await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+        ...currentAccount,
+        nameKey: docId,
+        preferredMosqueId: String(activeMosqueKey),
+        updatedAt: new Date().toISOString(),
+      });
+      setCurrentAccount((prev) => (prev ? { ...prev, preferredMosqueId: String(activeMosqueKey) } : prev));
+      setToast('Moschee-Präferenz gespeichert ✓');
+    } catch (error) {
+      console.error('saveMosquePreference failed', error);
+      setToast('Moschee-Präferenz konnte nicht gespeichert werden');
+    } finally {
+      setMosquePreferenceSaving(false);
+    }
+  }, [activeMosqueKey, currentAccount, getAllowedMosqueKeys, isSuperAdmin]);
 
   const handleMosqueSwitchTrigger = useCallback(() => {
     if (currentAccount) return;
@@ -4521,6 +4568,15 @@ function AppContent() {
             );
           })}
         </View>
+        {canPersistMosquePreference ? (
+          <Pressable
+            style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: mosquePreferenceSaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+            onPress={saveMosquePreference}
+            disabled={mosquePreferenceSaving}
+          >
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{mosquePreferenceSaving ? 'Speichert…' : 'Moschee speichern'}</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
