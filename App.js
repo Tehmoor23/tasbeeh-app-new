@@ -1107,6 +1107,7 @@ function AppContent() {
   const [currentAccount, setCurrentAccount] = useState(null);
   const [adminTapCount, setAdminTapCount] = useState(0);
   const [mosqueSwitchTapCount, setMosqueSwitchTapCount] = useState(0);
+  const [globalThemeTapCount, setGlobalThemeTapCount] = useState(0);
   const localSessionActiveRef = useRef(false);
   const [adminManageName, setAdminManageName] = useState('');
   const [adminManagePassword, setAdminManagePassword] = useState('');
@@ -1951,6 +1952,12 @@ function AppContent() {
   }, [mosqueSwitchTapCount]);
 
   useEffect(() => {
+    if (!globalThemeTapCount) return undefined;
+    const timer = setTimeout(() => setGlobalThemeTapCount(0), 1500);
+    return () => clearTimeout(timer);
+  }, [globalThemeTapCount]);
+
+  useEffect(() => {
     ensureSuperAdminBootstrap();
   }, [ensureSuperAdminBootstrap]);
 
@@ -2048,17 +2055,36 @@ function AppContent() {
     return () => { cancelled = true; };
   }, [activeMosqueKey]);
 
-  const onToggleDarkMode = async (value) => {
+  const onToggleDarkMode = async (value, applyGlobally = false) => {
     Animated.sequence([
       Animated.timing(themePulseAnim, { toValue: 0.96, duration: 140, useNativeDriver: true }),
       Animated.spring(themePulseAnim, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 8 }),
     ]).start();
     setIsDarkMode(value);
-    await AsyncStorage.multiSet([
+    const entries = [
       [getDarkModeStorageKey(activeMosqueKey), value ? '1' : '0'],
       [STORAGE_KEYS.darkMode, value ? '1' : '0'],
-    ]);
+    ];
+    if (applyGlobally) {
+      MOSQUE_OPTIONS.forEach((option) => {
+        const key = getDarkModeStorageKey(option.key);
+        if (!entries.some(([existing]) => existing === key)) {
+          entries.push([key, value ? '1' : '0']);
+        }
+      });
+    }
+    await AsyncStorage.multiSet(entries);
   };
+
+  const handleGlobalThemeToggleTrigger = useCallback(() => {
+    setGlobalThemeTapCount((prev) => {
+      const next = prev + 1;
+      if (next < 7) return next;
+      onToggleDarkMode(!isDarkMode, true);
+      setToast(`Globaler Modus: ${!isDarkMode ? 'Dark' : 'Light'}`);
+      return 0;
+    });
+  }, [isDarkMode]);
 
   const onSelectMosque = async (key) => {
     if (currentAccount && !isSuperAdmin) {
@@ -3597,7 +3623,9 @@ function AppContent() {
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
+          <Pressable onPress={handleGlobalThemeToggleTrigger}>
+            <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
+          </Pressable>
           <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
           <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
             <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
