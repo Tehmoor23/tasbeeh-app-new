@@ -1239,8 +1239,13 @@ function AppContent() {
         isSuperAdmin: true,
         active: true,
       };
-      const matchesLocalPassword = isDefaultSuperAdmin
-        || (existing?.localPassword && String(existing.localPassword) === String(password));
+      const hasStoredLocalPassword = Boolean(existing?.localPassword);
+      const matchesStoredPassword = hasStoredLocalPassword
+        ? String(existing.localPassword) === String(password)
+        : false;
+      const allowDefaultSuperAdminPassword = !existing || (!hasStoredLocalPassword && fallbackAccount?.isSuperAdmin);
+      const matchesLocalPassword = matchesStoredPassword
+        || (allowDefaultSuperAdminPassword && isDefaultSuperAdmin);
       if (!matchesLocalPassword) return false;
       if (!fallbackAccount?.active) return false;
       if (!existing && isDefaultSuperAdmin) {
