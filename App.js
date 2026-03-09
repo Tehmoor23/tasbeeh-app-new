@@ -1260,7 +1260,7 @@ function AppContent() {
       setCurrentAccount(fallbackAccount);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
-      setToast(`Eingeloggt als ${fallbackAccount.name || name}`);
+      setToast(`Assalāmu ʿalaikum wa raḥmatullāhi wa barakātuhu, ${fallbackAccount.name || name}! 👋`);
       return true;
     };
 
@@ -1286,12 +1286,12 @@ function AppContent() {
       setCurrentAccount(account);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
-      setToast(`Eingeloggt als ${account.name}`);
+      setToast(`Assalāmu ʿalaikum wa raḥmatullāhi wa barakātuhu, ${account.name}! 👋`);
     } catch (error) {
       if (isAuthConfigurationError(error)) {
         const didFallbackLogin = await localAccountLogin();
         if (didFallbackLogin) return;
-        setToast('Login aktuell nicht möglich');
+        setToast('Name oder Passwort ist falsch');
         return;
       }
       const code = String(error?.code || '').toLowerCase();
