@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -92,6 +93,10 @@ const DEFAULT_ACCOUNT_PERMISSIONS = {
   canExportData: false,
 };
 const allPermissionsEnabled = () => ({ canEditSettings: true, canViewIdStats: true, canExportData: true });
+const hashLocalPassword = async (password, nameKey) => Crypto.digestStringAsync(
+  Crypto.CryptoDigestAlgorithm.SHA256,
+  `${String(nameKey || '').toLowerCase()}::${String(password || '')}`,
+);
 const isAuthConfigurationError = (error) => {
   const code = String(error?.code || '');
   return code.includes('auth/configuration-not-found') || code.includes('auth/operation-not-allowed');
@@ -1240,14 +1245,29 @@ function AppContent() {
         active: true,
       };
       const hasStoredLocalPassword = Boolean(existing?.localPassword);
-      const matchesStoredPassword = hasStoredLocalPassword
-        ? String(existing.localPassword) === String(password)
-        : false;
+      const hasStoredLocalPasswordHash = Boolean(existing?.localPasswordHash);
+      const passwordHash = hasStoredLocalPasswordHash ? await hashLocalPassword(password, docId) : '';
+      const matchesStoredPassword = hasStoredLocalPasswordHash
+        ? String(existing.localPasswordHash) === String(passwordHash)
+        : (hasStoredLocalPassword ? String(existing.localPassword) === String(password) : false);
       const allowDefaultSuperAdminPassword = !existing || (!hasStoredLocalPassword && fallbackAccount?.isSuperAdmin);
       const matchesLocalPassword = matchesStoredPassword
         || (allowDefaultSuperAdminPassword && isDefaultSuperAdmin);
       if (!matchesLocalPassword) return false;
       if (!fallbackAccount?.active) return false;
+
+      if (existing && !existing.isSuperAdmin && hasStoredLocalPassword && !hasStoredLocalPasswordHash) {
+        const migratedHash = await hashLocalPassword(password, docId);
+        await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+          ...existing,
+          localPasswordHash: migratedHash,
+          localPassword: null,
+          updatedAt: new Date().toISOString(),
+        }).catch(() => {});
+        fallbackAccount.localPasswordHash = migratedHash;
+        fallbackAccount.localPassword = null;
+      }
+
       if (!existing && isDefaultSuperAdmin) {
         await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
           ...fallbackAccount,
@@ -1340,13 +1360,19 @@ function AppContent() {
       } else {
         const docId = normalizeAccountNameKey(currentAccount?.nameKey || currentAccount?.name || '');
         if (!docId) throw new Error('missing-account');
+        const nextHash = currentAccount?.isSuperAdmin ? null : await hashLocalPassword(nextPassword, docId);
         await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
           ...(currentAccount || {}),
           nameKey: docId,
-          localPassword: nextPassword,
+          localPassword: currentAccount?.isSuperAdmin ? nextPassword : null,
+          localPasswordHash: nextHash,
           updatedAt: new Date().toISOString(),
         });
-        setCurrentAccount((prev) => (prev ? { ...prev, localPassword: nextPassword } : prev));
+        setCurrentAccount((prev) => (prev ? {
+          ...prev,
+          localPassword: prev?.isSuperAdmin ? nextPassword : null,
+          localPasswordHash: prev?.isSuperAdmin ? (prev?.localPasswordHash || null) : nextHash,
+        } : prev));
       }
 
       setPasswordChangeInput('');
@@ -1406,7 +1432,8 @@ function AppContent() {
         nameKey: docId,
         authEmail: buildAccountAuthEmail(name),
         authUid,
-        localPassword: localOnly ? password : null,
+        localPassword: null,
+        localPasswordHash: localOnly ? await hashLocalPassword(password, docId) : null,
         mosqueId: adminManageMosqueKey,
         permissions: { ...adminManagePermissions },
         isSuperAdmin: false,
