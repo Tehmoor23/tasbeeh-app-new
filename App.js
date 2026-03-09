@@ -988,7 +988,7 @@ const getNextPrayer = (now, timesToday) => {
 const getToastTone = (message) => {
   const value = String(message || '').toLowerCase();
   if (!value) return 'positive';
-  if (/fehler|nicht|konnte|bereits|bitte|kein\s/.test(value)) return 'negative';
+  if (/fehler|error|falsch|nicht|konnte|bereits|bitte|kein\s|fehlgeschlagen/.test(value)) return 'negative';
   if (/✓|gespeichert|gezählt|entfernt/.test(value)) return 'positive';
   return 'positive';
 };
@@ -1100,6 +1100,7 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [currentAccount, setCurrentAccount] = useState(null);
   const [adminTapCount, setAdminTapCount] = useState(0);
+  const [mosqueSwitchTapCount, setMosqueSwitchTapCount] = useState(0);
   const localSessionActiveRef = useRef(false);
   const [adminManageName, setAdminManageName] = useState('');
   const [adminManagePassword, setAdminManagePassword] = useState('');
@@ -1291,8 +1292,13 @@ function AppContent() {
         const didFallbackLogin = await localAccountLogin();
         if (didFallbackLogin) return;
       }
+      const code = String(error?.code || '').toLowerCase();
       const message = String(error?.message || '').trim();
-      setToast(message || 'Login fehlgeschlagen');
+      if (code.includes('auth/invalid-credential') || code.includes('auth/wrong-password') || code.includes('auth/user-not-found') || code.includes('auth/invalid-email')) {
+        setToast('Name oder Passwort ist falsch');
+      } else {
+        setToast(message || 'Login fehlgeschlagen');
+      }
     } finally {
       setAuthLoading(false);
     }
@@ -1850,6 +1856,12 @@ function AppContent() {
   }, [adminTapCount]);
 
   useEffect(() => {
+    if (!mosqueSwitchTapCount) return undefined;
+    const timer = setTimeout(() => setMosqueSwitchTapCount(0), 1200);
+    return () => clearTimeout(timer);
+  }, [mosqueSwitchTapCount]);
+
+  useEffect(() => {
     ensureSuperAdminBootstrap();
   }, [ensureSuperAdminBootstrap]);
 
@@ -1944,6 +1956,19 @@ function AppContent() {
     setWeeklyAttendanceDocs({});
     setRefreshTick((v) => v + 1);
   };
+
+  const handleMosqueSwitchTrigger = useCallback(() => {
+    if (currentAccount) return;
+    setMosqueSwitchTapCount((prev) => {
+      const next = prev + 1;
+      if (next < 3) return next;
+      const currentIndex = MOSQUE_OPTIONS.findIndex((option) => option.key === activeMosqueKey);
+      const nextOption = MOSQUE_OPTIONS[(currentIndex + 1) % MOSQUE_OPTIONS.length] || MOSQUE_OPTIONS[0];
+      onSelectMosque(nextOption.key);
+      setToast(`Moschee gewechselt: ${nextOption.label}`);
+      return 0;
+    });
+  }, [activeMosqueKey, currentAccount, onSelectMosque]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3420,7 +3445,9 @@ function AppContent() {
         <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={[styles.dayName, { color: theme.text }]}>{DAY_NAMES_DE[displayDate.getDay()]}</Text>
           <Text style={[styles.dayDate, { color: theme.muted }]}>{germanDateLong(displayDate)}</Text>
-          <View style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}><Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text></View>
+          <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
+            <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
+          </Pressable>
           {!hasTodayData ? <Text style={[styles.syncStatus, { color: theme.muted }]}>Keine Daten für dieses Datum vorhanden.</Text> : null}
           {prayerRows.map((row) => {
             const isActive = row.activeKeys.includes(activePrayerKey || '');
