@@ -1334,6 +1334,7 @@ function AppContent() {
       setToast('Ungültiger Name');
       return;
     }
+    let secondaryAuth = null;
     try {
       setAdminAccountsLoading(true);
       const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
@@ -1341,7 +1342,7 @@ function AppContent() {
         setToast('Name existiert bereits');
         return;
       }
-      const secondaryAuth = getSecondaryAuth();
+      secondaryAuth = getSecondaryAuth();
       const cred = await firebaseRuntime.authApi.createUserWithEmailAndPassword(secondaryAuth, buildAccountAuthEmail(name), password);
       if (firebaseRuntime.authApi.updateProfile) {
         await firebaseRuntime.authApi.updateProfile(cred.user, { displayName: name });
@@ -1358,7 +1359,6 @@ function AppContent() {
         createdAt: new Date().toISOString(),
         createdBy: currentAccount?.name || SUPER_ADMIN_NAME,
       });
-      await firebaseRuntime.authApi.signOut(secondaryAuth).catch(() => {});
       setAdminManageName('');
       setAdminManagePassword('');
       setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
@@ -1367,9 +1367,15 @@ function AppContent() {
     } catch (error) {
       const code = String(error?.code || '');
       if (code.includes('email-already-in-use')) setToast('Name existiert bereits');
+      else if (isAuthConfigurationError(error)) setToast('Firebase Auth ist nicht korrekt eingerichtet');
       else setToast('Account konnte nicht erstellt werden');
-      console.error('createManagedAccount failed', error);
+      if (!isAuthConfigurationError(error)) {
+        console.error('createManagedAccount failed', error);
+      }
     } finally {
+      if (secondaryAuth?.currentUser) {
+        await firebaseRuntime.authApi.signOut(secondaryAuth).catch(() => {});
+      }
       setAdminAccountsLoading(false);
     }
   }, [adminManageMosqueKey, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
@@ -4542,6 +4548,15 @@ function AppContent() {
       <Pressable style={styles.logoWrap} onPress={handleLogoPress}>
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </Pressable>
+      {currentAccount ? (
+        <View style={[styles.accountSessionBar, { borderColor: theme.border, backgroundColor: theme.card }]}> 
+          <Text style={[styles.accountSessionName, { color: theme.text }]} numberOfLines={1}>{currentAccount.name}</Text>
+          <Text style={[styles.accountSessionRole, { color: theme.muted }]} numberOfLines={1}>{isSuperAdmin ? 'Super-Admin' : activeMosque.label}</Text>
+          <Pressable onPress={logoutAccount} style={({ pressed }) => [styles.accountSessionLogoutBtn, { borderColor: theme.border, backgroundColor: theme.bg }, pressed && styles.buttonPressed]}>
+            <Text style={[styles.accountSessionLogoutText, { color: theme.text }]}>Logout</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
@@ -4958,6 +4973,11 @@ const styles = StyleSheet.create({
   basmalaText: { textAlign: 'center', fontSize: 14, lineHeight: 20, paddingTop: 6, paddingBottom: 2, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }), transform: [{ translateY: 8 }] },
   logoWrap: { alignItems: 'center', paddingBottom: 6, transform: [{ translateY: 8 }] },
   logoImage: { width: 34, height: 34, opacity: 0.92, backgroundColor: 'transparent' },
+  accountSessionBar: { marginHorizontal: 18, marginTop: 4, marginBottom: 8, borderWidth: 1, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', gap: 2 },
+  accountSessionName: { fontSize: 15, fontWeight: '700' },
+  accountSessionRole: { fontSize: 12, fontWeight: '600' },
+  accountSessionLogoutBtn: { marginTop: 8, borderWidth: 1, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 16 },
+  accountSessionLogoutText: { fontSize: 13, fontWeight: '700' },
   content: { flexGrow: 1, padding: 16, gap: 10, paddingBottom: 16 },
   contentTablet: { width: '100%', maxWidth: 1180, alignSelf: 'center', paddingHorizontal: 26, gap: 14 },
   headerRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', position: 'relative' },
