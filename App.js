@@ -1065,9 +1065,11 @@ function AppContent() {
   const [statsWeekRankingRange, setStatsWeekRankingRange] = useState('currentWeek');
   const [statsMajlisTanzeemFilter, setStatsMajlisTanzeemFilter] = useState('total');
   const [statsMajlisShowAll, setStatsMajlisShowAll] = useState(false);
+  const [programMajlisFilter, setProgramMajlisFilter] = useState('total');
   const [isStatsExportModalVisible, setStatsExportModalVisible] = useState(false);
   const [statsExporting, setStatsExporting] = useState(false);
   const [programExporting, setProgramExporting] = useState(false);
+  const [programAttendanceEntries, setProgramAttendanceEntries] = useState([]);
   const [isDetailedIdOverviewVisible, setDetailedIdOverviewVisible] = useState(false);
   const [detailedFlowTanzeem, setDetailedFlowTanzeem] = useState('');
   const [detailedFlowMajlis, setDetailedFlowMajlis] = useState('');
@@ -2367,6 +2369,39 @@ function AppContent() {
     };
   }, [activeTab, statsMode, todayISO, programConfigToday, activeMosqueKey]);
 
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
+    const programName = String(programConfigToday?.name || '').trim();
+    if (!programName) {
+      setProgramAttendanceEntries([]);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const programKey = toLocationKey(programName);
+    const idPrefix = `${todayISO}_${programKey}_`;
+
+    const fetchProgramEntries = () => {
+      listDocIds(PROGRAM_ATTENDANCE_COLLECTION)
+        .then((ids) => ids.filter((docId) => String(docId || '').startsWith(idPrefix)))
+        .then((ids) => Promise.all(ids.map((docId) => getDocData(PROGRAM_ATTENDANCE_COLLECTION, docId))))
+        .then((rows) => {
+          if (cancelled) return;
+          setProgramAttendanceEntries(rows.filter(Boolean));
+        })
+        .catch(() => {
+          if (!cancelled) setToast('Datenbankfehler – bitte Internet prüfen');
+        });
+    };
+
+    fetchProgramEntries();
+    const timer = setInterval(fetchProgramEntries, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [activeTab, statsMode, todayISO, programConfigToday, activeMosqueKey]);
+
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
   const statsWeekIsos = useMemo(() => getWeekIsosMondayToSunday(now), [now]);
@@ -3120,11 +3155,25 @@ function AppContent() {
   const detailedIdChoices = useMemo(() => {
     if (!detailedFlowTanzeem || !detailedFlowMajlis) return [];
     const query = detailedIdSearchQuery.trim();
+    const activeProgramName = String(programConfigToday?.name || '').trim();
+    const programPresentIds = new Set(
+      programAttendanceEntries
+        .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === detailedFlowTanzeem)
+        .filter((entry) => String(entry?.majlis || '').trim() === detailedFlowMajlis)
+        .map((entry) => String(entry?.idNumber || '').trim())
+        .filter(Boolean),
+    );
+
     return membersDirectory
       .filter((entry) => entry.tanzeem === detailedFlowTanzeem && entry.majlis === detailedFlowMajlis)
       .filter((entry) => (!query || String(entry.idNumber).includes(query)))
+      .map((entry) => ({
+        ...entry,
+        isPresentInActiveProgram: Boolean(programPresentIds.has(String(entry.idNumber))),
+        hasActiveProgram: Boolean(activeProgramName),
+      }))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
-  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery]);
+  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, programConfigToday, programAttendanceEntries]);
 
   const detailedCurrentWeekIsos = useMemo(() => getWeekIsosMondayToSunday(now), [now]);
   const detailedLast7Days = useMemo(() => getLast7Days(now), [now]);
@@ -3837,7 +3886,40 @@ function AppContent() {
     };
     const programTotal = Number(programStats?.total) || 0;
     const programGuestTotal = Number(programStats?.guestTotal) || 0;
-    const topProgramMajlis = buildMajlisRanking(programStats?.byMajlis || {});
+    const programMajlisRows = (() => {
+      const filterKey = ['total', 'ansar', 'khuddam', 'atfal'].includes(programMajlisFilter) ? programMajlisFilter : 'total';
+      const directoryMembers = membersDirectory.filter((entry) => (
+        filterKey === 'total' ? true : entry.tanzeem === filterKey
+      ));
+
+      const registeredByMajlis = directoryMembers.reduce((acc, entry) => {
+        const majlis = String(entry?.majlis || '').trim();
+        if (!majlis) return acc;
+        acc[majlis] = (acc[majlis] || 0) + 1;
+        return acc;
+      }, {});
+
+      const presentByMajlis = programAttendanceEntries
+        .filter((entry) => {
+          if (String(entry?.idNumber || '') === 'guest') return false;
+          const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+          return filterKey === 'total' ? true : tanzeem === filterKey;
+        })
+        .reduce((acc, entry) => {
+          const majlis = String(entry?.majlis || '').trim();
+          if (!majlis) return acc;
+          acc[majlis] = (acc[majlis] || 0) + 1;
+          return acc;
+        }, {});
+
+      return Object.keys({ ...registeredByMajlis, ...presentByMajlis })
+        .map((majlis) => ({
+          majlis,
+          present: Number(presentByMajlis[majlis]) || 0,
+          total: Number(registeredByMajlis[majlis]) || 0,
+        }))
+        .sort((a, b) => (b.present - a.present) || a.majlis.localeCompare(b.majlis));
+    })();
 
     const chartPalette = {
       total: isDarkMode ? '#F9FAFB' : '#111827',
@@ -4000,25 +4082,59 @@ function AppContent() {
                 </View>
               </View>
 
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Top Majlises (Programm)</Text>
-                {topProgramMajlis.length === 0 ? (
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+                <View style={styles.statsCardHeaderRow}>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anwesenheit nach Majlis (Programm)</Text>
+                  <View style={styles.statsCyclerInline}>
+                    <Pressable
+                      onPress={() => setProgramMajlisFilter((prev) => {
+                        const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                        const idx = options.indexOf(prev);
+                        return options[(idx - 1 + options.length) % options.length];
+                      })}
+                      style={styles.statsCyclerArrowBtn}
+                    >
+                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
+                    </Pressable>
+                    <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{programMajlisFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[programMajlisFilter]}</Text>
+                    <Pressable
+                      onPress={() => setProgramMajlisFilter((prev) => {
+                        const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                        const idx = options.indexOf(prev);
+                        return options[(idx + 1) % options.length];
+                      })}
+                      style={styles.statsCyclerArrowBtn}
+                    >
+                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+                {programMajlisRows.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
                 ) : (
                   (() => {
-                    const maxTop = Math.max(1, ...topProgramMajlis.map(([, count]) => Number(count) || 0));
-                    return topProgramMajlis.map(([locationKey, count]) => (
-                      <View key={locationKey} style={styles.majlisBarRow}>
-                        <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{formatMajlisName(locationKey)}</Text>
-                        <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
-                          <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(count) || 0) / maxTop) * 100}%` }]} />
+                    const maxTop = Math.max(1, ...programMajlisRows.map((row) => Number(row.present) || 0));
+                    return programMajlisRows.map((row) => (
+                      <View key={row.majlis} style={styles.majlisBarRow}>
+                        <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{row.majlis}</Text>
+                        <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}> 
+                          <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(row.present) || 0) / maxTop) * 100}%` }]} />
                         </View>
-                        <Text style={[styles.majlisBarValue, { color: theme.text }]}>{Number(count) || 0}</Text>
+                        <Text style={[styles.majlisBarValue, { color: theme.text }]}>{`${row.present}/${row.total}`}</Text>
                       </View>
                     ));
                   })()
                 )}
               </View>
+
+              {effectivePermissions.canViewIdStats ? (
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
+                <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); setDetailedFlowTanzeem(''); setDetailedFlowMajlis(''); setDetailedIdSearchQuery(''); setDetailedIdOverviewVisible(true); }} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                  <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>Übersicht öffnen</Text>
+                </Pressable>
+              </View>
+              ) : null}
             </>
           )
         ) : (
@@ -4574,9 +4690,8 @@ function AppContent() {
                   </View>
 
                   {effectivePermissions.canViewIdStats ? (
-                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
-                    <Text style={[styles.noteText, { color: theme.muted }]}>Privater Bereich (Zugriffsbeschränkung folgt).</Text>
                     <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); setDetailedFlowTanzeem(''); setDetailedFlowMajlis(''); setDetailedIdSearchQuery(''); setDetailedIdOverviewVisible(true); }} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                       <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>Übersicht öffnen</Text>
                     </Pressable>
@@ -4990,9 +5105,9 @@ function AppContent() {
             >
               {!selectedDetailedMember ? (
                 <>
-                  <View style={[styles.detailedGuideCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                  <View style={[styles.detailedGuideCard, { borderColor: theme.border, backgroundColor: theme.card }]}> 
                     <Text style={[styles.detailedGuideTitle, { color: theme.text }]}>Bitte zuerst auswählen</Text>
-                    <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID</Text>
+                    <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID Suche</Text>
                   </View>
                   <View style={styles.statsToggleRow}>
                     {TANZEEM_OPTIONS.map((key) => {
@@ -5043,7 +5158,7 @@ function AppContent() {
                     {detailedIdChoices.map((member) => (
                       <Pressable
                         key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                        onPress={() => {
+                        onPress={statsMode === 'program' ? undefined : () => {
                           setSelectedDetailedMember(member);
                           setDetailedGraphRange('currentWeek');
                           setDetailedPrayerRange('currentWeek');
@@ -5054,11 +5169,27 @@ function AppContent() {
                         }}
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
                       >
-                        <Text style={{ color: theme.text, fontWeight: '700' }}>{member.idNumber}</Text>
-                        <Text style={{ color: theme.muted, fontSize: 12 }}>{`${TANZEEM_LABELS[member.tanzeem]} · ${member.majlis}`}</Text>
+                        {statsMode === 'program' ? (
+                          <Text style={{ color: theme.text, fontWeight: '700' }}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}`}</Text>
+                        ) : (
+                          <>
+                            <Text style={{ color: theme.text, fontWeight: '700' }}>{member.idNumber}</Text>
+                            <Text style={{ color: theme.muted, fontSize: 12 }}>{`${TANZEEM_LABELS[member.tanzeem]} · ${member.majlis}`}</Text>
+                          </>
+                        )}
+                        {statsMode === 'program' ? (
+                          <Text style={{ color: member.hasActiveProgram ? (member.isPresentInActiveProgram ? '#16A34A' : '#DC2626') : theme.muted, fontSize: 12, marginTop: 4 }}>
+                            {member.hasActiveProgram
+                              ? (member.isPresentInActiveProgram ? '● anwesend' : '● nicht anwesend')
+                              : 'Kein aktives Programm konfiguriert'}
+                          </Text>
+                        ) : null}
                       </Pressable>
                     ))}
                     {detailedIdChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine IDs gefunden.</Text> : null}
+                    {statsMode === 'program' && !String(programConfigToday?.name || '').trim() ? (
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Aktuell ist kein Programm aktiv. IDs werden ohne Anwesenheitsstatus angezeigt.</Text>
+                    ) : null}
                   </View>
                   </>) : null}
                   {!detailedFlowTanzeem || !detailedFlowMajlis ? (
