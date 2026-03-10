@@ -2973,6 +2973,64 @@ function AppContent() {
       .filter((row) => row.count > 0)
       .sort((a, b) => b.count - a.count || String(a.locationKey).localeCompare(String(b.locationKey)));
 
+    const majlisAttendanceRows = (() => {
+      const buildCountsForFilter = (filterKey) => {
+        const registeredByMajlis = membersDirectory
+          .filter((entry) => (filterKey === 'total' ? true : entry.tanzeem === filterKey))
+          .reduce((acc, entry) => {
+            const majlis = String(entry?.majlis || '').trim();
+            if (!majlis) return acc;
+            acc[majlis] = (acc[majlis] || 0) + 1;
+            return acc;
+          }, {});
+
+        const presentByMajlis = programAttendanceEntries
+          .filter((entry) => String(entry?.idNumber || '') !== 'guest')
+          .filter((entry) => {
+            const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+            return filterKey === 'total' ? true : tanzeem === filterKey;
+          })
+          .reduce((acc, entry) => {
+            const majlis = String(entry?.majlis || '').trim();
+            if (!majlis) return acc;
+            acc[majlis] = (acc[majlis] || 0) + 1;
+            return acc;
+          }, {});
+
+        return { registeredByMajlis, presentByMajlis };
+      };
+
+      const totalCounts = buildCountsForFilter('total');
+      const ansarCounts = buildCountsForFilter('ansar');
+      const khuddamCounts = buildCountsForFilter('khuddam');
+      const atfalCounts = buildCountsForFilter('atfal');
+
+      const allMajlises = Array.from(new Set([
+        ...Object.keys(totalCounts.registeredByMajlis),
+        ...Object.keys(totalCounts.presentByMajlis),
+        ...Object.keys(ansarCounts.registeredByMajlis),
+        ...Object.keys(ansarCounts.presentByMajlis),
+        ...Object.keys(khuddamCounts.registeredByMajlis),
+        ...Object.keys(khuddamCounts.presentByMajlis),
+        ...Object.keys(atfalCounts.registeredByMajlis),
+        ...Object.keys(atfalCounts.presentByMajlis),
+      ]));
+
+      return allMajlises
+        .map((majlis) => ({
+          majlis,
+          totalPresent: Number(totalCounts.presentByMajlis[majlis]) || 0,
+          totalRegistered: Number(totalCounts.registeredByMajlis[majlis]) || 0,
+          ansarPresent: Number(ansarCounts.presentByMajlis[majlis]) || 0,
+          ansarRegistered: Number(ansarCounts.registeredByMajlis[majlis]) || 0,
+          khuddamPresent: Number(khuddamCounts.presentByMajlis[majlis]) || 0,
+          khuddamRegistered: Number(khuddamCounts.registeredByMajlis[majlis]) || 0,
+          atfalPresent: Number(atfalCounts.presentByMajlis[majlis]) || 0,
+          atfalRegistered: Number(atfalCounts.registeredByMajlis[majlis]) || 0,
+        }))
+        .sort((a, b) => (b.totalPresent - a.totalPresent) || a.majlis.localeCompare(b.majlis));
+    })();
+
     if (total <= 0 && majlisRowsRaw.length === 0) {
       setToast('Keine Programmdaten zum Export verfügbar');
       return;
@@ -3011,12 +3069,26 @@ function AppContent() {
     const majlisSheet = XLSX.utils.aoa_to_sheet(majlisRows);
     majlisSheet['!cols'] = [{ wch: 30 }, { wch: 14 }];
 
+    const majlisAttendanceSheetRows = [
+      ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal'],
+      ...majlisAttendanceRows.map((row) => [
+        row.majlis,
+        `${row.totalPresent}/${row.totalRegistered}`,
+        `${row.ansarPresent}/${row.ansarRegistered}`,
+        `${row.khuddamPresent}/${row.khuddamRegistered}`,
+        `${row.atfalPresent}/${row.atfalRegistered}`,
+      ]),
+    ];
+    const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
+    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, tanzeemSheet, 'Tanzeem Aufteilung');
     XLSX.utils.book_append_sheet(workbook, majlisSheet, 'Teilnehmer nach Majlis');
+    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anwesenheit');
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Tanzeem Aufteilung', 'Teilnehmer nach Majlis'].forEach((sheetName) => {
+    ['Übersicht', 'Tanzeem Aufteilung', 'Teilnehmer nach Majlis', 'Majlis Anwesenheit'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws || !ws['!ref']) return;
       const range = XLSX.utils.decode_range(ws['!ref']);
@@ -3063,7 +3135,7 @@ function AppContent() {
       dialogTitle: 'Programmdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, programStats, programWindow.label, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, programWindow.label, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
