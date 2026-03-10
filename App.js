@@ -4085,29 +4085,16 @@ function AppContent() {
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                 <View style={styles.statsCardHeaderRow}>
                   <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anwesenheit nach Majlis (Programm)</Text>
-                  <View style={styles.statsCyclerInline}>
-                    <Pressable
-                      onPress={() => setProgramMajlisFilter((prev) => {
-                        const options = ['total', 'ansar', 'khuddam', 'atfal'];
-                        const idx = options.indexOf(prev);
-                        return options[(idx - 1 + options.length) % options.length];
-                      })}
-                      style={styles.statsCyclerArrowBtn}
-                    >
-                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
-                    </Pressable>
-                    <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{programMajlisFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[programMajlisFilter]}</Text>
-                    <Pressable
-                      onPress={() => setProgramMajlisFilter((prev) => {
-                        const options = ['total', 'ansar', 'khuddam', 'atfal'];
-                        const idx = options.indexOf(prev);
-                        return options[(idx + 1) % options.length];
-                      })}
-                      style={styles.statsCyclerArrowBtn}
-                    >
-                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'>>'}</Text>
-                    </Pressable>
-                  </View>
+                  <Pressable
+                    onPress={() => setProgramMajlisFilter((prev) => {
+                      const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                      const idx = options.indexOf(prev);
+                      return options[(idx + 1) % options.length];
+                    })}
+                    style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                  >
+                    <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{programMajlisFilter === 'total' ? 'Gesamt' : TANZEEM_LABELS[programMajlisFilter]}</Text>
+                  </Pressable>
                 </View>
                 {programMajlisRows.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
@@ -4120,7 +4107,7 @@ function AppContent() {
                         <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}> 
                           <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(row.present) || 0) / maxTop) * 100}%` }]} />
                         </View>
-                        <Text style={[styles.majlisBarValue, { color: theme.text }]}>{`${row.present}/${row.total}`}</Text>
+                        <Text numberOfLines={1} style={[styles.majlisBarValue, { color: theme.text }]}>{`${row.present}/${row.total}`}</Text>
                       </View>
                     ));
                   })()
@@ -5565,7 +5552,7 @@ const styles = StyleSheet.create({
   majlisBarLabel: { width: 120, fontSize: 12, fontWeight: '600' },
   majlisBarTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
   majlisBarFill: { height: '100%', borderRadius: 999 },
-  majlisBarValue: { width: 24, textAlign: 'right', fontSize: 12, fontWeight: '700' },
+  majlisBarValue: { width: 40, textAlign: 'right', fontSize: 11, fontWeight: '700' },
   barRow: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8 },
   barLabel: { width: 120, fontSize: 12, fontWeight: '600' },
   barTrack: { flex: 1, height: 10, borderRadius: 999, overflow: 'hidden' },
