@@ -1086,7 +1086,7 @@ function AppContent() {
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
   const [selectedStatsWeekStartISO, setSelectedStatsWeekStartISO] = useState('');
   const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
-  const [isStatsWeekPickerVisible, setStatsWeekPickerVisible] = useState(false);
+  const [isStatsWeekModalVisible, setStatsWeekModalVisible] = useState(false);
   const [isDetailedCalendarVisible, setDetailedCalendarVisible] = useState(false);
   const [availableStatsDates, setAvailableStatsDates] = useState([]);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
@@ -4434,6 +4434,11 @@ function AppContent() {
 
               return (
                 <>
+                  {(statsTotalRange === 'currentWeek' || statsTanzeemRange === 'currentWeek' || statsMajlisRange === 'currentWeek' || statsPrayerRange === 'currentWeek' || statsGraphRange === 'currentWeek') ? (
+                    <Pressable onPress={() => setStatsWeekModalVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                      <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>{`KW auswählen · ${currentWeekLabel}`}</Text>
+                    </Pressable>
+                  ) : null}
                   {(statsTotalRange === 'selectedDate' || statsTanzeemRange === 'selectedDate' || statsMajlisRange === 'selectedDate' || statsPrayerRange === 'selectedDate' || statsGraphRange === 'selectedDate') ? (
                     <Pressable onPress={() => setStatsCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                       <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>Datum auswählen · {selectedStatsDateLabel}</Text>
@@ -5137,38 +5142,14 @@ function AppContent() {
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
-              <Pressable onPress={() => { setStatsWeekPickerVisible(false); setStatsCalendarVisible(false); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
+              <Pressable onPress={() => { setStatsCalendarVisible(false); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
                 <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
-              <Pressable
-                onPress={() => setStatsWeekPickerVisible((prev) => !prev)}
-                style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
-              >
-                <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>{`KW auswählen · ${currentWeekLabel}`}</Text>
-              </Pressable>
-              {isStatsWeekPickerVisible ? (
-                availableStatsWeeks.length === 0 ? (
-                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Kalenderwochen verfügbar.</Text>
-                ) : (
-                  availableStatsWeeks.map((week) => {
-                    const isActive = week.weekStartISO === selectedStatsWeekStartISO;
-                    return (
-                      <Pressable
-                        key={`week_${week.weekStartISO}`}
-                        onPress={() => { setSelectedStatsWeekStartISO(week.weekStartISO); setStatsWeekPickerVisible(false); }}
-                        style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
-                      >
-                        <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{week.label}</Text>
-                      </Pressable>
-                    );
-                  })
-                )
-              ) : null}
               {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
                 <Pressable
-                  onPress={() => { setSelectedStatsDateISO(todayISO); setSelectedStatsWeekStartISO(currentWeekStartISO); setStatsCalendarVisible(false); }}
+                  onPress={() => { setSelectedStatsDateISO(todayISO); setStatsCalendarVisible(false); }}
                   style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
                 >
                   <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
@@ -5184,10 +5165,39 @@ function AppContent() {
                 return (
                   <Pressable
                     key={iso}
-                    onPress={() => { setSelectedStatsDateISO(iso); setSelectedStatsWeekStartISO(toISO(startOfWeekMonday(parseISO(iso) || now))); setStatsCalendarVisible(false); }}
+                    onPress={() => { setSelectedStatsDateISO(iso); setStatsCalendarVisible(false); }}
                     style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
                   >
                     <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      <Modal visible={isStatsWeekModalVisible} animationType="slide" transparent onRequestClose={() => setStatsWeekModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}> 
+            <View style={styles.privacyModalHeader}>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>KW auswählen</Text>
+              <Pressable onPress={() => setStatsWeekModalVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+              {availableStatsWeeks.length === 0 ? (
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Kalenderwochen verfügbar.</Text>
+              ) : availableStatsWeeks.map((week) => {
+                const isActive = week.weekStartISO === selectedStatsWeekStartISO;
+                return (
+                  <Pressable
+                    key={`week_${week.weekStartISO}`}
+                    onPress={() => { setSelectedStatsWeekStartISO(week.weekStartISO); setStatsWeekModalVisible(false); }}
+                    style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
+                  >
+                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{week.label}</Text>
                   </Pressable>
                 );
               })}
@@ -5478,7 +5488,7 @@ function AppContent() {
                   <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
                     {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
                       <Pressable
-                        onPress={() => { setSelectedStatsDateISO(todayISO); setSelectedStatsWeekStartISO(currentWeekStartISO); setDetailedCalendarVisible(false); }}
+                        onPress={() => { setSelectedStatsDateISO(todayISO); setDetailedCalendarVisible(false); }}
                         style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
                       >
                         <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
@@ -5494,7 +5504,7 @@ function AppContent() {
                       return (
                         <Pressable
                           key={`detailed_${iso}`}
-                          onPress={() => { setSelectedStatsDateISO(iso); setSelectedStatsWeekStartISO(toISO(startOfWeekMonday(parseISO(iso) || now))); setDetailedCalendarVisible(false); }}
+                          onPress={() => { setSelectedStatsDateISO(iso); setDetailedCalendarVisible(false); }}
                           style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
                         >
                           <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
