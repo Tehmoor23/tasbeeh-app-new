@@ -1129,6 +1129,8 @@ function AppContent() {
   const [programStats, setProgramStats] = useState(null);
   const [idSearchQuery, setIdSearchQuery] = useState('');
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
+  const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
+  const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalScrollRef = useRef(null);
@@ -2283,6 +2285,21 @@ function AppContent() {
     if (idSearchQuery) return filteredMemberChoices;
     return memberChoices;
   }, [filteredMemberChoices, idSearchQuery, memberChoices]);
+
+  const quickSearchDigits = String(quickIdSearchQuery || '').replace(/[^0-9]/g, '');
+  const quickSearchResults = useMemo(() => {
+    if (quickSearchDigits.length < 4) return [];
+    return membersDirectory
+      .filter((entry) => String(entry?.idNumber || '').includes(quickSearchDigits))
+      .sort((a, b) => {
+        const aNum = Number.parseInt(String(a?.idNumber || ''), 10);
+        const bNum = Number.parseInt(String(b?.idNumber || ''), 10);
+        if (Number.isFinite(aNum) && Number.isFinite(bNum) && aNum !== bNum) return aNum - bNum;
+        const byTanzeem = String(a?.tanzeem || '').localeCompare(String(b?.tanzeem || ''));
+        if (byTanzeem !== 0) return byTanzeem;
+        return String(a?.majlis || '').localeCompare(String(b?.majlis || ''));
+      });
+  }, [membersDirectory, quickSearchDigits]);
 
   useEffect(() => {
     if (activeTab !== 'stats') return undefined;
@@ -3672,7 +3689,9 @@ function AppContent() {
       return;
     }
 
-    const resolvedLocationName = String(locationName || selectedMajlis || 'Gast').trim();
+    const resolvedMemberTanzeem = kind === 'member' ? String(selectedMember?.tanzeem || '').toLowerCase() : '';
+    const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
+    const resolvedLocationName = String(locationName || selectedMember?.majlis || selectedMajlis || 'Gast').trim();
     const locationKey = toLocationKey(resolvedLocationName || 'gast');
     const targetKeys = [];
 
@@ -3698,14 +3717,14 @@ function AppContent() {
           paths.push('guestTotal');
           paths.push('total');
         } else {
-          paths.push(`byTanzeem.${selectedTanzeem}`);
+          paths.push(`byTanzeem.${effectiveTanzeem}`);
           paths.push(`byMajlis.${locationKey}`);
           paths.push('total');
         }
       } else if (kind === 'guest') {
         paths.push(`byPrayer.${targetKey}.guest`);
       } else {
-        paths.push(`byPrayer.${targetKey}.tanzeem.${selectedTanzeem}.majlis.${locationKey}`);
+        paths.push(`byPrayer.${targetKey}.tanzeem.${effectiveTanzeem}.majlis.${locationKey}`);
       }
     });
 
@@ -3715,8 +3734,8 @@ function AppContent() {
       if (kind === 'member' && selectedMember?.idNumber) {
         const duplicateChecks = await Promise.all(targetKeys.map((targetKey) => {
           const memberEntryId = modeType === 'program'
-            ? `${runtimeISO}_${programKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
-            : `${runtimeISO}_${targetKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+            ? `${runtimeISO}_${programKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
+            : `${runtimeISO}_${targetKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
           return getDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION, memberEntryId);
         }));
 
@@ -3738,14 +3757,14 @@ function AppContent() {
       if (kind === 'member' && selectedMember?.idNumber) {
         await Promise.all(targetKeys.map((targetKey) => {
           const memberEntryId = modeType === 'program'
-            ? `${runtimeISO}_${programKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
-            : `${runtimeISO}_${targetKey}_${selectedTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
+            ? `${runtimeISO}_${programKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
+            : `${runtimeISO}_${targetKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
           return setDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION, memberEntryId, {
             type: modeType,
             date: runtimeISO,
             ...(modeType === 'program' ? { programName: runtimeProgramWindow.label } : { prayer: targetKey }),
             majlis: resolvedLocationName,
-            tanzeem: selectedTanzeem,
+            tanzeem: effectiveTanzeem,
             idNumber: String(selectedMember.idNumber),
             ...(STORE_MEMBER_NAMES_IN_DB ? { name: selectedMember.name || null } : {}),
             timestamp: new Date().toISOString(),
@@ -3756,7 +3775,7 @@ function AppContent() {
           await appendMemberDetailsToDailyAttendance(
             runtimeISO,
             targetKeys,
-            selectedTanzeem,
+            effectiveTanzeem,
             resolvedLocationName,
             locationKey,
             selectedMember,
@@ -3905,6 +3924,40 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
+            <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
+            </Pressable>
+            {isQuickIdSearchVisible ? (
+              <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                <TextInput
+                  value={quickIdSearchQuery}
+                  onChangeText={(value) => setQuickIdSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
+                  placeholder="ID-Nummer suchen"
+                  placeholderTextColor={theme.muted}
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  returnKeyType="done"
+                  style={[styles.idSearchInput, { marginTop: 0, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                />
+                {quickSearchDigits.length < 4 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte mindestens 4 Ziffern eingeben.</Text>
+                ) : quickSearchResults.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden.</Text>
+                ) : (
+                  <View style={styles.quickSearchResultsWrap}>
+                    {quickSearchResults.map((member) => (
+                      <Pressable
+                        key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                        onPress={() => countAttendance(attendanceMode, 'member', member.majlis, member)}
+                        style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
+                      >
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} ${member.majlis}`}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
           </>
         ) : terminalMode === 'majlis' ? (
           <>
@@ -3932,6 +3985,40 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
+            <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
+            </Pressable>
+            {isQuickIdSearchVisible ? (
+              <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
+                <TextInput
+                  value={quickIdSearchQuery}
+                  onChangeText={(value) => setQuickIdSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
+                  placeholder="ID-Nummer suchen"
+                  placeholderTextColor={theme.muted}
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  returnKeyType="done"
+                  style={[styles.idSearchInput, { marginTop: 0, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                />
+                {quickSearchDigits.length < 4 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte mindestens 4 Ziffern eingeben.</Text>
+                ) : quickSearchResults.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden.</Text>
+                ) : (
+                  <View style={styles.quickSearchResultsWrap}>
+                    {quickSearchResults.map((member) => (
+                      <Pressable
+                        key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                        onPress={() => countAttendance(attendanceMode, 'member', member.majlis, member)}
+                        style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
+                      >
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} ${member.majlis}`}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ) : null}
           </>
         ) : (
           <>
@@ -5662,10 +5749,16 @@ const styles = StyleSheet.create({
   programScheduledValue: { fontSize: 16, fontWeight: '700', textAlign: 'center', lineHeight: 22 },
   urduText: { textAlign: 'center', fontSize: 16, marginTop: -2, marginBottom: 4 },
 
-  privacyNoticeWrap: { marginTop: 26, paddingHorizontal: 6, alignItems: 'center' },
+  privacyNoticeWrap: { marginTop: 34, paddingHorizontal: 6, alignItems: 'center' },
   privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
   privacyNoticeLinkWrap: { marginTop: 8, paddingVertical: 2, paddingHorizontal: 4 },
   privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
+  quickSearchLinkWrap: { marginTop: 6, alignSelf: 'center' },
+  quickSearchLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
+  quickSearchPanel: { marginTop: 8, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
+  quickSearchResultsWrap: { gap: 8, marginTop: 4 },
+  quickSearchResultCard: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 10 },
+  quickSearchResultText: { fontSize: 14, fontWeight: '700' },
   privacyModalBackdrop: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.35)', justifyContent: 'center', padding: 16 },
   privacyModalCard: { flex: 1, borderRadius: 16, overflow: 'hidden' },
   privacyModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10 },
