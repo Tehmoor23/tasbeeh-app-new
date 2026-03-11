@@ -5421,6 +5421,11 @@ function AppContent() {
                         <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>{getRangeToggleLabel(detailedPrayerRange)}</Text>
                       </Pressable>
                     </View>
+                    {(detailedGraphRange === 'currentWeek' || detailedPrayerRange === 'currentWeek') ? (
+                      <Pressable onPress={() => setStatsWeekModalVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 10 }]}>
+                        <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>{`KW auswählen · ${currentWeekLabel}`}</Text>
+                      </Pressable>
+                    ) : null}
                     {detailedPrayerRange === 'selectedDate' ? (
                       <Pressable onPress={() => setDetailedCalendarVisible(true)} style={[styles.statsCalendarBtn, { borderColor: theme.border, backgroundColor: theme.bg, marginTop: 10 }]}>
                         <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>{`Datum auswählen · ${selectedStatsDateLabel}`}</Text>
