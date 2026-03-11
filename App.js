@@ -3741,6 +3741,7 @@ function AppContent() {
 
         if (duplicateChecks.some(Boolean)) {
           setToast('Bereits gezählt');
+          setQuickIdSearchQuery('');
           setTerminalMode('tanzeem');
           setSelectedTanzeem('');
           setSelectedMajlis('');
@@ -3811,6 +3812,7 @@ function AppContent() {
       visitorCounterRef.current += 1;
       Vibration.vibrate(4);
       setToast('Gezählt ✓');
+      setQuickIdSearchQuery('');
       setTerminalMode('tanzeem');
       setSelectedTanzeem('');
       setSelectedMajlis('');
@@ -3925,7 +3927,7 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
             </View>
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
-              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
             </Pressable>
             {isQuickIdSearchVisible ? (
               <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -3951,7 +3953,7 @@ function AppContent() {
                         onPress={() => countAttendance(attendanceMode, 'member', member.majlis, member)}
                         style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
                       >
-                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} ${member.majlis}`}</Text>
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
                       </Pressable>
                     ))}
                   </View>
@@ -3986,7 +3988,7 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
             </View>
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
-              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
             </Pressable>
             {isQuickIdSearchVisible ? (
               <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -4012,7 +4014,7 @@ function AppContent() {
                         onPress={() => countAttendance(attendanceMode, 'member', member.majlis, member)}
                         style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
                       >
-                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} ${member.majlis}`}</Text>
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
                       </Pressable>
                     ))}
                   </View>
