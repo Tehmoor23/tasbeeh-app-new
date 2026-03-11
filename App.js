@@ -1084,7 +1084,9 @@ function AppContent() {
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
+  const [selectedStatsWeekStartISO, setSelectedStatsWeekStartISO] = useState('');
   const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
+  const [isStatsWeekPickerVisible, setStatsWeekPickerVisible] = useState(false);
   const [isDetailedCalendarVisible, setDetailedCalendarVisible] = useState(false);
   const [availableStatsDates, setAvailableStatsDates] = useState([]);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
@@ -1586,6 +1588,10 @@ function AppContent() {
   }, [activeMosqueKey]);
   const todayISO = toISO(now);
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
+  useEffect(() => {
+    if (selectedStatsWeekStartISO) return;
+    setSelectedStatsWeekStartISO(toISO(startOfWeekMonday(now)));
+  }, [now, selectedStatsWeekStartISO]);
   const programConfigToday = programConfigByDate[todayISO] || null;
   const programWindow = useMemo(() => {
     if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
@@ -2404,12 +2410,28 @@ function AppContent() {
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
-  const statsWeekIsos = useMemo(() => getWeekIsosMondayToSunday(now), [now]);
+  const statsWeekIsos = useMemo(() => {
+    const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
+    return getWeekIsosMondayToSunday(selectedWeekStartDate || now);
+  }, [now, selectedStatsWeekStartISO]);
   const statsPrevWeekIsos = useMemo(() => {
-    const start = addDays(startOfWeekMonday(now), -7);
+    const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
+    const baseStart = selectedWeekStartDate || startOfWeekMonday(now);
+    const start = addDays(baseStart, -7);
     return Array.from({ length: 7 }, (_, index) => toISO(addDays(start, index)));
-  }, [now]);
+  }, [now, selectedStatsWeekStartISO]);
   const statsRollingWeekIsos = useMemo(() => getLast7Days(now), [now]);
+
+  const currentWeekStartISO = useMemo(() => toISO(startOfWeekMonday(now)), [now]);
+  const selectedWeekNumber = useMemo(() => {
+    const startDate = parseISO(selectedStatsWeekStartISO || '');
+    return startDate ? getISOWeekNumber(startDate) : null;
+  }, [selectedStatsWeekStartISO]);
+  const currentWeekLabel = useMemo(() => {
+    if (!selectedWeekNumber) return 'Woche';
+    const isCurrentWeek = selectedStatsWeekStartISO === currentWeekStartISO;
+    return `KW ${selectedWeekNumber}${isCurrentWeek ? ' (aktuell)' : ''}`;
+  }, [selectedWeekNumber, selectedStatsWeekStartISO, currentWeekStartISO]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'prayer') return undefined;
@@ -2651,6 +2673,35 @@ function AppContent() {
     return formatStatsDateShort(selectedStatsDateISO);
   }, [selectedStatsDateISO]);
 
+  const availableStatsWeeks = useMemo(() => {
+    const seen = new Set();
+    return availableStatsDates
+      .map((iso) => parseISO(iso))
+      .filter(Boolean)
+      .map((dateObj) => startOfWeekMonday(dateObj))
+      .filter((dateObj) => {
+        const weekStartISO = toISO(dateObj);
+        if (seen.has(weekStartISO)) return false;
+        seen.add(weekStartISO);
+        return true;
+      })
+      .sort((a, b) => b - a)
+      .map((dateObj) => {
+        const start = new Date(dateObj);
+        const end = addDays(start, 6);
+        const weekStartISO = toISO(start);
+        const weekNumber = getISOWeekNumber(start);
+        const startFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(start);
+        const endFmt = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(end);
+        const isCurrent = weekStartISO === currentWeekStartISO;
+        return {
+          weekStartISO,
+          weekNumber,
+          label: `KW ${weekNumber}${isCurrent ? ' (aktuell)' : ''} · ${startFmt} – ${endFmt}`,
+        };
+      });
+  }, [availableStatsDates, currentWeekStartISO]);
+
   const formatRangeFromIsos = (isos, prefix = 'Woche') => {
     const start = parseISO(isos?.[0] || '');
     const endDate = parseISO(isos?.[isos.length - 1] || '');
@@ -2660,7 +2711,7 @@ function AppContent() {
     return `${prefix} · ${startFmt} – ${endFmt}`;
   };
 
-  const currentWeekToggleLabel = '<< Aktuelle Woche >>';
+  const currentWeekToggleLabel = `<< ${currentWeekLabel} >>`;
   const previousWeekToggleLabel = '<< Letzte Woche >>';
   const selectedDateToggleLabel = `<< ${selectedStatsDateToggleLabel} >>`;
 
@@ -2671,7 +2722,7 @@ function AppContent() {
   };
 
   const formatRangeLabel = (rangeMode) => {
-    if (rangeMode === 'currentWeek') return formatRangeFromIsos(statsWeekIsos, 'Aktuelle Woche');
+    if (rangeMode === 'currentWeek') return formatRangeFromIsos(statsWeekIsos, currentWeekLabel);
     if (rangeMode === 'previousWeek') return formatRangeFromIsos(statsRollingWeekIsos, 'Letzte Woche');
     return `Tag · ${selectedStatsDateLabel}`;
   };
@@ -3247,9 +3298,20 @@ function AppContent() {
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
   }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, programConfigToday, programAttendanceEntries]);
 
-  const detailedCurrentWeekIsos = useMemo(() => getWeekIsosMondayToSunday(now), [now]);
-  const detailedLast7Days = useMemo(() => getLast7Days(now), [now]);
-  const detailedLast8Weeks = useMemo(() => getLast8Weeks(now), [now]);
+  const detailedCurrentWeekIsos = useMemo(() => {
+    const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
+    return getWeekIsosMondayToSunday(selectedWeekStartDate || now);
+  }, [now, selectedStatsWeekStartISO]);
+  const detailedLast7Days = useMemo(() => {
+    const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
+    const baseDate = addDays(selectedWeekStartDate || startOfWeekMonday(now), -1);
+    return getLast7Days(baseDate);
+  }, [now, selectedStatsWeekStartISO]);
+  const detailedLast8Weeks = useMemo(() => {
+    const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
+    const baseDate = addDays(selectedWeekStartDate || startOfWeekMonday(now), 6);
+    return getLast8Weeks(baseDate);
+  }, [now, selectedStatsWeekStartISO]);
 
   const loadDetailedLogsForMember = async (idNumber, minISO, maxISO, options = {}) => {
     const { bypassCache = false, silent = false } = options;
@@ -3302,9 +3364,9 @@ function AppContent() {
   const detailedWeeklySeries = useMemo(() => buildWeeklySeries(detailedMemberLogs, detailedLast8Weeks), [detailedMemberLogs, detailedLast8Weeks]);
   const detailedCurrentWeekSeries = useMemo(() => buildDailySeries(detailedMemberLogs, detailedCurrentWeekIsos), [detailedMemberLogs, detailedCurrentWeekIsos]);
   const detailedComparisonSeries = detailedGraphRange === 'currentWeek' ? detailedCurrentWeekSeries : (detailedGraphRange === 'previousWeek' ? detailedDailySeries : detailedWeeklySeries);
-  const detailedTopRangeLabel = detailedGraphRange === 'currentWeek' ? 'Aktuelle Woche' : (detailedGraphRange === 'previousWeek' ? 'Letzte Woche' : '4-Wochen');
+  const detailedTopRangeLabel = detailedGraphRange === 'currentWeek' ? currentWeekLabel : (detailedGraphRange === 'previousWeek' ? 'Letzte Woche' : '4-Wochen');
   const detailedTopRangeToggleLabel = detailedGraphRange === 'currentWeek'
-    ? '<< Aktuelle Woche >>'
+    ? `<< ${currentWeekLabel} >>`
     : (detailedGraphRange === 'previousWeek' ? '<< Letzte Woche >>' : '<< 4-Wochen >>');
   const detailedTopRangePeriodLabel = useMemo(() => {
     if (detailedGraphRange === 'fourWeeks') {
@@ -4353,7 +4415,7 @@ function AppContent() {
                 data: prayerBars.map((item) => (statsPrayerSeries === 'total' ? (Number(item.total) || 0) : (Number(item.tanzeemTotals?.[statsPrayerSeries]) || 0))),
               }];
               const prayerRangeValueLabel = statsPrayerRange === 'currentWeek'
-                ? 'Aktuelle Woche'
+                ? currentWeekLabel
                 : (statsPrayerRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel);
               const prayerPointRows = prayerLineLabels.map((label, index) => ({ label, value: Number(prayerLineSeries[0]?.data?.[index]) || 0 }));
               const prayerSummary = prayerPointRows.length > 0 ? (() => {
@@ -4507,7 +4569,7 @@ function AppContent() {
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'currentWeek' ? 'Aktuelle Woche' : (statsGraphRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsGraphRange === 'currentWeek' ? currentWeekLabel : (statsGraphRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
                         <Pressable
                           onPress={() => { setStatsGraphRange((prev) => { const options = ['currentWeek', 'previousWeek', 'selectedDate']; const idx = options.indexOf(prev); return options[(idx + 1) % options.length]; }); setStatsGraphSeries('total'); }}
                           style={styles.statsCyclerArrowBtn}
@@ -4586,7 +4648,7 @@ function AppContent() {
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsMajlisRange === 'currentWeek' ? 'Aktuelle Woche' : (statsMajlisRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsMajlisRange === 'currentWeek' ? currentWeekLabel : (statsMajlisRange === 'previousWeek' ? 'Letzte Woche' : selectedStatsDateLabel)}</Text>
                         <Pressable
                           onPress={() => {
                             setStatsMajlisRange((prev) => {
@@ -4685,7 +4747,7 @@ function AppContent() {
                         >
                           <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>{'<<'}</Text>
                         </Pressable>
-                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsWeekRankingRange === 'currentWeek' ? 'Aktuelle Woche' : 'Letzte Woche'}</Text>
+                        <Text style={[styles.statsCyclerValue, { color: theme.text }]}>{statsWeekRankingRange === 'currentWeek' ? currentWeekLabel : 'Letzte Woche'}</Text>
                         <Pressable
                           onPress={() => setStatsWeekRankingRange((prev) => (prev === 'currentWeek' ? 'previousWeek' : 'currentWeek'))}
                           style={styles.statsCyclerArrowBtn}
@@ -5075,14 +5137,38 @@ function AppContent() {
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
               <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Datum auswählen</Text>
-              <Pressable onPress={() => setStatsCalendarVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+              <Pressable onPress={() => { setStatsWeekPickerVisible(false); setStatsCalendarVisible(false); }} style={withPressEffect(styles.privacyModalCloseBtn)}>
                 <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+              <Pressable
+                onPress={() => setStatsWeekPickerVisible((prev) => !prev)}
+                style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
+              >
+                <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>{`KW auswählen · ${currentWeekLabel}`}</Text>
+              </Pressable>
+              {isStatsWeekPickerVisible ? (
+                availableStatsWeeks.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Kalenderwochen verfügbar.</Text>
+                ) : (
+                  availableStatsWeeks.map((week) => {
+                    const isActive = week.weekStartISO === selectedStatsWeekStartISO;
+                    return (
+                      <Pressable
+                        key={`week_${week.weekStartISO}`}
+                        onPress={() => { setSelectedStatsWeekStartISO(week.weekStartISO); setStatsWeekPickerVisible(false); }}
+                        style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
+                      >
+                        <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{week.label}</Text>
+                      </Pressable>
+                    );
+                  })
+                )
+              ) : null}
               {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
                 <Pressable
-                  onPress={() => { setSelectedStatsDateISO(todayISO); setStatsCalendarVisible(false); }}
+                  onPress={() => { setSelectedStatsDateISO(todayISO); setSelectedStatsWeekStartISO(currentWeekStartISO); setStatsCalendarVisible(false); }}
                   style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
                 >
                   <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
@@ -5098,7 +5184,7 @@ function AppContent() {
                 return (
                   <Pressable
                     key={iso}
-                    onPress={() => { setSelectedStatsDateISO(iso); setStatsCalendarVisible(false); }}
+                    onPress={() => { setSelectedStatsDateISO(iso); setSelectedStatsWeekStartISO(toISO(startOfWeekMonday(parseISO(iso) || now))); setStatsCalendarVisible(false); }}
                     style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
                   >
                     <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
@@ -5121,7 +5207,7 @@ function AppContent() {
                 onPress={() => handleExportStats('currentWeek')}
                 style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (statsExporting || !hasStatsExportData) ? 0.6 : 1 }]}
               >
-                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>{`${currentWeekLabel} (.xlsx)`}</Text>
               </Pressable>
               <Pressable
                 disabled={statsExporting || !hasStatsExportData}
@@ -5363,7 +5449,7 @@ function AppContent() {
                       onPress={() => handleExportDetailed('currentWeek')}
                       style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg, opacity: (detailedExporting || !hasDetailedExportData) ? 0.6 : 1 }]}
                     >
-                      <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktuelle Woche (.xlsx)</Text>
+                      <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>{`${currentWeekLabel} (.xlsx)`}</Text>
                     </Pressable>
                     <Pressable
                       disabled={detailedExporting || !hasDetailedExportData || !effectivePermissions.canExportData}
@@ -5392,7 +5478,7 @@ function AppContent() {
                   <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
                     {selectedStatsDateISO && selectedStatsDateISO !== todayISO ? (
                       <Pressable
-                        onPress={() => { setSelectedStatsDateISO(todayISO); setDetailedCalendarVisible(false); }}
+                        onPress={() => { setSelectedStatsDateISO(todayISO); setSelectedStatsWeekStartISO(currentWeekStartISO); setDetailedCalendarVisible(false); }}
                         style={[styles.statsCalendarResetBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}
                       >
                         <Text style={[styles.statsCalendarResetBtnText, { color: theme.text }]}>Auf heute zurücksetzen ({formatStatsDateShort(todayISO)})</Text>
@@ -5408,7 +5494,7 @@ function AppContent() {
                       return (
                         <Pressable
                           key={`detailed_${iso}`}
-                          onPress={() => { setSelectedStatsDateISO(iso); setDetailedCalendarVisible(false); }}
+                          onPress={() => { setSelectedStatsDateISO(iso); setSelectedStatsWeekStartISO(toISO(startOfWeekMonday(parseISO(iso) || now))); setDetailedCalendarVisible(false); }}
                           style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
                         >
                           <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{isTodayEntry ? `${label} (heute)` : label}</Text>
