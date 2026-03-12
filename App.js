@@ -566,8 +566,7 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                 ]}
               >
                 <Text style={[styles.chartTooltipText, { color: theme.text }]}>{selectedPoint.tooltip}</Text>
-                </View>
-              </>
+              </View>
             ) : null}
           </>
         ) : null}
@@ -3943,6 +3942,7 @@ function AppContent() {
                   </View>
                 )}
               </View>
+              </>
             ) : null}
           </>
         ) : null}
