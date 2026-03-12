@@ -566,7 +566,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                 ]}
               >
                 <Text style={[styles.chartTooltipText, { color: theme.text }]}>{selectedPoint.tooltip}</Text>
-              </View>
+                </View>
+              </>
             ) : null}
           </>
         ) : null}
@@ -3908,7 +3909,11 @@ function AppContent() {
         {hasActiveAttendanceWindow ? (
           <>
             {isQuickIdSearchVisible ? (
-              <View style={[styles.quickSearchPanel, { borderColor: '#000000', backgroundColor: theme.card }]}>
+              <>
+                <Pressable onPress={() => setQuickIdSearchVisible(false)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+                  <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Schließen</Text>
+                </Pressable>
+                <View style={[styles.quickSearchPanel, { borderColor: '#000000', backgroundColor: theme.card }]}>
                 <TextInput
                   value={quickIdSearchQuery}
                   onChangeText={(value) => setQuickIdSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
@@ -3942,7 +3947,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {hasActiveAttendanceWindow ? (terminalMode === 'tanzeem' ? (
+        {hasActiveAttendanceWindow && !isQuickIdSearchVisible ? (terminalMode === 'tanzeem' ? (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
@@ -3964,7 +3969,7 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
             </View>
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
-              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
             </Pressable>
           </>
         ) : terminalMode === 'majlis' ? (
@@ -3994,7 +3999,7 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
             </View>
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
-              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
             </Pressable>
           </>
         ) : (
@@ -5734,7 +5739,7 @@ const styles = StyleSheet.create({
   privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
   quickSearchLinkWrap: { marginTop: 6, alignSelf: 'center' },
   quickSearchLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
-  quickSearchPanel: { marginTop: 2, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
+  quickSearchPanel: { marginTop: -2, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
   quickSearchResultsWrap: { gap: 8, marginTop: 4 },
   quickSearchResultCard: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 10 },
   quickSearchResultText: { fontSize: 14, fontWeight: '700' },
