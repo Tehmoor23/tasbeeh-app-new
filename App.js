@@ -3905,27 +3905,8 @@ function AppContent() {
           )}
         </View>
 
-        {hasActiveAttendanceWindow ? terminalMode === 'tanzeem' ? (
+        {hasActiveAttendanceWindow ? (
           <>
-            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
-            <View style={styles.tanzeemRow}>
-              {TANZEEM_OPTIONS.map((tanzeem) => (
-                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
-                  <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <View style={styles.guestButtonRow}>
-              <View style={styles.guestButtonSpacer} />
-              <Pressable
-                onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
-              >
-                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Gast</Text>
-              </Pressable>
-              <View style={styles.guestButtonSpacer} />
-            </View>
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
               <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
             </Pressable>
@@ -3934,6 +3915,7 @@ function AppContent() {
                 <TextInput
                   value={quickIdSearchQuery}
                   onChangeText={(value) => setQuickIdSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
+                  onFocus={() => terminalScrollRef.current?.scrollTo({ y: 180, animated: true })}
                   placeholder="ID-Nummer suchen"
                   placeholderTextColor={theme.muted}
                   keyboardType="number-pad"
@@ -3960,6 +3942,30 @@ function AppContent() {
                 )}
               </View>
             ) : null}
+          </>
+        ) : null}
+
+        {hasActiveAttendanceWindow ? (isQuickIdSearchVisible ? null : (terminalMode === 'tanzeem' ? (
+          <>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
+            <View style={styles.tanzeemRow}>
+              {TANZEEM_OPTIONS.map((tanzeem) => (
+                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
+                  <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.guestButtonRow}>
+              <View style={styles.guestButtonSpacer} />
+              <Pressable
+                onPress={() => countAttendance(attendanceMode, 'guest')}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
+              >
+                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Gast</Text>
+              </Pressable>
+              <View style={styles.guestButtonSpacer} />
+            </View>
           </>
         ) : terminalMode === 'majlis' ? (
           <>
@@ -3987,42 +3993,8 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
-            <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
-              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
-            </Pressable>
-            {isQuickIdSearchVisible ? (
-              <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
-                <TextInput
-                  value={quickIdSearchQuery}
-                  onChangeText={(value) => setQuickIdSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
-                  placeholder="ID-Nummer suchen"
-                  placeholderTextColor={theme.muted}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  returnKeyType="done"
-                  style={[styles.idSearchInput, { marginTop: 0, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
-                />
-                {quickSearchDigits.length < 4 ? (
-                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte mindestens 4 Ziffern eingeben.</Text>
-                ) : quickSearchResults.length === 0 ? (
-                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden.</Text>
-                ) : (
-                  <View style={styles.quickSearchResultsWrap}>
-                    {quickSearchResults.map((member) => (
-                      <Pressable
-                        key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                        onPress={() => countAttendance(attendanceMode, 'member', member.majlis, member)}
-                        style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
-                      >
-                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-              </View>
-            ) : null}
           </>
-        ) : (
+        )) : (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
