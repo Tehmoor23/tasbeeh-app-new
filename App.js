@@ -3994,7 +3994,7 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
             </View>
           </>
-        )) : (
+        ) : (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
