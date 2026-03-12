@@ -566,7 +566,8 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
                 ]}
               >
                 <Text style={[styles.chartTooltipText, { color: theme.text }]}>{selectedPoint.tooltip}</Text>
-              </View>
+                </View>
+              </>
             ) : null}
           </>
         ) : null}
@@ -5121,7 +5122,7 @@ function AppContent() {
       ) : null}
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.9.1</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.0.9</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
