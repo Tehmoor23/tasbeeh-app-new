@@ -3908,7 +3908,7 @@ function AppContent() {
         {hasActiveAttendanceWindow ? (
           <>
             {isQuickIdSearchVisible ? (
-              <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <View style={[styles.quickSearchPanel, { borderColor: '#000000', backgroundColor: theme.card }]}>
                 <TextInput
                   value={quickIdSearchQuery}
                   onChangeText={(value) => setQuickIdSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
@@ -5734,7 +5734,7 @@ const styles = StyleSheet.create({
   privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
   quickSearchLinkWrap: { marginTop: 6, alignSelf: 'center' },
   quickSearchLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
-  quickSearchPanel: { marginTop: 8, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
+  quickSearchPanel: { marginTop: 2, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
   quickSearchResultsWrap: { gap: 8, marginTop: 4 },
   quickSearchResultCard: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 10 },
   quickSearchResultText: { fontSize: 14, fontWeight: '700' },
