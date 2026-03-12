@@ -3945,7 +3945,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {hasActiveAttendanceWindow ? (isQuickIdSearchVisible ? null : (terminalMode === 'tanzeem' ? (
+        {hasActiveAttendanceWindow && !isQuickIdSearchVisible ? (terminalMode === 'tanzeem' ? (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
@@ -4052,12 +4052,14 @@ function AppContent() {
               <View style={styles.guestButtonSpacer} />
             </View>
           </>
-        )) : (
+        )) : null}
+
+        {!hasActiveAttendanceWindow ? (
           <>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isPrayerMode ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).' : 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'}</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>{isPrayerMode ? 'حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔' : 'پروگرام حاضری صرف فعال پروگرام کے دوران درج کی جا سکتی ہے۔'}</Text>
           </>
-        )}
+        ) : null}
 
         <View style={styles.privacyNoticeWrap}>
           <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
