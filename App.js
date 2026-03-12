@@ -3907,9 +3907,6 @@ function AppContent() {
 
         {hasActiveAttendanceWindow ? (
           <>
-            <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
-              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
-            </Pressable>
             {isQuickIdSearchVisible ? (
               <View style={[styles.quickSearchPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
                 <TextInput
@@ -3945,7 +3942,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {hasActiveAttendanceWindow && !isQuickIdSearchVisible ? (terminalMode === 'tanzeem' ? (
+        {hasActiveAttendanceWindow ? (terminalMode === 'tanzeem' ? (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
@@ -3966,6 +3963,9 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
+            <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
+            </Pressable>
           </>
         ) : terminalMode === 'majlis' ? (
           <>
@@ -3993,6 +3993,9 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>
+            <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+              <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>{isQuickIdSearchVisible ? 'Schließen' : 'Hier direkt ID-Nummer suchen'}</Text>
+            </Pressable>
           </>
         ) : (
           <>
