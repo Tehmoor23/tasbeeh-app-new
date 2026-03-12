@@ -16,16 +16,34 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.tehmoor.dhikry",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NFCReaderUsageDescription": "Diese App nutzt NFC, um Anwesenheit schnell zu erfassen."
+      },
+      "entitlements": {
+        "com.apple.developer.nfc.readersession.formats": [
+          "NDEF",
+          "TAG"
+        ]
       }
     },
     "android": {
+      "permissions": [
+        "android.permission.NFC"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.tehmoor.dhikry"
+      "package": "com.tehmoor.dhikry",
+      "intentFilters": [
+        {
+          "action": "NDEF_DISCOVERED",
+          "category": [
+            "DEFAULT"
+          ]
+        }
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
