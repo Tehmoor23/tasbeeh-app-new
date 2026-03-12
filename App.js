@@ -3942,6 +3942,7 @@ function AppContent() {
                   </View>
                 )}
               </View>
+              </>
             ) : null}
           </>
         ) : null}
