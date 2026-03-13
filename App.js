@@ -38,6 +38,8 @@ const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
+  { key: 'roedelheim', label: 'Rödelheim', suffix: 'RO' },
+  { key: 'hoechst', label: 'Höchst', suffix: 'HO' },
 ];
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
