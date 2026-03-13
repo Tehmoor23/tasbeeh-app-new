@@ -35,12 +35,9 @@ const STORAGE_KEYS = {
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = String(process?.env?.EXPO_PUBLIC_APP_MODE || 'full').trim().toLowerCase() === 'display' ? 'display' : 'full'; // 'full' oder 'display'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
-  { key: 'roedelheim', label: 'Rödelheim', suffix: 'RO' },
-  { key: 'hoechst', label: 'Höchst', suffix: 'HO' },
 ];
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
@@ -1146,7 +1143,6 @@ function AppContent() {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const activeMosque = useMemo(() => getMosqueOptionByKey(activeMosqueKey), [activeMosqueKey]);
-  const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
 
   const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
   const effectivePermissions = {
@@ -2019,12 +2015,6 @@ function AppContent() {
       setActiveTab('gebetsplan');
     }
   }, [activeTab, effectivePermissions.canEditSettings]);
-
-  useEffect(() => {
-    if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
-      setActiveTab('gebetsplan');
-    }
-  }, [activeTab, shouldRestrictToPrayerView]);
 
   useEffect(() => {
     if (isSuperAdmin) loadAdminAccounts();
@@ -5139,15 +5129,13 @@ function AppContent() {
   );
   };
 
-  const body = shouldRestrictToPrayerView
+  const body = activeTab === 'gebetsplan'
     ? renderPrayer()
-    : activeTab === 'gebetsplan'
-      ? renderPrayer()
-      : activeTab === 'terminal'
-        ? renderTerminal()
-        : activeTab === 'stats'
-          ? renderStats()
-          : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
+    : activeTab === 'terminal'
+      ? renderTerminal()
+      : activeTab === 'stats'
+        ? renderStats()
+        : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
@@ -5166,15 +5154,13 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView ? (
-        <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
-          {visibleTabs.map((tab) => (
-            <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
-              <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      ) : null}
+      <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
+        {visibleTabs.map((tab) => (
+          <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
+            <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
 
       <Modal visible={isAdminLoginVisible} animationType="fade" transparent onRequestClose={() => setAdminLoginVisible(false)}>

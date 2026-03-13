@@ -1,8 +1,8 @@
 {
   "hosting": [
     {
-      "target": "main",
-      "public": "dist-main",
+      "site": "tasbeeh-1e356",
+      "public": "dist",
       "ignore": [
         "firebase.json",
         "**/.*",
@@ -16,7 +16,7 @@
       ]
     },
     {
-      "target": "display",
+      "site": "la-gebetszeiten",
       "public": "dist-display",
       "ignore": [
         "firebase.json",
