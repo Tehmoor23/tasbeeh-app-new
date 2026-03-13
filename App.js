@@ -1600,6 +1600,7 @@ function AppContent() {
   const overrideTargetISO = useMemo(() => toISO(overrideTargetDate), [overrideTargetDate]);
   const overrideTargetDocId = useMemo(() => buildPrayerOverrideDocId(overrideTargetISO), [overrideTargetISO]);
   const overrideTargetLabel = useMemo(() => germanDateLong(overrideTargetDate), [overrideTargetDate]);
+  const isOverrideTargetToday = overrideTargetISO === todayISO;
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   useEffect(() => {
     if (selectedStatsWeekStartISO) return;
@@ -1770,12 +1771,67 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
+
+    const applyRuntimeOverride = (data) => {
+      if (cancelled) return;
+      setPrayerOverride(normalizePrayerOverride(data));
+    };
+
+    const loadTodayOverride = async () => {
+      const todayDocId = buildPrayerOverrideDocId(todayISO);
+      const dateOverride = await getDocData(PRAYER_OVERRIDE_COLLECTION, todayDocId);
+      if (dateOverride) return dateOverride;
+      return getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+    };
+
+    if (!firebaseRuntime || !hasFirebaseConfig()) {
+      loadTodayOverride()
+        .then((data) => applyRuntimeOverride(data))
+        .catch(() => {
+          if (!cancelled) {
+            setToast('Override konnte nicht geladen werden');
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const todayRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION), buildPrayerOverrideDocId(todayISO));
+    const unsubscribe = firebaseRuntime.onSnapshot(
+      todayRef,
+      async (snapshot) => {
+        if (snapshot.exists()) {
+          applyRuntimeOverride(snapshot.data());
+          return;
+        }
+        try {
+          const legacy = await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+          applyRuntimeOverride(legacy);
+        } catch {
+          applyRuntimeOverride(null);
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setToast('Override konnte nicht geladen werden');
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [todayISO, activeMosqueKey]);
+
+  useEffect(() => {
+    let cancelled = false;
     setOverrideLoading(true);
 
-    const applyOverride = (data) => {
+    const applyOverrideEditor = (data) => {
       const normalized = normalizePrayerOverride(data);
       if (cancelled) return;
-      setPrayerOverride(normalized);
       setOverrideEnabled(normalized.enabled);
       setOverrideSoharAsrTime(normalized.soharAsrTime || '');
       setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
@@ -1795,7 +1851,7 @@ function AppContent() {
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
       loadOverrideWithFallback()
-        .then((data) => applyOverride(data))
+        .then((data) => applyOverrideEditor(data))
         .catch(() => {
           if (!cancelled) {
             setOverrideLoading(false);
@@ -1812,17 +1868,17 @@ function AppContent() {
       overrideRef,
       async (snapshot) => {
         if (snapshot.exists()) {
-          applyOverride(snapshot.data());
+          applyOverrideEditor(snapshot.data());
           return;
         }
         if (overrideTargetOffset === 0) {
           try {
             const legacy = await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
-            applyOverride(legacy);
+            applyOverrideEditor(legacy);
             return;
           } catch {}
         }
-        applyOverride(null);
+        applyOverrideEditor(null);
       },
       () => {
         if (!cancelled) {
@@ -1877,7 +1933,7 @@ function AppContent() {
     try {
       setOverrideSaving(true);
       await setDocData(PRAYER_OVERRIDE_COLLECTION, overrideTargetDocId, payload);
-      setPrayerOverride(normalizePrayerOverride(payload));
+      if (isOverrideTargetToday) setPrayerOverride(normalizePrayerOverride(payload));
       setToast(`Override für ${overrideTargetLabel} gespeichert ✓`);
       setRefreshTick((v) => v + 1);
     } catch {
@@ -1919,7 +1975,7 @@ function AppContent() {
     try {
       setOverrideSaving(true);
       await setDocData(PRAYER_OVERRIDE_COLLECTION, overrideTargetDocId, payload);
-      setPrayerOverride(normalizePrayerOverride(payload));
+      if (isOverrideTargetToday) setPrayerOverride(normalizePrayerOverride(payload));
       setToast(`Zeiten für ${overrideTargetLabel} gespeichert ✓`);
       setRefreshTick((v) => v + 1);
     } catch {
