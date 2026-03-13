@@ -1600,7 +1600,6 @@ function AppContent() {
   const overrideTargetISO = useMemo(() => toISO(overrideTargetDate), [overrideTargetDate]);
   const overrideTargetDocId = useMemo(() => buildPrayerOverrideDocId(overrideTargetISO), [overrideTargetISO]);
   const overrideTargetLabel = useMemo(() => germanDateLong(overrideTargetDate), [overrideTargetDate]);
-  const isOverrideTargetToday = overrideTargetISO === todayISO;
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   useEffect(() => {
     if (selectedStatsWeekStartISO) return;
@@ -1902,6 +1901,8 @@ function AppContent() {
     }
   };
 
+  const resolveOverrideSaveDocId = () => (overrideTargetOffset === 0 ? PRAYER_OVERRIDE_GLOBAL_DOC_ID : overrideTargetDocId);
+
   const savePrayerOverride = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const cleanSoharAsr = overrideSoharAsrTime.trim();
@@ -1932,8 +1933,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      await setDocData(PRAYER_OVERRIDE_COLLECTION, overrideTargetDocId, payload);
-      if (isOverrideTargetToday) setPrayerOverride(normalizePrayerOverride(payload));
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, resolveOverrideSaveDocId(), payload);
       setToast(`Override für ${overrideTargetLabel} gespeichert ✓`);
       setRefreshTick((v) => v + 1);
     } catch {
@@ -1974,8 +1974,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      await setDocData(PRAYER_OVERRIDE_COLLECTION, overrideTargetDocId, payload);
-      if (isOverrideTargetToday) setPrayerOverride(normalizePrayerOverride(payload));
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, resolveOverrideSaveDocId(), payload);
       setToast(`Zeiten für ${overrideTargetLabel} gespeichert ✓`);
       setRefreshTick((v) => v + 1);
     } catch {
