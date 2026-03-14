@@ -44,9 +44,9 @@ const MOSQUE_OPTIONS = [
 ];
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
-const FORCE_TIME = 2;
+const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
-const FORCE_DAY_SHIFT = null;
+const FORCE_DAY_SHIFT = 2;
 // const FORCE_DAY_SHIFT = 1; // development override for testing (künstlich +1 Tag) oder null
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
