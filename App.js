@@ -46,6 +46,8 @@ const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
+const FORCE_TEST_DATE_ENABLED = false;
+const FORCE_TEST_DATE_ISO = '2026-03-15'; // development override for testing (YYYY-MM-DD)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -649,6 +651,14 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
 const pad = (n) => String(n).padStart(2, '0');
 const toISO = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const parseISO = (iso) => (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? null : new Date(`${iso}T00:00:00`));
+const applyForcedTestDate = (date) => {
+  if (!FORCE_TEST_DATE_ENABLED) return date;
+  const forcedDate = parseISO(FORCE_TEST_DATE_ISO);
+  if (!forcedDate) return date;
+  const next = new Date(date);
+  next.setFullYear(forcedDate.getFullYear(), forcedDate.getMonth(), forcedDate.getDate());
+  return next;
+};
 const isValidTime = (value) => /^\d{2}:\d{2}$/.test(value || '') && Number(value.slice(0, 2)) <= 23 && Number(value.slice(3)) <= 59;
 const addMinutes = (time, minutes) => {
   if (!isValidTime(time)) return '—';
@@ -1606,7 +1616,7 @@ function AppContent() {
   const contentContainerStyle = [styles.content, isTablet && styles.contentTablet];
   const logoSource = isDarkMode ? APP_LOGO_DARK : APP_LOGO_LIGHT;
   const now = useMemo(() => {
-    const d = getBerlinNow();
+    const d = applyForcedTestDate(getBerlinNow());
     if (isValidTime(FORCE_TIME)) {
       d.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
@@ -3783,7 +3793,7 @@ function AppContent() {
       return;
     }
 
-    const runtimeNow = getBerlinNow();
+    const runtimeNow = applyForcedTestDate(getBerlinNow());
     if (isValidTime(FORCE_TIME)) {
       runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
