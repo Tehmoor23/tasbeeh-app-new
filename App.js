@@ -232,6 +232,7 @@ const FIXED_TIMES = {
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
 const PRAYER_OVERRIDE_GLOBAL_DOC_ID = 'global';
+const buildPrayerOverrideDocId = (isoDate) => `date_${isoDate}`;
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
@@ -1099,6 +1100,7 @@ function AppContent() {
   const [overrideEnabled, setOverrideEnabled] = useState(false);
   const [overrideSoharAsrTime, setOverrideSoharAsrTime] = useState('');
   const [overrideMaghribIshaaTime, setOverrideMaghribIshaaTime] = useState('');
+  const [overrideTargetOffset, setOverrideTargetOffset] = useState(0);
   const [manualFajrTime, setManualFajrTime] = useState('');
   const [manualSoharTime, setManualSoharTime] = useState('');
   const [manualAsrTime, setManualAsrTime] = useState('');
@@ -1594,6 +1596,10 @@ function AppContent() {
     setActiveMosqueScope(activeMosqueKey);
   }, [activeMosqueKey]);
   const todayISO = toISO(now);
+  const overrideTargetDate = useMemo(() => addDays(now, overrideTargetOffset), [now, overrideTargetOffset]);
+  const overrideTargetISO = useMemo(() => toISO(overrideTargetDate), [overrideTargetDate]);
+  const overrideTargetDocId = useMemo(() => buildPrayerOverrideDocId(overrideTargetISO), [overrideTargetISO]);
+  const overrideTargetLabel = useMemo(() => germanDateLong(overrideTargetDate), [overrideTargetDate]);
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   useEffect(() => {
     if (selectedStatsWeekStartISO) return;
@@ -1764,12 +1770,67 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
+
+    const applyRuntimeOverride = (data) => {
+      if (cancelled) return;
+      setPrayerOverride(normalizePrayerOverride(data));
+    };
+
+    const loadTodayOverride = async () => {
+      const todayDocId = buildPrayerOverrideDocId(todayISO);
+      const dateOverride = await getDocData(PRAYER_OVERRIDE_COLLECTION, todayDocId);
+      if (dateOverride) return dateOverride;
+      return getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+    };
+
+    if (!firebaseRuntime || !hasFirebaseConfig()) {
+      loadTodayOverride()
+        .then((data) => applyRuntimeOverride(data))
+        .catch(() => {
+          if (!cancelled) {
+            setToast('Override konnte nicht geladen werden');
+          }
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const todayRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION), buildPrayerOverrideDocId(todayISO));
+    const unsubscribe = firebaseRuntime.onSnapshot(
+      todayRef,
+      async (snapshot) => {
+        if (snapshot.exists()) {
+          applyRuntimeOverride(snapshot.data());
+          return;
+        }
+        try {
+          const legacy = await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+          applyRuntimeOverride(legacy);
+        } catch {
+          applyRuntimeOverride(null);
+        }
+      },
+      () => {
+        if (!cancelled) {
+          setToast('Override konnte nicht geladen werden');
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [todayISO, activeMosqueKey]);
+
+  useEffect(() => {
+    let cancelled = false;
     setOverrideLoading(true);
 
-    const applyOverride = (data) => {
+    const applyOverrideEditor = (data) => {
       const normalized = normalizePrayerOverride(data);
       if (cancelled) return;
-      setPrayerOverride(normalized);
       setOverrideEnabled(normalized.enabled);
       setOverrideSoharAsrTime(normalized.soharAsrTime || '');
       setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
@@ -1781,9 +1842,15 @@ function AppContent() {
       setOverrideLoading(false);
     };
 
+    const loadOverrideWithFallback = async () => {
+      const dateOverride = await getDocData(PRAYER_OVERRIDE_COLLECTION, overrideTargetDocId);
+      if (dateOverride || overrideTargetOffset !== 0) return dateOverride;
+      return getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+    };
+
     if (!firebaseRuntime || !hasFirebaseConfig()) {
-      getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID)
-        .then((data) => applyOverride(data))
+      loadOverrideWithFallback()
+        .then((data) => applyOverrideEditor(data))
         .catch(() => {
           if (!cancelled) {
             setOverrideLoading(false);
@@ -1795,10 +1862,23 @@ function AppContent() {
       };
     }
 
-    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION), PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+    const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION), overrideTargetDocId);
     const unsubscribe = firebaseRuntime.onSnapshot(
       overrideRef,
-      (snapshot) => applyOverride(snapshot.exists() ? snapshot.data() : null),
+      async (snapshot) => {
+        if (snapshot.exists()) {
+          applyOverrideEditor(snapshot.data());
+          return;
+        }
+        if (overrideTargetOffset === 0) {
+          try {
+            const legacy = await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+            applyOverrideEditor(legacy);
+            return;
+          } catch {}
+        }
+        applyOverrideEditor(null);
+      },
       () => {
         if (!cancelled) {
           setOverrideLoading(false);
@@ -1811,7 +1891,7 @@ function AppContent() {
       cancelled = true;
       unsubscribe();
     };
-  }, [todayISO, activeMosqueKey]);
+  }, [overrideTargetDocId, overrideTargetOffset, activeMosqueKey]);
 
   const onOverrideEnabledChange = (value) => {
     setOverrideEnabled(value);
@@ -1820,6 +1900,8 @@ function AppContent() {
       setOverrideMaghribIshaaTime('');
     }
   };
+
+  const resolveOverrideSaveDocId = () => (overrideTargetOffset === 0 ? PRAYER_OVERRIDE_GLOBAL_DOC_ID : overrideTargetDocId);
 
   const savePrayerOverride = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
@@ -1851,9 +1933,8 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
-      setPrayerOverride(normalizePrayerOverride(payload));
-      setToast('Override gespeichert ✓');
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, resolveOverrideSaveDocId(), payload);
+      setToast(`Override für ${overrideTargetLabel} gespeichert ✓`);
       setRefreshTick((v) => v + 1);
     } catch {
       Alert.alert('Fehler', 'Override konnte nicht gespeichert werden.');
@@ -1893,9 +1974,8 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
-      setPrayerOverride(normalizePrayerOverride(payload));
-      setToast('Gespeichert ✓');
+      await setDocData(PRAYER_OVERRIDE_COLLECTION, resolveOverrideSaveDocId(), payload);
+      setToast(`Zeiten für ${overrideTargetLabel} gespeichert ✓`);
       setRefreshTick((v) => v + 1);
     } catch {
       Alert.alert('Fehler', 'Zeiten konnten nicht gespeichert werden.');
@@ -4915,8 +4995,7 @@ function AppContent() {
   };
 
   const renderSettings = () => {
-    const settingsDate = germanDateLong(now);
-
+    const settingsDate = overrideTargetLabel;
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.settingsMosqueHighlightCard, { backgroundColor: theme.chipBg, borderColor: theme.rowActiveBorder }]}> 
@@ -4954,6 +5033,25 @@ function AppContent() {
             <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{mosquePreferenceSaving ? 'Speichert…' : 'Speichern'}</Text>
           </Pressable>
         ) : null}
+      </View>
+
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Tag für Gebetszeiten</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+        <View style={[styles.statsToggleRow, styles.overrideDayToggleRow]}>
+          <Pressable
+            onPress={() => setOverrideTargetOffset(0)}
+            style={[styles.statsToggleBtn, { borderColor: overrideTargetOffset === 0 ? theme.button : theme.border, backgroundColor: overrideTargetOffset === 0 ? theme.button : theme.bg }]}
+          >
+            <Text style={[styles.statsToggleBtnText, { color: overrideTargetOffset === 0 ? theme.buttonText : theme.text }]}>Heute</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setOverrideTargetOffset(1)}
+            style={[styles.statsToggleBtn, { borderColor: overrideTargetOffset === 1 ? theme.button : theme.border, backgroundColor: overrideTargetOffset === 1 ? theme.button : theme.bg }]}
+          >
+            <Text style={[styles.statsToggleBtnText, { color: overrideTargetOffset === 1 ? theme.buttonText : theme.text }]}>Morgen</Text>
+          </Pressable>
+        </View>
       </View>
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
@@ -5710,6 +5808,7 @@ const styles = StyleSheet.create({
   activeMosqueSectionTitle: { textAlign: 'center' },
   activeMosqueSectionCurrent: { marginTop: 4, textAlign: 'center' },
   activeMosqueToggleRow: { width: '100%', justifyContent: 'center' },
+  overrideDayToggleRow: { width: '100%', justifyContent: 'center', flexWrap: 'wrap' },
   modeSwitch: { alignSelf: 'center', paddingVertical: 6, paddingHorizontal: 10, marginBottom: 6 },
   modeSwitchText: { fontSize: 14, fontWeight: '700' },
   modeSwitchTextTablet: { fontSize: 20 },
