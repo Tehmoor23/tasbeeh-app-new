@@ -796,6 +796,62 @@ const normalizePrayerOverride = (data) => ({
   updatedAt: data?.updatedAt || null,
 });
 
+const normalizePendingPrayerOverride = (data) => ({
+  forDate: /^\d{4}-\d{2}-\d{2}$/.test(data?.pendingForDate || '') ? data.pendingForDate : null,
+  override: {
+    enabled: typeof data?.pendingOverride?.enabled === 'boolean' ? data.pendingOverride.enabled : false,
+    soharAsrTime: isValidTime(data?.pendingOverride?.soharAsrTime) ? data.pendingOverride.soharAsrTime : '',
+    maghribIshaaTime: isValidTime(data?.pendingOverride?.maghribIshaaTime) ? data.pendingOverride.maghribIshaaTime : '',
+  },
+  manualTimes: {
+    fajr: isValidTime(data?.pendingManualTimes?.fajr) ? data.pendingManualTimes.fajr : '',
+    sohar: isValidTime(data?.pendingManualTimes?.sohar) ? data.pendingManualTimes.sohar : '',
+    asr: isValidTime(data?.pendingManualTimes?.asr) ? data.pendingManualTimes.asr : '',
+    maghrib: isValidTime(data?.pendingManualTimes?.maghrib) ? data.pendingManualTimes.maghrib : '',
+    ishaa: isValidTime(data?.pendingManualTimes?.ishaa) ? data.pendingManualTimes.ishaa : '',
+  },
+});
+
+const applyPendingPrayerOverrideForDate = (data, targetISO) => {
+  if (!data || data.pendingForDate !== targetISO) return { next: data, shouldPersist: false };
+
+  const next = {
+    ...data,
+    manualTimes: { ...(data.manualTimes || {}) },
+  };
+  let changed = false;
+  const pendingOverride = data.pendingOverride || {};
+  const pendingManualTimes = data.pendingManualTimes || {};
+
+  if (typeof pendingOverride.enabled === 'boolean' && pendingOverride.enabled !== next.enabled) {
+    next.enabled = pendingOverride.enabled;
+    changed = true;
+  }
+  if (isValidTime(pendingOverride.soharAsrTime) && pendingOverride.soharAsrTime !== next.soharAsrTime) {
+    next.soharAsrTime = pendingOverride.soharAsrTime;
+    changed = true;
+  }
+  if (isValidTime(pendingOverride.maghribIshaaTime) && pendingOverride.maghribIshaaTime !== next.maghribIshaaTime) {
+    next.maghribIshaaTime = pendingOverride.maghribIshaaTime;
+    changed = true;
+  }
+
+  ['fajr', 'sohar', 'asr', 'maghrib', 'ishaa'].forEach((key) => {
+    const value = pendingManualTimes[key];
+    if (isValidTime(value) && value !== next.manualTimes[key]) {
+      next.manualTimes[key] = value;
+      changed = true;
+    }
+  });
+
+  next.pendingForDate = null;
+  next.pendingOverride = null;
+  next.pendingManualTimes = {};
+  next.updatedAt = new Date().toISOString();
+
+  return { next, shouldPersist: true, changed };
+};
+
 
 const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}?key=${FIREBASE_CONFIG.apiKey}`;
 const commitUrl = () => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit?key=${FIREBASE_CONFIG.apiKey}`;
@@ -1104,6 +1160,9 @@ function AppContent() {
   const [manualAsrTime, setManualAsrTime] = useState('');
   const [manualMaghribTime, setManualMaghribTime] = useState('');
   const [manualIshaaTime, setManualIshaaTime] = useState('');
+  const [settingsDateMode, setSettingsDateMode] = useState('today');
+  const [settingsDateTapCount, setSettingsDateTapCount] = useState(0);
+  const [pendingPrayerOverride, setPendingPrayerOverride] = useState(normalizePendingPrayerOverride(null));
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [attendanceMode, setAttendanceMode] = useState('prayer');
   const [statsMode, setStatsMode] = useState('prayer');
@@ -1143,6 +1202,7 @@ function AppContent() {
   const weeklyStatsPayloadRef = useRef('');
   const hasLoadedWeeklyRef = useRef(false);
   const detailedLogsCacheRef = useRef({});
+  const settingsDateTapTimeoutRef = useRef(null);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const activeMosque = useMemo(() => getMosqueOptionByKey(activeMosqueKey), [activeMosqueKey]);
@@ -1633,6 +1693,7 @@ function AppContent() {
     return applyPrayerTimeOverride(withManual, prayerOverride);
   }, [baseTimesToday, prayerOverride]);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
+  const settingsTargetISO = settingsDateMode === 'tomorrow' ? tomorrowISO : todayISO;
   const isRamadanPeriodTomorrow = useMemo(() => tomorrowISO <= RAMADAN_END_ISO, [tomorrowISO]);
   const tomorrowRaw = useMemo(() => (isRamadanPeriodTomorrow ? (RAMADAN_RAW[tomorrowISO] || null) : null), [tomorrowISO, isRamadanPeriodTomorrow]);
   const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw, isRamadanPeriodTomorrow), [tomorrowRaw, isRamadanPeriodTomorrow]);
@@ -1746,6 +1807,10 @@ function AppContent() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => () => {
+    if (settingsDateTapTimeoutRef.current) clearTimeout(settingsDateTapTimeoutRef.current);
+  }, []);
+
   useEffect(() => {
     if (activeTab !== 'terminal') return;
     terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
@@ -1766,18 +1831,38 @@ function AppContent() {
     let cancelled = false;
     setOverrideLoading(true);
 
-    const applyOverride = (data) => {
-      const normalized = normalizePrayerOverride(data);
+    const applyOverride = async (data) => {
+      const { next, shouldPersist } = applyPendingPrayerOverrideForDate(data, todayISO);
+      if (shouldPersist) {
+        try {
+          await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, next);
+        } catch {}
+      }
+      const source = shouldPersist ? next : data;
+      const normalized = normalizePrayerOverride(source);
+      const pendingNormalized = normalizePendingPrayerOverride(source);
       if (cancelled) return;
       setPrayerOverride(normalized);
-      setOverrideEnabled(normalized.enabled);
-      setOverrideSoharAsrTime(normalized.soharAsrTime || '');
-      setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
-      setManualFajrTime(normalized.manualTimes.fajr || '');
-      setManualSoharTime(normalized.manualTimes.sohar || '');
-      setManualAsrTime(normalized.manualTimes.asr || '');
-      setManualMaghribTime(normalized.manualTimes.maghrib || '');
-      setManualIshaaTime(normalized.manualTimes.ishaa || '');
+      setPendingPrayerOverride(pendingNormalized);
+      if (settingsDateMode === 'tomorrow') {
+        setOverrideEnabled(pendingNormalized.override.enabled);
+        setOverrideSoharAsrTime(pendingNormalized.override.soharAsrTime || '');
+        setOverrideMaghribIshaaTime(pendingNormalized.override.maghribIshaaTime || '');
+        setManualFajrTime(pendingNormalized.manualTimes.fajr || '');
+        setManualSoharTime(pendingNormalized.manualTimes.sohar || '');
+        setManualAsrTime(pendingNormalized.manualTimes.asr || '');
+        setManualMaghribTime(pendingNormalized.manualTimes.maghrib || '');
+        setManualIshaaTime(pendingNormalized.manualTimes.ishaa || '');
+      } else {
+        setOverrideEnabled(normalized.enabled);
+        setOverrideSoharAsrTime(normalized.soharAsrTime || '');
+        setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
+        setManualFajrTime(normalized.manualTimes.fajr || '');
+        setManualSoharTime(normalized.manualTimes.sohar || '');
+        setManualAsrTime(normalized.manualTimes.asr || '');
+        setManualMaghribTime(normalized.manualTimes.maghrib || '');
+        setManualIshaaTime(normalized.manualTimes.ishaa || '');
+      }
       setOverrideLoading(false);
     };
 
@@ -1798,7 +1883,7 @@ function AppContent() {
     const overrideRef = firebaseRuntime.doc(firebaseRuntime.db, resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION), PRAYER_OVERRIDE_GLOBAL_DOC_ID);
     const unsubscribe = firebaseRuntime.onSnapshot(
       overrideRef,
-      (snapshot) => applyOverride(snapshot.exists() ? snapshot.data() : null),
+      (snapshot) => { applyOverride(snapshot.exists() ? snapshot.data() : null); },
       () => {
         if (!cancelled) {
           setOverrideLoading(false);
@@ -1811,7 +1896,7 @@ function AppContent() {
       cancelled = true;
       unsubscribe();
     };
-  }, [todayISO, activeMosqueKey]);
+  }, [todayISO, activeMosqueKey, settingsDateMode]);
 
   const onOverrideEnabledChange = (value) => {
     setOverrideEnabled(value);
@@ -1820,6 +1905,28 @@ function AppContent() {
       setOverrideMaghribIshaaTime('');
     }
   };
+
+  useEffect(() => {
+    if (settingsDateMode === 'tomorrow') {
+      setOverrideEnabled(pendingPrayerOverride.override.enabled);
+      setOverrideSoharAsrTime(pendingPrayerOverride.override.soharAsrTime || '');
+      setOverrideMaghribIshaaTime(pendingPrayerOverride.override.maghribIshaaTime || '');
+      setManualFajrTime(pendingPrayerOverride.manualTimes.fajr || '');
+      setManualSoharTime(pendingPrayerOverride.manualTimes.sohar || '');
+      setManualAsrTime(pendingPrayerOverride.manualTimes.asr || '');
+      setManualMaghribTime(pendingPrayerOverride.manualTimes.maghrib || '');
+      setManualIshaaTime(pendingPrayerOverride.manualTimes.ishaa || '');
+      return;
+    }
+    setOverrideEnabled(prayerOverride.enabled);
+    setOverrideSoharAsrTime(prayerOverride.soharAsrTime || '');
+    setOverrideMaghribIshaaTime(prayerOverride.maghribIshaaTime || '');
+    setManualFajrTime(prayerOverride.manualTimes.fajr || '');
+    setManualSoharTime(prayerOverride.manualTimes.sohar || '');
+    setManualAsrTime(prayerOverride.manualTimes.asr || '');
+    setManualMaghribTime(prayerOverride.manualTimes.maghrib || '');
+    setManualIshaaTime(prayerOverride.manualTimes.ishaa || '');
+  }, [settingsDateMode, prayerOverride, pendingPrayerOverride]);
 
   const savePrayerOverride = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
@@ -1835,25 +1942,68 @@ function AppContent() {
       return;
     }
 
-    const payload = {
-      enabled: overrideEnabled,
-      soharAsrTime: cleanSoharAsr || null,
-      maghribIshaaTime: cleanMaghribIshaa || null,
-      manualTimes: {
-        fajr: manualFajrTime.trim() || null,
-        sohar: manualSoharTime.trim() || null,
-        asr: manualAsrTime.trim() || null,
-        maghrib: manualMaghribTime.trim() || null,
-        ishaa: manualIshaaTime.trim() || null,
-      },
-      updatedAt: new Date().toISOString(),
-    };
+    const payload = settingsDateMode === 'tomorrow'
+      ? {
+        enabled: prayerOverride.enabled,
+        soharAsrTime: prayerOverride.soharAsrTime || null,
+        maghribIshaaTime: prayerOverride.maghribIshaaTime || null,
+        manualTimes: {
+          fajr: prayerOverride.manualTimes.fajr || null,
+          sohar: prayerOverride.manualTimes.sohar || null,
+          asr: prayerOverride.manualTimes.asr || null,
+          maghrib: prayerOverride.manualTimes.maghrib || null,
+          ishaa: prayerOverride.manualTimes.ishaa || null,
+        },
+        pendingForDate: tomorrowISO,
+        pendingOverride: {
+          enabled: overrideEnabled,
+          soharAsrTime: cleanSoharAsr || null,
+          maghribIshaaTime: cleanMaghribIshaa || null,
+        },
+        pendingManualTimes: {
+          fajr: manualFajrTime.trim() || null,
+          sohar: manualSoharTime.trim() || null,
+          asr: manualAsrTime.trim() || null,
+          maghrib: manualMaghribTime.trim() || null,
+          ishaa: manualIshaaTime.trim() || null,
+        },
+        updatedAt: new Date().toISOString(),
+      }
+      : {
+        enabled: overrideEnabled,
+        soharAsrTime: cleanSoharAsr || null,
+        maghribIshaaTime: cleanMaghribIshaa || null,
+        manualTimes: {
+          fajr: manualFajrTime.trim() || null,
+          sohar: manualSoharTime.trim() || null,
+          asr: manualAsrTime.trim() || null,
+          maghrib: manualMaghribTime.trim() || null,
+          ishaa: manualIshaaTime.trim() || null,
+        },
+        pendingForDate: pendingPrayerOverride.forDate,
+        pendingOverride: pendingPrayerOverride.forDate ? {
+          enabled: pendingPrayerOverride.override.enabled,
+          soharAsrTime: pendingPrayerOverride.override.soharAsrTime || null,
+          maghribIshaaTime: pendingPrayerOverride.override.maghribIshaaTime || null,
+        } : null,
+        pendingManualTimes: pendingPrayerOverride.forDate ? {
+          fajr: pendingPrayerOverride.manualTimes.fajr || null,
+          sohar: pendingPrayerOverride.manualTimes.sohar || null,
+          asr: pendingPrayerOverride.manualTimes.asr || null,
+          maghrib: pendingPrayerOverride.manualTimes.maghrib || null,
+          ishaa: pendingPrayerOverride.manualTimes.ishaa || null,
+        } : {},
+        updatedAt: new Date().toISOString(),
+      };
 
     try {
       setOverrideSaving(true);
       await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
-      setPrayerOverride(normalizePrayerOverride(payload));
-      setToast('Override gespeichert ✓');
+      const normalized = normalizePrayerOverride(payload);
+      const pendingNormalized = normalizePendingPrayerOverride(payload);
+      setPrayerOverride(normalized);
+      setPendingPrayerOverride(pendingNormalized);
+      setToast(settingsDateMode === 'tomorrow' ? 'Morgen-Override gespeichert ✓' : 'Override gespeichert ✓');
       setRefreshTick((v) => v + 1);
     } catch {
       Alert.alert('Fehler', 'Override konnte nicht gespeichert werden.');
@@ -1877,25 +2027,68 @@ function AppContent() {
       return;
     }
 
-    const payload = {
-      enabled: overrideEnabled,
-      soharAsrTime: overrideSoharAsrTime.trim() || null,
-      maghribIshaaTime: overrideMaghribIshaaTime.trim() || null,
-      manualTimes: {
-        fajr: manualEntries.fajr || null,
-        sohar: manualEntries.sohar || null,
-        asr: manualEntries.asr || null,
-        maghrib: manualEntries.maghrib || null,
-        ishaa: manualEntries.ishaa || null,
-      },
-      updatedAt: new Date().toISOString(),
-    };
+    const payload = settingsDateMode === 'tomorrow'
+      ? {
+        enabled: prayerOverride.enabled,
+        soharAsrTime: prayerOverride.soharAsrTime || null,
+        maghribIshaaTime: prayerOverride.maghribIshaaTime || null,
+        manualTimes: {
+          fajr: prayerOverride.manualTimes.fajr || null,
+          sohar: prayerOverride.manualTimes.sohar || null,
+          asr: prayerOverride.manualTimes.asr || null,
+          maghrib: prayerOverride.manualTimes.maghrib || null,
+          ishaa: prayerOverride.manualTimes.ishaa || null,
+        },
+        pendingForDate: tomorrowISO,
+        pendingOverride: {
+          enabled: overrideEnabled,
+          soharAsrTime: overrideSoharAsrTime.trim() || null,
+          maghribIshaaTime: overrideMaghribIshaaTime.trim() || null,
+        },
+        pendingManualTimes: {
+          fajr: manualEntries.fajr || null,
+          sohar: manualEntries.sohar || null,
+          asr: manualEntries.asr || null,
+          maghrib: manualEntries.maghrib || null,
+          ishaa: manualEntries.ishaa || null,
+        },
+        updatedAt: new Date().toISOString(),
+      }
+      : {
+        enabled: overrideEnabled,
+        soharAsrTime: overrideSoharAsrTime.trim() || null,
+        maghribIshaaTime: overrideMaghribIshaaTime.trim() || null,
+        manualTimes: {
+          fajr: manualEntries.fajr || null,
+          sohar: manualEntries.sohar || null,
+          asr: manualEntries.asr || null,
+          maghrib: manualEntries.maghrib || null,
+          ishaa: manualEntries.ishaa || null,
+        },
+        pendingForDate: pendingPrayerOverride.forDate,
+        pendingOverride: pendingPrayerOverride.forDate ? {
+          enabled: pendingPrayerOverride.override.enabled,
+          soharAsrTime: pendingPrayerOverride.override.soharAsrTime || null,
+          maghribIshaaTime: pendingPrayerOverride.override.maghribIshaaTime || null,
+        } : null,
+        pendingManualTimes: pendingPrayerOverride.forDate ? {
+          fajr: pendingPrayerOverride.manualTimes.fajr || null,
+          sohar: pendingPrayerOverride.manualTimes.sohar || null,
+          asr: pendingPrayerOverride.manualTimes.asr || null,
+          maghrib: pendingPrayerOverride.manualTimes.maghrib || null,
+          ishaa: pendingPrayerOverride.manualTimes.ishaa || null,
+        } : {},
+        updatedAt: new Date().toISOString(),
+      };
 
     try {
       setOverrideSaving(true);
       await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
-      setPrayerOverride(normalizePrayerOverride(payload));
-      setToast('Gespeichert ✓');
+      const normalized = normalizePrayerOverride(payload);
+      const pendingNormalized = normalizePendingPrayerOverride(payload);
+      setPrayerOverride(normalized);
+      setPendingPrayerOverride(pendingNormalized);
+      setToast(settingsDateMode === 'tomorrow' ? 'Morgen-Werte gespeichert ✓' : 'Gespeichert ✓');
       setRefreshTick((v) => v + 1);
     } catch {
       Alert.alert('Fehler', 'Zeiten konnten nicht gespeichert werden.');
@@ -1903,6 +2096,25 @@ function AppContent() {
       setOverrideSaving(false);
     }
   };
+
+  const onSettingsDateMetaPress = useCallback(() => {
+    if (settingsDateTapTimeoutRef.current) {
+      clearTimeout(settingsDateTapTimeoutRef.current);
+      settingsDateTapTimeoutRef.current = null;
+    }
+    setSettingsDateTapCount((prev) => {
+      const nextCount = prev + 1;
+      if (nextCount >= 3) {
+        setSettingsDateMode((prevMode) => (prevMode === 'today' ? 'tomorrow' : 'today'));
+        return 0;
+      }
+      settingsDateTapTimeoutRef.current = setTimeout(() => {
+        setSettingsDateTapCount(0);
+        settingsDateTapTimeoutRef.current = null;
+      }, 800);
+      return nextCount;
+    });
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
@@ -4915,7 +5127,7 @@ function AppContent() {
   };
 
   const renderSettings = () => {
-    const settingsDate = germanDateLong(now);
+    const settingsDate = germanDateLong(parseISO(settingsTargetISO) || now);
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
@@ -4956,9 +5168,11 @@ function AppContent() {
         ) : null}
       </View>
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
-        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+        <Pressable onPress={onSettingsDateMetaPress}>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+        </Pressable>
 
         {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
 
@@ -4994,9 +5208,11 @@ function AppContent() {
       </View>
 
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
-        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+        <Pressable onPress={onSettingsDateMetaPress}>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+        </Pressable>
 
         <View style={styles.mergeInputWrap}>
           <TextInput value={manualFajrTime} onChangeText={setManualFajrTime} placeholder="Fajr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
