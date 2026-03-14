@@ -5063,6 +5063,7 @@ function AppContent() {
 
   const renderSettings = () => {
     const settingsDate = germanDateLong(overrideDisplayDate);
+    const programSettingsDate = germanDateLong(now);
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
@@ -5162,9 +5163,9 @@ function AppContent() {
         </Pressable>
       </View>
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Programme</Text>
-        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Heute</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{programSettingsDate} · Heute</Text>
 
         <View style={styles.mergeInputWrap}>
           <TextInput value={programNameInput} onChangeText={setProgramNameInput} placeholder="Programmname (z. B. Programm 1)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
