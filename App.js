@@ -47,7 +47,7 @@ const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
 const FORCE_DAY_SHIFT = null;
-// const FORCE_DAY_SHIFT = 1; // development override for testing (künstlich +1 Tag) oder null
+// const FORCE_DAY_SHIFT = 1; // development override for testing (künstlich +1 Tag)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -5132,7 +5132,8 @@ function AppContent() {
   };
 
   const renderSettings = () => {
-    const settingsDate = germanDateLong(parseISO(settingsTargetISO) || now);
+    const prayerSettingsDate = germanDateLong(parseISO(settingsTargetISO) || now);
+    const todaySettingsDate = germanDateLong(now);
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
@@ -5176,7 +5177,7 @@ function AppContent() {
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
         <Pressable onPress={onSettingsDateMetaPress}>
-          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${prayerSettingsDate} · ${activeMosque.label}`}</Text>
         </Pressable>
 
         {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
@@ -5216,7 +5217,7 @@ function AppContent() {
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
         <Pressable onPress={onSettingsDateMetaPress}>
-          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${prayerSettingsDate} · ${activeMosque.label}`}</Text>
         </Pressable>
 
         <View style={styles.mergeInputWrap}>
@@ -5232,9 +5233,9 @@ function AppContent() {
         </Pressable>
       </View>
 
-      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Programme</Text>
-        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{settingsDate} · Heute</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{todaySettingsDate} · Heute</Text>
 
         <View style={styles.mergeInputWrap}>
           <TextInput value={programNameInput} onChangeText={setProgramNameInput} placeholder="Programmname (z. B. Programm 1)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
