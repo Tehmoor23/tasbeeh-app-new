@@ -1802,8 +1802,11 @@ function AppContent() {
     setOverrideLoading(true);
 
     const applyEditableOverride = (baseOverride, pendingOverride) => {
-      const shouldUsePending = pendingOverride?.dateISO === overrideDisplayDateISO;
-      const source = shouldUsePending ? pendingOverride : baseOverride;
+      const isTomorrowEdit = overrideEditDayOffset === 1;
+      const hasPendingForDisplayDate = pendingOverride?.dateISO === overrideDisplayDateISO;
+      const source = hasPendingForDisplayDate
+        ? pendingOverride
+        : (isTomorrowEdit ? null : baseOverride);
       const normalized = normalizePrayerOverride(source);
       if (cancelled) return;
       setPrayerOverride(baseOverride);
