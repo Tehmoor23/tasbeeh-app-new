@@ -1128,6 +1128,7 @@ function AppContent() {
   const [overrideSaving, setOverrideSaving] = useState(false);
   const [overrideEnabled, setOverrideEnabled] = useState(false);
   const [overrideEditDayOffset, setOverrideEditDayOffset] = useState(0);
+  const overrideEditDayOffsetRef = useRef(0);
   const [overrideMetaTapCount, setOverrideMetaTapCount] = useState(0);
   const [overrideSoharAsrTime, setOverrideSoharAsrTime] = useState('');
   const [overrideMaghribIshaaTime, setOverrideMaghribIshaaTime] = useState('');
@@ -1887,8 +1888,13 @@ function AppContent() {
 
   useEffect(() => {
     setOverrideEditDayOffset(0);
+    overrideEditDayOffsetRef.current = 0;
     setOverrideMetaTapCount(0);
   }, [activeMosqueKey]);
+
+  useEffect(() => {
+    overrideEditDayOffsetRef.current = overrideEditDayOffset;
+  }, [overrideEditDayOffset]);
 
   useEffect(() => {
     if (!pendingPrayerOverride || pendingPrayerOverride.dateISO !== todayISO) return;
@@ -1921,10 +1927,9 @@ function AppContent() {
     setOverrideMetaTapCount((prev) => {
       const next = prev + 1;
       if (next >= 3) {
-        setOverrideEditDayOffset((offset) => {
-          const nextOffset = offset === 0 ? 1 : 0;
-          return nextOffset;
-        });
+        const nextOffset = overrideEditDayOffsetRef.current === 0 ? 1 : 0;
+        overrideEditDayOffsetRef.current = nextOffset;
+        setOverrideEditDayOffset(nextOffset);
         return 0;
       }
       return next;
@@ -1969,7 +1974,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideDisplayDateISO !== todayISO;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
@@ -2020,7 +2025,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideDisplayDateISO !== todayISO;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
