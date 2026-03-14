@@ -46,6 +46,8 @@ const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
+const FORCE_DAY_SHIFT = null;
+// const FORCE_DAY_SHIFT = 1; // development override for testing (künstlich +1 Tag)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -1645,6 +1647,9 @@ function AppContent() {
   const logoSource = isDarkMode ? APP_LOGO_DARK : APP_LOGO_LIGHT;
   const now = useMemo(() => {
     const d = getBerlinNow();
+    if (Number.isInteger(FORCE_DAY_SHIFT)) {
+      d.setDate(d.getDate() + FORCE_DAY_SHIFT);
+    }
     if (isValidTime(FORCE_TIME)) {
       d.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
     }
