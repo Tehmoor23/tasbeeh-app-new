@@ -2275,35 +2275,70 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
+    const storageKey = getAnnouncementStorageKey(activeMosqueKey);
+
+    const loadLocalFallback = async () => {
+      const mosqueSpecificRaw = await AsyncStorage.getItem(storageKey);
+      if (cancelled) return;
+      if (mosqueSpecificRaw !== null) {
+        setAnnouncementInput(String(mosqueSpecificRaw));
+        return;
+      }
+      // Backward compatibility for a previously global announcement key.
+      const legacyRaw = await AsyncStorage.getItem(STORAGE_KEYS.announcementText);
+      if (cancelled) return;
+      setAnnouncementInput(legacyRaw !== null ? String(legacyRaw) : '');
+    };
+
     const loadMosqueAnnouncement = async () => {
       try {
-        const remote = await getDocData(ANNOUNCEMENT_COLLECTION, ANNOUNCEMENT_DOC_ID).catch(() => null);
+        const remote = await getDocData(ANNOUNCEMENT_COLLECTION, ANNOUNCEMENT_DOC_ID);
         const remoteText = normalizeAnnouncementText(remote?.text || '');
         if (cancelled) return;
         if (remoteText) {
           setAnnouncementInput(remoteText);
-          await AsyncStorage.setItem(getAnnouncementStorageKey(activeMosqueKey), remoteText).catch(() => {});
+          await AsyncStorage.setItem(storageKey, remoteText).catch(() => {});
           return;
         }
-
-        const mosqueSpecificRaw = await AsyncStorage.getItem(getAnnouncementStorageKey(activeMosqueKey));
-        if (cancelled) return;
-        if (mosqueSpecificRaw !== null) {
-          setAnnouncementInput(String(mosqueSpecificRaw));
-          return;
-        }
-        // Backward compatibility for a previously global announcement key.
-        const legacyRaw = await AsyncStorage.getItem(STORAGE_KEYS.announcementText);
-        if (cancelled) return;
-        setAnnouncementInput(legacyRaw !== null ? String(legacyRaw) : '');
+        await loadLocalFallback();
       } catch {
-        if (cancelled) return;
-        setAnnouncementInput('');
+        await loadLocalFallback().catch(() => {
+          if (cancelled) return;
+          setAnnouncementInput('');
+        });
       }
     };
+
+    if (firebaseRuntime && hasFirebaseConfig()) {
+      const announcementRef = firebaseRuntime.doc(
+        firebaseRuntime.db,
+        resolveScopedCollection(ANNOUNCEMENT_COLLECTION),
+        ANNOUNCEMENT_DOC_ID,
+      );
+
+      const unsubAnnouncement = firebaseRuntime.onSnapshot(
+        announcementRef,
+        (snapshot) => {
+          const remoteText = normalizeAnnouncementText(snapshot.exists() ? (snapshot.data()?.text || '') : '');
+          if (cancelled) return;
+          setAnnouncementInput(remoteText);
+          if (remoteText) AsyncStorage.setItem(storageKey, remoteText).catch(() => {});
+          else AsyncStorage.removeItem(storageKey).catch(() => {});
+        },
+        () => {
+          loadMosqueAnnouncement();
+        },
+      );
+
+      return () => {
+        cancelled = true;
+        unsubAnnouncement();
+      };
+    }
+
     loadMosqueAnnouncement();
     return () => { cancelled = true; };
-  }, [activeMosqueKey]);
+  }, [activeMosqueKey, firebaseRuntime]);
 
   const onToggleDarkMode = async (value, applyGlobally = false) => {
     Animated.sequence([
