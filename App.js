@@ -280,6 +280,8 @@ const FIXED_TIMES = {
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
 const PRAYER_OVERRIDE_GLOBAL_DOC_ID = 'global';
 const PRAYER_OVERRIDE_PENDING_DOC_ID = 'pending_next_day';
+const ANNOUNCEMENT_COLLECTION = 'prayer_announcements';
+const ANNOUNCEMENT_DOC_ID = 'current';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
@@ -2275,6 +2277,15 @@ function AppContent() {
     let cancelled = false;
     const loadMosqueAnnouncement = async () => {
       try {
+        const remote = await getDocData(ANNOUNCEMENT_COLLECTION, ANNOUNCEMENT_DOC_ID).catch(() => null);
+        const remoteText = normalizeAnnouncementText(remote?.text || '');
+        if (cancelled) return;
+        if (remoteText) {
+          setAnnouncementInput(remoteText);
+          await AsyncStorage.setItem(getAnnouncementStorageKey(activeMosqueKey), remoteText).catch(() => {});
+          return;
+        }
+
         const mosqueSpecificRaw = await AsyncStorage.getItem(getAnnouncementStorageKey(activeMosqueKey));
         if (cancelled) return;
         if (mosqueSpecificRaw !== null) {
@@ -2329,6 +2340,10 @@ function AppContent() {
     try {
       const normalized = normalizeAnnouncementText(announcementInput);
       const storageKey = getAnnouncementStorageKey(activeMosqueKey);
+      await setDocData(ANNOUNCEMENT_COLLECTION, ANNOUNCEMENT_DOC_ID, {
+        text: normalized || '',
+        updatedAt: new Date().toISOString(),
+      });
       if (normalized) {
         await AsyncStorage.setItem(storageKey, normalized);
         setToast('Ankündigung gespeichert');
@@ -2345,6 +2360,10 @@ function AppContent() {
 
   const clearAnnouncement = useCallback(async () => {
     try {
+      await setDocData(ANNOUNCEMENT_COLLECTION, ANNOUNCEMENT_DOC_ID, {
+        text: '',
+        updatedAt: new Date().toISOString(),
+      });
       await AsyncStorage.removeItem(getAnnouncementStorageKey(activeMosqueKey));
       setAnnouncementInput('');
       setToast('Ankündigung entfernt');
