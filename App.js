@@ -3348,10 +3348,25 @@ function AppContent() {
       atfal: Number(programStats?.byTanzeem?.atfal) || 0,
       guest: Number(programStats?.guestTotal) || 0,
     };
-    const majlisRowsRaw = Object.entries(programStats?.byMajlis || {})
-      .map(([locationKey, count]) => ({ locationKey, count: Number(count) || 0 }))
-      .filter((row) => row.count > 0)
-      .sort((a, b) => b.count - a.count || String(a.locationKey).localeCompare(String(b.locationKey)));
+
+    const registeredTotals = membersDirectory.reduce((acc, entry) => {
+      const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+      acc.total += 1;
+      if (Object.prototype.hasOwnProperty.call(acc, tanzeem)) acc[tanzeem] += 1;
+      return acc;
+    }, { total: 0, ansar: 0, khuddam: 0, atfal: 0 });
+
+    const formatRatioWithPercent = (present, registered) => {
+      const safePresent = Number(present) || 0;
+      const safeRegistered = Number(registered) || 0;
+      if (safeRegistered <= 0) return `${safePresent}/${safeRegistered} (0%)`;
+      const percentRaw = (safePresent / safeRegistered) * 100;
+      const percentRounded = Math.round(percentRaw * 10) / 10;
+      const percentLabel = Number.isInteger(percentRounded)
+        ? `${percentRounded}`
+        : String(percentRounded).replace('.', ',');
+      return `${safePresent}/${safeRegistered} (${percentLabel}%)`;
+    };
 
     const majlisAttendanceRows = (() => {
       const buildCountsForFilter = (filterKey) => {
@@ -3411,7 +3426,7 @@ function AppContent() {
         .sort((a, b) => (b.totalPresent - a.totalPresent) || a.majlis.localeCompare(b.majlis));
     })();
 
-    if (total <= 0 && majlisRowsRaw.length === 0) {
+    if (total <= 0 && majlisAttendanceRows.length === 0) {
       setToast('Keine Programmdaten zum Export verfügbar');
       return;
     }
@@ -3423,52 +3438,33 @@ function AppContent() {
       ['Programm', programWindow.label || '—'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Gesamt Programmanwesenheit', total],
-      ['Ansar', tanzeemTotals.ansar],
-      ['Khuddam', tanzeemTotals.khuddam],
-      ['Atfal', tanzeemTotals.atfal],
+      ['Gesamt Programmanwesenheit', formatRatioWithPercent(total, registeredTotals.total)],
+      ['Ansar', formatRatioWithPercent(tanzeemTotals.ansar, registeredTotals.ansar)],
+      ['Khuddam', formatRatioWithPercent(tanzeemTotals.khuddam, registeredTotals.khuddam)],
+      ['Atfal', formatRatioWithPercent(tanzeemTotals.atfal, registeredTotals.atfal)],
       ['Gäste', tanzeemTotals.guest],
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
 
-    const tanzeemRows = [
-      ['Tanzeem', 'Anzahl'],
-      ['Ansar', tanzeemTotals.ansar],
-      ['Khuddam', tanzeemTotals.khuddam],
-      ['Atfal', tanzeemTotals.atfal],
-      ['Gäste', tanzeemTotals.guest],
-    ];
-    const tanzeemSheet = XLSX.utils.aoa_to_sheet(tanzeemRows);
-    tanzeemSheet['!cols'] = [{ wch: 18 }, { wch: 12 }];
-
-    const majlisRows = [
-      ['Majlis', 'Teilnehmer'],
-      ...majlisRowsRaw.map((row) => [formatMajlisName(row.locationKey), row.count]),
-    ];
-    const majlisSheet = XLSX.utils.aoa_to_sheet(majlisRows);
-    majlisSheet['!cols'] = [{ wch: 30 }, { wch: 14 }];
-
     const majlisAttendanceSheetRows = [
       ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal'],
       ...majlisAttendanceRows.map((row) => [
         row.majlis,
-        `${row.totalPresent}/${row.totalRegistered}`,
-        `${row.ansarPresent}/${row.ansarRegistered}`,
-        `${row.khuddamPresent}/${row.khuddamRegistered}`,
-        `${row.atfalPresent}/${row.atfalRegistered}`,
+        formatRatioWithPercent(row.totalPresent, row.totalRegistered),
+        formatRatioWithPercent(row.ansarPresent, row.ansarRegistered),
+        formatRatioWithPercent(row.khuddamPresent, row.khuddamRegistered),
+        formatRatioWithPercent(row.atfalPresent, row.atfalRegistered),
       ]),
     ];
     const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
-    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, tanzeemSheet, 'Tanzeem Aufteilung');
-    XLSX.utils.book_append_sheet(workbook, majlisSheet, 'Teilnehmer nach Majlis');
     XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anwesenheit');
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Tanzeem Aufteilung', 'Teilnehmer nach Majlis', 'Majlis Anwesenheit'].forEach((sheetName) => {
+    ['Übersicht', 'Majlis Anwesenheit'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws || !ws['!ref']) return;
       const range = XLSX.utils.decode_range(ws['!ref']);
