@@ -30,6 +30,7 @@ const STORAGE_KEYS = {
   darkMode: '@tasbeeh_darkmode',
   activeMosque: '@tasbeeh_active_mosque',
   programConfigsByDate: '@tasbeeh_program_configs_by_date',
+  announcementText: '@tasbeeh_announcement_text',
 };
 
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
@@ -112,6 +113,49 @@ const normalizeAccountNameKey = (name) => String(name || '').trim().toLowerCase(
 const buildAccountAuthEmail = (name) => {
   const key = normalizeAccountNameKey(name);
   return `${key || 'user'}@tasbeeh.local`;
+};
+
+const normalizeAnnouncementText = (text) => String(text || '').replace(/\r\n/g, '\n').trim();
+
+const parseAnnouncementSegments = (text) => {
+  const source = String(text || '');
+  if (!source) return [];
+  const segments = [];
+  const formatPattern = /(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~)/g;
+  let lastIndex = 0;
+  let match = formatPattern.exec(source);
+
+  while (match) {
+    const token = String(match[0] || '');
+    const tokenStart = match.index;
+    const tokenEnd = tokenStart + token.length;
+    if (tokenStart > lastIndex) {
+      segments.push({ text: source.slice(lastIndex, tokenStart), style: 'plain' });
+    }
+
+    const marker = token[0];
+    const content = token.slice(1, -1);
+    if (!content) {
+      segments.push({ text: token, style: 'plain' });
+    } else if (marker === '*') {
+      segments.push({ text: content, style: 'bold' });
+    } else if (marker === '_') {
+      segments.push({ text: content, style: 'italic' });
+    } else if (marker === '~') {
+      segments.push({ text: content, style: 'strike' });
+    } else {
+      segments.push({ text: token, style: 'plain' });
+    }
+
+    lastIndex = tokenEnd;
+    match = formatPattern.exec(source);
+  }
+
+  if (lastIndex < source.length) {
+    segments.push({ text: source.slice(lastIndex), style: 'plain' });
+  }
+
+  return segments;
 };
 
 const PRAYER_LABELS = {
@@ -1161,6 +1205,7 @@ function AppContent() {
 
   const [programNameInput, setProgramNameInput] = useState('');
   const [programStartInput, setProgramStartInput] = useState('');
+  const [announcementInput, setAnnouncementInput] = useState('');
   const [programConfigByDate, setProgramConfigByDate] = useState({});
   const [programStats, setProgramStats] = useState(null);
   const [idSearchQuery, setIdSearchQuery] = useState('');
@@ -1179,6 +1224,8 @@ function AppContent() {
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const activeMosque = useMemo(() => getMosqueOptionByKey(activeMosqueKey), [activeMosqueKey]);
+  const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
+  const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
 
   const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
@@ -2199,6 +2246,8 @@ function AppContent() {
           ? darkRaw
           : ((fallbackDarkRaw === '1' || fallbackDarkRaw === '0') ? fallbackDarkRaw : null);
         if (resolved) setIsDarkMode(resolved === '1'); else setIsDarkMode(false);
+        const announcementRaw = await AsyncStorage.getItem(STORAGE_KEYS.announcementText);
+        if (announcementRaw !== null) setAnnouncementInput(String(announcementRaw));
       } catch (e) {
         console.warn('Failed to load local settings:', e);
       }
@@ -2253,6 +2302,34 @@ function AppContent() {
       return 0;
     });
   }, [isDarkMode]);
+
+  const saveAnnouncement = useCallback(async () => {
+    try {
+      const normalized = normalizeAnnouncementText(announcementInput);
+      if (normalized) {
+        await AsyncStorage.setItem(STORAGE_KEYS.announcementText, normalized);
+        setToast('Ankündigung gespeichert');
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEYS.announcementText);
+        setToast('Ankündigung entfernt');
+      }
+      setAnnouncementInput(normalized);
+    } catch (error) {
+      console.error('Failed to save announcement', error);
+      setToast('Ankündigung konnte nicht gespeichert werden');
+    }
+  }, [announcementInput]);
+
+  const clearAnnouncement = useCallback(async () => {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.announcementText);
+      setAnnouncementInput('');
+      setToast('Ankündigung entfernt');
+    } catch (error) {
+      console.error('Failed to clear announcement', error);
+      setToast('Ankündigung konnte nicht entfernt werden');
+    }
+  }, []);
 
   const onSelectMosque = async (key) => {
     if (currentAccount && !isSuperAdmin) {
@@ -4004,6 +4081,27 @@ function AppContent() {
           })}
           {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text> : null}
           {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text> : null}
+          {normalizedAnnouncement ? (
+            <View style={[styles.announcementCard, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+              <Text style={[styles.announcementTitle, { color: theme.text }]}>Ankündigung</Text>
+              <Text style={[styles.announcementBody, { color: theme.text }]}>
+                {announcementSegments.map((segment, index) => (
+                  <Text
+                    key={`${segment.style}-${index}`}
+                    style={[
+                      styles.announcementBody,
+                      segment.style === 'bold' && styles.announcementBodyBold,
+                      segment.style === 'italic' && styles.announcementBodyItalic,
+                      segment.style === 'strike' && styles.announcementBodyStrike,
+                      { color: theme.text },
+                    ]}
+                  >
+                    {segment.text}
+                  </Text>
+                ))}
+              </Text>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     );
@@ -5104,6 +5202,30 @@ function AppContent() {
         ) : null}
       </View>
 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Ankündigung</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Optionaler Freitext für den Bereich „Gebetszeiten“</Text>
+        <TextInput
+          value={announcementInput}
+          onChangeText={setAnnouncementInput}
+          placeholder="z. B. Nach *Isha* findet ein Janazah-Gebet statt."
+          placeholderTextColor={theme.muted}
+          multiline
+          textAlignVertical="top"
+          autoCapitalize="sentences"
+          style={[styles.announcementInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+        />
+        <Text style={[styles.noteText, { color: theme.muted }]}>Formatierung: *fett* · _kursiv_ · ~durchgestrichen~</Text>
+        <View style={styles.announcementActions}>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, styles.announcementActionBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveAnnouncement}>
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Speichern</Text>
+          </Pressable>
+          <Pressable style={({ pressed }) => [[styles.saveBtn, styles.announcementActionBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearAnnouncement}>
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Leeren</Text>
+          </Pressable>
+        </View>
+      </View>
+
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
         <Pressable onPress={onOverrideMetaPress}>
@@ -5873,6 +5995,15 @@ const styles = StyleSheet.create({
   saveBtnText: { fontSize: 14, fontWeight: '700' },
   saveBtnTextTablet: { fontSize: 18 },
   noteText: { fontSize: 12, fontWeight: '600' },
+  announcementCard: { marginTop: 14, borderWidth: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14, gap: 8 },
+  announcementTitle: { fontSize: 13, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase' },
+  announcementBody: { fontSize: 16, lineHeight: 24, fontWeight: '500' },
+  announcementBodyBold: { fontWeight: '800' },
+  announcementBodyItalic: { fontStyle: 'italic' },
+  announcementBodyStrike: { textDecorationLine: 'line-through' },
+  announcementInput: { borderWidth: 1, borderRadius: 12, minHeight: 124, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, lineHeight: 22 },
+  announcementActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  announcementActionBtn: { flex: 1 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
   tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
