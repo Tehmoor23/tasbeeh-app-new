@@ -34,6 +34,7 @@ const STORAGE_KEYS = {
 };
 
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
+const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const APP_MODE = 'full'; // 'full' oder 'display'
@@ -2246,8 +2247,6 @@ function AppContent() {
           ? darkRaw
           : ((fallbackDarkRaw === '1' || fallbackDarkRaw === '0') ? fallbackDarkRaw : null);
         if (resolved) setIsDarkMode(resolved === '1'); else setIsDarkMode(false);
-        const announcementRaw = await AsyncStorage.getItem(STORAGE_KEYS.announcementText);
-        if (announcementRaw !== null) setAnnouncementInput(String(announcementRaw));
       } catch (e) {
         console.warn('Failed to load local settings:', e);
       }
@@ -2269,6 +2268,29 @@ function AppContent() {
       } catch {}
     };
     loadMosqueTheme();
+    return () => { cancelled = true; };
+  }, [activeMosqueKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadMosqueAnnouncement = async () => {
+      try {
+        const mosqueSpecificRaw = await AsyncStorage.getItem(getAnnouncementStorageKey(activeMosqueKey));
+        if (cancelled) return;
+        if (mosqueSpecificRaw !== null) {
+          setAnnouncementInput(String(mosqueSpecificRaw));
+          return;
+        }
+        // Backward compatibility for a previously global announcement key.
+        const legacyRaw = await AsyncStorage.getItem(STORAGE_KEYS.announcementText);
+        if (cancelled) return;
+        setAnnouncementInput(legacyRaw !== null ? String(legacyRaw) : '');
+      } catch {
+        if (cancelled) return;
+        setAnnouncementInput('');
+      }
+    };
+    loadMosqueAnnouncement();
     return () => { cancelled = true; };
   }, [activeMosqueKey]);
 
@@ -2306,11 +2328,12 @@ function AppContent() {
   const saveAnnouncement = useCallback(async () => {
     try {
       const normalized = normalizeAnnouncementText(announcementInput);
+      const storageKey = getAnnouncementStorageKey(activeMosqueKey);
       if (normalized) {
-        await AsyncStorage.setItem(STORAGE_KEYS.announcementText, normalized);
+        await AsyncStorage.setItem(storageKey, normalized);
         setToast('Ankündigung gespeichert');
       } else {
-        await AsyncStorage.removeItem(STORAGE_KEYS.announcementText);
+        await AsyncStorage.removeItem(storageKey);
         setToast('Ankündigung entfernt');
       }
       setAnnouncementInput(normalized);
@@ -2318,18 +2341,18 @@ function AppContent() {
       console.error('Failed to save announcement', error);
       setToast('Ankündigung konnte nicht gespeichert werden');
     }
-  }, [announcementInput]);
+  }, [activeMosqueKey, announcementInput]);
 
   const clearAnnouncement = useCallback(async () => {
     try {
-      await AsyncStorage.removeItem(STORAGE_KEYS.announcementText);
+      await AsyncStorage.removeItem(getAnnouncementStorageKey(activeMosqueKey));
       setAnnouncementInput('');
       setToast('Ankündigung entfernt');
     } catch (error) {
       console.error('Failed to clear announcement', error);
       setToast('Ankündigung konnte nicht entfernt werden');
     }
-  }, []);
+  }, [activeMosqueKey]);
 
   const onSelectMosque = async (key) => {
     if (currentAccount && !isSuperAdmin) {
@@ -4082,14 +4105,15 @@ function AppContent() {
           {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Sehri-Ende: {selectedRaw?.sehriEnd || '—'}</Text> : null}
           {isRamadanPeriodToday ? <Text style={[styles.noteText, { color: theme.muted }]}>Iftar: {selectedRaw?.iftar || '—'}</Text> : null}
           {normalizedAnnouncement ? (
-            <View style={[styles.announcementCard, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
-              <Text style={[styles.announcementTitle, { color: theme.text }]}>Ankündigung</Text>
-              <Text style={[styles.announcementBody, { color: theme.text }]}>
+            <View style={[styles.announcementCard, isTablet && styles.announcementCardTablet, { backgroundColor: theme.bg, borderColor: theme.border }]}> 
+              <Text style={[styles.announcementTitle, isTablet && styles.announcementTitleTablet, { color: theme.text }]}>Ankündigung</Text>
+              <Text style={[styles.announcementBody, isTablet && styles.announcementBodyTablet, { color: theme.text }]}>
                 {announcementSegments.map((segment, index) => (
                   <Text
                     key={`${segment.style}-${index}`}
                     style={[
                       styles.announcementBody,
+                      isTablet && styles.announcementBodyTablet,
                       segment.style === 'bold' && styles.announcementBodyBold,
                       segment.style === 'italic' && styles.announcementBodyItalic,
                       segment.style === 'strike' && styles.announcementBodyStrike,
@@ -5213,10 +5237,10 @@ function AppContent() {
           multiline
           textAlignVertical="top"
           autoCapitalize="sentences"
-          style={[styles.announcementInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+          style={[styles.announcementInput, isTablet && styles.announcementInputTablet, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
         />
         <Text style={[styles.noteText, { color: theme.muted }]}>Formatierung: *fett* · _kursiv_ · ~durchgestrichen~</Text>
-        <View style={styles.announcementActions}>
+        <View style={[styles.announcementActions, isTablet && styles.announcementActionsTablet]}>
           <Pressable style={({ pressed }) => [[styles.saveBtn, styles.announcementActionBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveAnnouncement}>
             <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Speichern</Text>
           </Pressable>
@@ -5996,13 +6020,18 @@ const styles = StyleSheet.create({
   saveBtnTextTablet: { fontSize: 18 },
   noteText: { fontSize: 12, fontWeight: '600' },
   announcementCard: { marginTop: 14, borderWidth: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14, gap: 8 },
+  announcementCardTablet: { marginTop: 18, borderRadius: 16, paddingVertical: 18, paddingHorizontal: 18 },
   announcementTitle: { fontSize: 13, fontWeight: '800', letterSpacing: 0.3, textTransform: 'uppercase' },
+  announcementTitleTablet: { fontSize: 14 },
   announcementBody: { fontSize: 16, lineHeight: 24, fontWeight: '500' },
+  announcementBodyTablet: { fontSize: 18, lineHeight: 28 },
   announcementBodyBold: { fontWeight: '800' },
   announcementBodyItalic: { fontStyle: 'italic' },
   announcementBodyStrike: { textDecorationLine: 'line-through' },
   announcementInput: { borderWidth: 1, borderRadius: 12, minHeight: 124, paddingHorizontal: 12, paddingVertical: 12, fontSize: 15, lineHeight: 22 },
+  announcementInputTablet: { minHeight: 154, fontSize: 17, lineHeight: 26, paddingHorizontal: 14, paddingVertical: 14 },
   announcementActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
+  announcementActionsTablet: { marginTop: 6, gap: 12 },
   announcementActionBtn: { flex: 1 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
   tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
