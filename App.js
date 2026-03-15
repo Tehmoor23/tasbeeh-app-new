@@ -3591,7 +3591,9 @@ function AppContent() {
       .map((row) => {
         const key = [row.idNumber, row.tanzeem, row.majlis].join('||');
         return {
-          memberLabel: `${row.idNumber} · ${TANZEEM_LABELS[row.tanzeem] || row.tanzeem} · ${row.majlis}`,
+          majlis: row.majlis,
+          tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
+          idNumber: row.idNumber,
           present: presentMap.has(key) ? 'Ja' : 'Nein',
         };
       });
@@ -3609,12 +3611,12 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Member', 'Anwesend'],
-      ...memberRows.map((row) => [row.memberLabel, row.present]),
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend'],
+      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.present]),
     ];
 
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 48 }, { wch: 14 }];
+    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const boldCellStyle = { font: { bold: true } };
@@ -3622,6 +3624,8 @@ function AppContent() {
     if (sheet.B1) sheet.B1.s = boldCellStyle;
     if (sheet.A7) sheet.A7.s = boldCellStyle;
     if (sheet.B7) sheet.B7.s = boldCellStyle;
+    if (sheet.C7) sheet.C7.s = boldCellStyle;
+    if (sheet.D7) sheet.D7.s = boldCellStyle;
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
