@@ -69,10 +69,12 @@ const TERMINAL_LOCATIONS = [
   'Zeilsheim',
 ];
 const TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal'];
+const PROGRAM_TANZEEM_OPTIONS = ['ansar', 'khuddam', 'atfal', 'kinder'];
 const TANZEEM_LABELS = {
   ansar: 'Ansar',
   khuddam: 'Khuddam',
   atfal: 'Atfal',
+  kinder: 'Kinder',
 };
 const PROGRAM_EXPORT_MAJLIS_ORDER = [
   'Baitus Sabuh Nord',
@@ -3365,6 +3367,7 @@ function AppContent() {
       ansar: Number(programStats?.byTanzeem?.ansar) || 0,
       khuddam: Number(programStats?.byTanzeem?.khuddam) || 0,
       atfal: Number(programStats?.byTanzeem?.atfal) || 0,
+      kinder: Number(programStats?.byTanzeem?.kinder) || 0,
       guest: Number(programStats?.guestTotal) || 0,
     };
 
@@ -3373,7 +3376,7 @@ function AppContent() {
       acc.total += 1;
       if (Object.prototype.hasOwnProperty.call(acc, tanzeem)) acc[tanzeem] += 1;
       return acc;
-    }, { total: 0, ansar: 0, khuddam: 0, atfal: 0 });
+    }, { total: 0, ansar: 0, khuddam: 0, atfal: 0, kinder: 0 });
 
     const formatRatioWithPercent = (present, registered) => {
       const safePresent = Number(present) || 0;
@@ -3418,6 +3421,7 @@ function AppContent() {
       const ansarCounts = buildCountsForFilter('ansar');
       const khuddamCounts = buildCountsForFilter('khuddam');
       const atfalCounts = buildCountsForFilter('atfal');
+      const kinderCounts = buildCountsForFilter('kinder');
 
       const allMajlises = Array.from(new Set([
         ...Object.keys(totalCounts.registeredByMajlis),
@@ -3428,6 +3432,8 @@ function AppContent() {
         ...Object.keys(khuddamCounts.presentByMajlis),
         ...Object.keys(atfalCounts.registeredByMajlis),
         ...Object.keys(atfalCounts.presentByMajlis),
+        ...Object.keys(kinderCounts.registeredByMajlis),
+        ...Object.keys(kinderCounts.presentByMajlis),
       ]));
 
       return allMajlises
@@ -3441,6 +3447,8 @@ function AppContent() {
           khuddamRegistered: Number(khuddamCounts.registeredByMajlis[majlis]) || 0,
           atfalPresent: Number(atfalCounts.presentByMajlis[majlis]) || 0,
           atfalRegistered: Number(atfalCounts.registeredByMajlis[majlis]) || 0,
+          kinderPresent: Number(kinderCounts.presentByMajlis[majlis]) || 0,
+          kinderRegistered: Number(kinderCounts.registeredByMajlis[majlis]) || 0,
         }))
         .sort((a, b) => (b.totalPresent - a.totalPresent) || a.majlis.localeCompare(b.majlis));
     })();
@@ -3461,23 +3469,25 @@ function AppContent() {
       ['Ansar', formatRatioWithPercent(tanzeemTotals.ansar, registeredTotals.ansar)],
       ['Khuddam', formatRatioWithPercent(tanzeemTotals.khuddam, registeredTotals.khuddam)],
       ['Atfal', formatRatioWithPercent(tanzeemTotals.atfal, registeredTotals.atfal)],
+      ['Kinder', formatRatioWithPercent(tanzeemTotals.kinder, registeredTotals.kinder)],
       ['Gäste', tanzeemTotals.guest],
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
 
     const majlisAttendanceSheetRows = [
-      ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal'],
+      ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal', 'Kinder'],
       ...majlisAttendanceRows.map((row) => [
         row.majlis,
         formatRatioWithPercent(row.totalPresent, row.totalRegistered),
         formatRatioWithPercent(row.ansarPresent, row.ansarRegistered),
         formatRatioWithPercent(row.khuddamPresent, row.khuddamRegistered),
         formatRatioWithPercent(row.atfalPresent, row.atfalRegistered),
+        formatRatioWithPercent(row.kinderPresent, row.kinderRegistered),
       ]),
     ];
     const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
-    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }];
+    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anwesenheit');
@@ -3553,11 +3563,11 @@ function AppContent() {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
     const activeProgramName = String(programConfigToday?.name || '').trim();
-    const normalizedFilter = ['ansar', 'khuddam', 'atfal'].includes(String(filterTanzeem || '').toLowerCase())
+    const normalizedFilter = PROGRAM_TANZEEM_OPTIONS.includes(String(filterTanzeem || '').toLowerCase())
       ? String(filterTanzeem || '').toLowerCase()
       : '';
 
-    const tanzeemOrder = normalizedFilter ? [normalizedFilter] : ['ansar', 'khuddam', 'atfal'];
+    const tanzeemOrder = normalizedFilter ? [normalizedFilter] : PROGRAM_TANZEEM_OPTIONS;
     const majlisOrderMap = PROGRAM_EXPORT_MAJLIS_ORDER.reduce((acc, name, index) => {
       acc[String(name || '').trim().toLowerCase()] = index;
       return acc;
@@ -4436,7 +4446,7 @@ function AppContent() {
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
             <View style={styles.tanzeemRow}>
-              {TANZEEM_OPTIONS.map((tanzeem) => (
+              {(isPrayerMode ? TANZEEM_OPTIONS : PROGRAM_TANZEEM_OPTIONS).map((tanzeem) => (
                 <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
                   <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                 </Pressable>
@@ -4573,11 +4583,12 @@ function AppContent() {
       ansar: Number(programStats?.byTanzeem?.ansar) || 0,
       khuddam: Number(programStats?.byTanzeem?.khuddam) || 0,
       atfal: Number(programStats?.byTanzeem?.atfal) || 0,
+      kinder: Number(programStats?.byTanzeem?.kinder) || 0,
     };
     const programTotal = Number(programStats?.total) || 0;
     const programGuestTotal = Number(programStats?.guestTotal) || 0;
     const programMajlisRows = (() => {
-      const filterKey = ['total', 'ansar', 'khuddam', 'atfal'].includes(programMajlisFilter) ? programMajlisFilter : 'total';
+      const filterKey = ['total', ...PROGRAM_TANZEEM_OPTIONS].includes(programMajlisFilter) ? programMajlisFilter : 'total';
       const directoryMembers = membersDirectory.filter((entry) => (
         filterKey === 'total' ? true : entry.tanzeem === filterKey
       ));
@@ -4763,7 +4774,7 @@ function AppContent() {
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (Programm)</Text>
                 <View style={styles.tanzeemStatsRow}>
-                  {['ansar','khuddam','atfal','guest'].map((key) => (
+                  {[...PROGRAM_TANZEEM_OPTIONS, 'guest'].map((key) => (
                     <View key={key} style={[styles.tanzeemStatBox, { borderColor: theme.border, backgroundColor: theme.bg }]}>
                       <Text style={[styles.tanzeemStatValue, { color: theme.text }]}>{key === 'guest' ? programGuestTotal : tanzeemProgramTotals[key]}</Text>
                       <Text style={[styles.tanzeemStatLabel, { color: theme.muted }]}>{key === 'guest' ? 'Gäste' : TANZEEM_LABELS[key]}</Text>
@@ -4777,7 +4788,7 @@ function AppContent() {
                   <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anwesenheit nach Majlis (Programm)</Text>
                   <Pressable
                     onPress={() => setProgramMajlisFilter((prev) => {
-                      const options = ['total', 'ansar', 'khuddam', 'atfal'];
+                      const options = ['total', ...PROGRAM_TANZEEM_OPTIONS];
                       const idx = options.indexOf(prev);
                       return options[(idx + 1) % options.length];
                     })}
@@ -5864,7 +5875,7 @@ function AppContent() {
                     <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID Suche</Text>
                   </View>
                   <View style={styles.statsToggleRow}>
-                    {TANZEEM_OPTIONS.map((key) => {
+                    {(statsMode === 'program' ? PROGRAM_TANZEEM_OPTIONS : TANZEEM_OPTIONS).map((key) => {
                       const isActive = detailedFlowTanzeem === key;
                       return (
                         <Pressable
