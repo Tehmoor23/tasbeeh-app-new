@@ -37,7 +37,7 @@ const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = 'full'; // 'full' oder 'display'
+const APP_MODE = 'display'; // 'full' oder 'display'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
