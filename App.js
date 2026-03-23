@@ -4600,11 +4600,12 @@ function AppContent() {
     }
   }, [loadStoredQrRegistration, prayerOverrideReady, resolveQrPrayerContext]);
 
-  const handleQrPageTitlePress = useCallback(() => {
+  const handleQrTitleExitPress = useCallback(() => {
     setQrPageTapCount((prev) => {
       const next = prev + 1;
       if (next >= 10) {
         setQrPageVisible(false);
+        setQrScanPageVisible(false);
         return 0;
       }
       return next;
@@ -6188,7 +6189,7 @@ function AppContent() {
   const renderQrPage = () => (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Pressable onPress={handleQrPageTitlePress}>
+        <Pressable onPress={handleQrTitleExitPress}>
           <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
         </Pressable>
         {qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
@@ -6223,7 +6224,9 @@ function AppContent() {
 
     <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
+        <Pressable onPress={handleQrTitleExitPress}>
+          <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
+        </Pressable>
         {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
         {qrStatusMessage ? (
           <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
@@ -6346,9 +6349,6 @@ function AppContent() {
           </View>
         ) : null}
 
-        <Pressable onPress={() => setQrScanPageVisible(false)} style={({ pressed }) => [[styles.saveBtn, styles.qrPageCloseBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schließen</Text>
-        </Pressable>
       </View>
     </ScrollView>
   );
