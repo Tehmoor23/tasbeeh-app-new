@@ -4231,7 +4231,6 @@ function AppContent() {
 
   const clearQrRegistration = useCallback(async () => {
     setQrRegistration(null);
-    setQrFlowMode('landing');
     setQrLastAttendanceStatus('idle');
     setQrLastAttendancePrayerKey('');
     setQrLastAttendanceDateISO('');
