@@ -763,31 +763,6 @@ const buildPrayerTimes = (raw, isRamadanWindow = false) => ({
   jumma: FIXED_TIMES.jumma,
 });
 
-const getRuntimePrayerContext = (overrideConfig, availablePrayerDates = []) => {
-  const runtimeNow = applyForcedTestDate(getBerlinNow());
-  if (isValidTime(FORCE_TIME)) {
-    runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
-  }
-  const runtimeISO = toISO(runtimeNow);
-  const runtimeIsRamadanToday = runtimeISO <= RAMADAN_END_ISO;
-  const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availablePrayerDates)) : null;
-  const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
-  const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw, runtimeIsRamadanToday);
-  const runtimeWithManual = applyManualPrayerAdjustments(runtimeBaseTimesToday, overrideConfig);
-  const runtimeTimesToday = applyPrayerTimeOverride(runtimeWithManual, overrideConfig);
-  const runtimeTomorrowISO = toISO(addDays(runtimeNow, 1));
-  const runtimeIsRamadanTomorrow = runtimeTomorrowISO <= RAMADAN_END_ISO;
-  const runtimeTomorrowRaw = runtimeIsRamadanTomorrow ? (RAMADAN_RAW[runtimeTomorrowISO] || null) : null;
-  const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw, runtimeIsRamadanTomorrow);
-  const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
-  return {
-    now: runtimeNow,
-    iso: runtimeISO,
-    timesToday: runtimeTimesToday,
-    timesTomorrow: runtimeTimesTomorrow,
-    prayerWindow: runtimePrayerWindow,
-  };
-};
 
 const applyManualPrayerAdjustments = (baseTimes, overrideConfig) => {
   const manual = overrideConfig?.manualTimes || {};
@@ -1978,6 +1953,32 @@ function AppContent() {
       minutesUntilNextWindow,
     };
   };
+
+  const getRuntimePrayerContext = useCallback((overrideConfig, availablePrayerDates = []) => {
+    const runtimeNow = applyForcedTestDate(getBerlinNow());
+    if (isValidTime(FORCE_TIME)) {
+      runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
+    }
+    const runtimeISO = toISO(runtimeNow);
+    const runtimeIsRamadanToday = runtimeISO <= RAMADAN_END_ISO;
+    const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availablePrayerDates)) : null;
+    const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
+    const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw, runtimeIsRamadanToday);
+    const runtimeWithManual = applyManualPrayerAdjustments(runtimeBaseTimesToday, overrideConfig);
+    const runtimeTimesToday = applyPrayerTimeOverride(runtimeWithManual, overrideConfig);
+    const runtimeTomorrowISO = toISO(addDays(runtimeNow, 1));
+    const runtimeIsRamadanTomorrow = runtimeTomorrowISO <= RAMADAN_END_ISO;
+    const runtimeTomorrowRaw = runtimeIsRamadanTomorrow ? (RAMADAN_RAW[runtimeTomorrowISO] || null) : null;
+    const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw, runtimeIsRamadanTomorrow);
+    const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
+    return {
+      now: runtimeNow,
+      iso: runtimeISO,
+      timesToday: runtimeTimesToday,
+      timesTomorrow: runtimeTimesTomorrow,
+      prayerWindow: runtimePrayerWindow,
+    };
+  }, [resolvePrayerWindow]);
 
   useEffect(() => {
     if (!toast) return;
