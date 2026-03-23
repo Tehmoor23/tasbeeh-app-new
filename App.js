@@ -1345,6 +1345,7 @@ function AppContent() {
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalScrollRef = useRef(null);
+  const countAttendanceRef = useRef(null);
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
   const statsPayloadRef = useRef('');
@@ -4413,7 +4414,7 @@ function AppContent() {
         return;
       }
       setQrFlowMode('registered');
-      const result = await countAttendance('prayer', 'member', registration.majlis || member.majlis, member);
+      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member);
       if (result?.status === 'inactive_prayer') {
         setQrLastAttendanceStatus('inactive_prayer');
         setQrLastAttendancePrayerKey('');
@@ -4446,7 +4447,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [countAttendance, loadStoredQrRegistration, now, prayerWindow, qrRegistration, timesToday]);
+  }, [loadStoredQrRegistration, now, prayerWindow, qrRegistration, timesToday]);
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
@@ -4654,6 +4655,7 @@ function AppContent() {
       return { status: 'error' };
     }
   };
+  countAttendanceRef.current = countAttendance;
 
 
   const renderPrayer = () => {
