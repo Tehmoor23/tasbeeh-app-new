@@ -1038,6 +1038,23 @@ async function listGlobalDocIds(collection, pageSize = 300) {
   return ids;
 }
 
+async function findGlobalRegistrationByIdNumber(collection, idNumber) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const targetIdNumber = String(idNumber || '').trim();
+  if (!targetIdNumber) return null;
+  const docIds = await listGlobalDocIds(collection);
+  for (const docId of docIds) {
+    const registration = await getGlobalDocData(collection, docId);
+    if (String(registration?.idNumber || '').trim() === targetIdNumber) {
+      return {
+        docId,
+        registration,
+      };
+    }
+  }
+  return null;
+}
+
 async function setGlobalDocData(collection, id, data) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const body = { fields: toFirestoreValue(data).mapValue.fields };
@@ -4443,6 +4460,12 @@ function AppContent() {
       if (existingRegistration?.idNumber && String(existingRegistration.idNumber) !== String(member.idNumber)) {
         setQrStatusTone('negative');
         setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
+        return;
+      }
+      const existingIdRegistration = await findGlobalRegistrationByIdNumber(QR_REGISTRATION_COLLECTION, member.idNumber);
+      if (existingIdRegistration?.registration?.idNumber && String(existingIdRegistration.docId) !== String(browserDeviceId)) {
+        setQrStatusTone('negative');
+        setQrStatusMessage('Diese ID ist bereits auf einem anderen Gerät/Browser registriert.');
         return;
       }
       const nextRegistration = {
