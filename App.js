@@ -1255,15 +1255,17 @@ function AppContent() {
   const [manualIshaaTime, setManualIshaaTime] = useState('');
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [isQrPageVisible, setQrPageVisible] = useState(false);
-  const [isQrScanModalVisible, setQrScanModalVisible] = useState(false);
+  const [isQrScanPageVisible, setQrScanPageVisible] = useState(false);
   const [qrBrowserDeviceId, setQrBrowserDeviceId] = useState('');
   const [qrRegistration, setQrRegistration] = useState(null);
   const [qrStatusMessage, setQrStatusMessage] = useState('');
   const [qrStatusTone, setQrStatusTone] = useState('neutral');
   const [qrFlowMode, setQrFlowMode] = useState('landing');
+  const [qrRegistrationMode, setQrRegistrationMode] = useState('tanzeem');
   const [qrRegistrationTanzeem, setQrRegistrationTanzeem] = useState('');
   const [qrRegistrationMajlis, setQrRegistrationMajlis] = useState('');
   const [qrRegistrationSearchQuery, setQrRegistrationSearchQuery] = useState('');
+  const [isQrQuickIdSearchVisible, setQrQuickIdSearchVisible] = useState(false);
   const [qrSubmitting, setQrSubmitting] = useState(false);
   const [qrCycleStart, setQrCycleStart] = useState(() => getQrCycleStart());
   const [qrCountdownSeconds, setQrCountdownSeconds] = useState(QR_COUNTDOWN_SECONDS);
@@ -4282,6 +4284,8 @@ function AppContent() {
       await setGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId, nextRegistration);
       await persistQrRegistration(nextRegistration);
       setQrFlowMode('registered');
+      setQrRegistrationMode('tanzeem');
+      setQrQuickIdSearchVisible(false);
       setQrStatusTone('positive');
       setQrStatusMessage('Erfolgreiche Registrierung. Bitte Browserdaten nicht löschen und möglichst immer denselben Browser verwenden.');
       setQrRegistrationSearchQuery('');
@@ -4302,11 +4306,11 @@ function AppContent() {
     if (Number(payload.expiresAt) <= nowMs) {
       setQrStatusTone('negative');
       setQrStatusMessage('Dieser QR-Code ist abgelaufen. Bitte den aktuellen QR-Code erneut scannen.');
-      setQrScanModalVisible(true);
+      setQrScanPageVisible(true);
       return;
     }
     setAttendanceMode('prayer');
-    setQrScanModalVisible(true);
+    setQrScanPageVisible(true);
     setQrStatusMessage('');
     setQrStatusTone('neutral');
     setQrSubmitting(true);
@@ -4317,6 +4321,8 @@ function AppContent() {
       }
       if (!registration?.idNumber) {
         setQrFlowMode('register');
+        setQrRegistrationMode('tanzeem');
+        setQrQuickIdSearchVisible(false);
         setQrStatusTone('neutral');
         setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
         return;
@@ -4324,6 +4330,8 @@ function AppContent() {
       const member = MEMBER_DIRECTORY_DATA.find((entry) => String(entry.idNumber) === String(registration.idNumber));
       if (!member) {
         setQrFlowMode('register');
+        setQrRegistrationMode('tanzeem');
+        setQrQuickIdSearchVisible(false);
         setQrStatusTone('negative');
         setQrStatusMessage('Die gespeicherte Registrierung wurde in der Mitgliederliste nicht gefunden. Bitte erneut registrieren.');
         return;
@@ -5940,11 +5948,140 @@ function AppContent() {
     </ScrollView>
   );
 
+  const renderQrScanPage = () => (
+    <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
+      <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
+        {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
+        {qrStatusMessage ? (
+          <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
+            <Text style={[styles.qrStatusText, { color: theme.text }]}>{qrStatusMessage}</Text>
+          </View>
+        ) : null}
+        {qrRegistration?.idNumber && qrCurrentRegistrationMember ? (
+          <Text style={[styles.qrRegisteredMeta, { color: theme.muted }]}>Registriert: {qrCurrentRegistrationMember.idNumber} · {TANZEEM_LABELS[qrCurrentRegistrationMember.tanzeem] || qrCurrentRegistrationMember.tanzeem} · {qrCurrentRegistrationMember.majlis}</Text>
+        ) : null}
+
+        {qrFlowMode === 'register' ? (
+          <>
+            {isQrQuickIdSearchVisible ? (
+              <>
+                <Pressable onPress={() => setQrQuickIdSearchVisible(false)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+                  <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Schließen</Text>
+                </Pressable>
+                <View style={[styles.quickSearchPanel, { borderColor: '#000000', backgroundColor: theme.card }]}> 
+                  <TextInput
+                    value={qrRegistrationSearchQuery}
+                    onChangeText={(value) => setQrRegistrationSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
+                    onFocus={() => terminalScrollRef.current?.scrollTo({ y: 180, animated: true })}
+                    placeholder="ID-Nummer suchen"
+                    placeholderTextColor={theme.muted}
+                    keyboardType="number-pad"
+                    inputMode="numeric"
+                    returnKeyType="done"
+                    style={[styles.idSearchInput, { marginTop: 0, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                  />
+                  {qrRegistrationSearchDigits.length < 4 ? (
+                    <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte mindestens 4 Ziffern eingeben.</Text>
+                  ) : qrRegistrationSearchResults.length === 0 ? (
+                    <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden.</Text>
+                  ) : (
+                    <View style={styles.quickSearchResultsWrap}>
+                      {qrRegistrationSearchResults.map((member) => (
+                        <Pressable
+                          key={`qr_quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                          onPress={() => handleQrMemberRegistration(member)}
+                          style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
+                        >
+                          <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </>
+            ) : qrRegistrationMode === 'tanzeem' ? (
+              <>
+                <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
+                <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
+                <View style={styles.tanzeemRow}>
+                  {TANZEEM_OPTIONS.map((tanzeem) => (
+                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(''); setQrRegistrationMode('majlis'); }}>
+                      <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable onPress={() => setQrQuickIdSearchVisible(true)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+                  <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
+                </Pressable>
+              </>
+            ) : qrRegistrationMode === 'majlis' ? (
+              <>
+                <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+                <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی مجلس منتخب کریں</Text>
+                <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationMode('tanzeem'); setQrRegistrationMajlis(''); }}>
+                  <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
+                </Pressable>
+                <View style={styles.gridWrap}>
+                  {qrRegistrationMajlisChoices.map((loc) => (
+                    <Pressable key={`qr_majlis_${loc}`} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationMajlis(loc); setQrRegistrationMode('idSelection'); }}>
+                      <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{loc}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Pressable onPress={() => setQrQuickIdSearchVisible(true)} style={withPressEffect(styles.quickSearchLinkWrap)}>
+                  <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
+                <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{qrRegistrationMajlis} · {TANZEEM_LABELS[qrRegistrationTanzeem] || ''}</Text>
+                <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMode('majlis')}>
+                  <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
+                </Pressable>
+                {qrRegistrationMemberChoices.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text>
+                ) : (
+                  <View style={[styles.gridWrap, styles.idGridWrap]}>
+                    {qrRegistrationMemberChoices.map((member) => (
+                      <Pressable
+                        key={`qr_member_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                        style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
+                        onPress={() => handleQrMemberRegistration(member)}
+                      >
+                        <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
+                        {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
+          </>
+        ) : null}
+
+        {qrFlowMode === 'registered' ? (
+          <View style={[styles.qrDeviceHintCard, { borderColor: theme.border, backgroundColor: theme.bg }]}> 
+            <Text style={[styles.qrDeviceHintText, { color: theme.text }]}>Bitte Browserdaten nicht löschen, möglichst immer denselben Browser verwenden und bei gelöschten Daten erneut registrieren.</Text>
+          </View>
+        ) : null}
+
+        <Pressable onPress={() => setQrScanPageVisible(false)} style={({ pressed }) => [[styles.saveBtn, styles.qrPageCloseBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schließen</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+
   const body = shouldRestrictToPrayerView
     ? renderPrayer()
-    : isQrPageVisible
-      ? renderQrPage()
-      : activeTab === 'gebetsplan'
+    : isQrScanPageVisible
+      ? renderQrScanPage()
+      : isQrPageVisible
+        ? renderQrPage()
+        : activeTab === 'gebetsplan'
         ? renderPrayer()
         : activeTab === 'terminal'
           ? renderTerminal()
@@ -5969,7 +6106,7 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView && !isQrPageVisible ? (
+      {!shouldRestrictToPrayerView && !isQrPageVisible && !isQrScanPageVisible ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
@@ -5978,81 +6115,6 @@ function AppContent() {
           ))}
         </View>
       ) : null}
-
-
-      <Modal visible={isQrScanModalVisible} animationType="slide" transparent onRequestClose={() => setQrScanModalVisible(false)}>
-        <View style={styles.privacyModalBackdrop}>
-          <View style={[styles.privacyModalCard, styles.qrScanModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-            <Text style={[styles.privacyModalTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
-            {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
-            {qrStatusMessage ? (
-              <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
-                <Text style={[styles.qrStatusText, { color: theme.text }]}>{qrStatusMessage}</Text>
-              </View>
-            ) : null}
-            {qrRegistration?.idNumber && qrCurrentRegistrationMember ? (
-              <Text style={[styles.qrRegisteredMeta, { color: theme.muted }]}>Registriert: {qrCurrentRegistrationMember.idNumber} · {TANZEEM_LABELS[qrCurrentRegistrationMember.tanzeem] || qrCurrentRegistrationMember.tanzeem} · {qrCurrentRegistrationMember.majlis}</Text>
-            ) : null}
-            {qrFlowMode === 'register' ? (
-              <>
-                <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Einmalige Registrierung</Text>
-                <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم ایک بار رجسٹریشن مکمل کریں</Text>
-                <View style={styles.tanzeemRow}>
-                  {TANZEEM_OPTIONS.map((tanzeem) => (
-                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(''); }}>
-                      <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput
-                  value={qrRegistrationSearchQuery}
-                  onChangeText={(value) => setQrRegistrationSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
-                  placeholder="Direkt ID-Nummer suchen"
-                  placeholderTextColor={theme.muted}
-                  keyboardType="number-pad"
-                  inputMode="numeric"
-                  style={[styles.idSearchInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
-                />
-                {qrRegistrationSearchDigits.length >= 4 && qrRegistrationSearchResults.length > 0 ? (
-                  <View style={styles.quickSearchResultsWrap}>
-                    {qrRegistrationSearchResults.map((member) => (
-                      <Pressable key={`qr_search_${member.tanzeem}_${member.majlis}_${member.idNumber}`} onPress={() => handleQrMemberRegistration(member)} style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}>
-                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-                {qrRegistrationTanzeem ? (
-                  <View style={styles.gridWrap}>
-                    {qrRegistrationMajlisChoices.map((majlis) => (
-                      <Pressable key={`qr_majlis_${majlis}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: qrRegistrationMajlis === majlis ? theme.button : theme.bg, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMajlis(majlis)}>
-                        <Text style={[styles.gridText, { color: qrRegistrationMajlis === majlis ? theme.buttonText : theme.text }]}>{majlis}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-                {qrRegistrationMajlis ? (
-                  <View style={[styles.gridWrap, styles.idGridWrap]}>
-                    {qrRegistrationMemberChoices.map((member) => (
-                      <Pressable key={`qr_member_${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.bg, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => handleQrMemberRegistration(member)}>
-                        <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-              </>
-            ) : null}
-            {qrFlowMode === 'registered' ? (
-              <View style={[styles.qrDeviceHintCard, { borderColor: theme.border, backgroundColor: theme.bg }]}> 
-                <Text style={[styles.qrDeviceHintText, { color: theme.text }]}>Bitte Browserdaten nicht löschen, möglichst immer denselben Browser verwenden und bei gelöschten Daten erneut registrieren.</Text>
-              </View>
-            ) : null}
-            <Pressable onPress={() => setQrScanModalVisible(false)} style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
-              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schließen</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
 
 
       <Modal visible={isAdminLoginVisible} animationType="fade" transparent onRequestClose={() => setAdminLoginVisible(false)}>
@@ -6631,7 +6693,6 @@ const styles = StyleSheet.create({
   qrPageTitle: { textAlign: 'center', fontSize: 24, fontWeight: '800' },
   qrPageSubtitle: { textAlign: 'center', fontSize: 14, fontWeight: '600' },
   qrPageCloseBtn: { alignSelf: 'stretch', marginTop: 4 },
-  qrScanModalCard: { width: '100%', maxWidth: 620, alignSelf: 'center', gap: 12, maxHeight: '88%' },
   qrCodeCard: { borderWidth: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
   qrCodeImage: { width: 280, height: 280 },
   qrCodePreloadImage: { width: 1, height: 1, opacity: 0, position: 'absolute' },
