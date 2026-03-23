@@ -4446,7 +4446,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [loadStoredQrRegistration, qrRegistration, timesToday]);
+  }, [countAttendance, loadStoredQrRegistration, now, prayerWindow, qrRegistration, timesToday]);
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
