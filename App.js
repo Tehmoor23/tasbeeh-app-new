@@ -2713,26 +2713,40 @@ function AppContent() {
   const qrLiveNow = qrRuntimeContext.now;
   const qrLivePrayerWindow = qrRuntimeContext.prayerWindow;
   const qrLiveTimesToday = qrRuntimeContext.timesToday;
+  const resolveQrPrayerContext = useCallback(() => ({
+    ...qrRuntimeContext,
+    prayerKey: qrRuntimeContext.prayerWindow?.prayerKey || null,
+    prayerLabel: qrRuntimeContext.prayerWindow?.prayerLabel || null,
+    isActive: Boolean(qrRuntimeContext.prayerWindow?.isActive),
+  }), [qrRuntimeContext]);
   const qrRegisteredGuidance = useMemo(() => {
     if (!qrRegistration?.idNumber) return '';
-    const currentDateISO = toISO(qrLiveNow);
-    const currentPrayerKey = qrLivePrayerWindow?.prayerKey || '';
+    const currentContext = resolveQrPrayerContext();
+    const currentPrayerKey = currentContext.prayerKey || '';
+    const currentPrayerLabel = currentContext.prayerLabel || (currentPrayerKey ? getDisplayPrayerLabel(currentPrayerKey, currentContext.timesToday) : '');
     const isCurrentPrayerAlreadyHandled = Boolean(
-      qrLivePrayerWindow?.isActive
+      currentContext.isActive
       && currentPrayerKey
-      && qrLastAttendanceDateISO === currentDateISO
+      && qrLastAttendanceDateISO === currentContext.iso
       && qrLastAttendancePrayerKey === currentPrayerKey
       && ['counted', 'duplicate'].includes(qrLastAttendanceStatus),
     );
+
     if (isCurrentPrayerAlreadyHandled) {
-      return `Sie wurden bereits für das ${getDisplayPrayerLabel(currentPrayerKey, qrLiveTimesToday)} Gebet eingetragen.`;
+      return `Sie wurden bereits für das ${currentPrayerLabel} Gebet eingetragen.`;
     }
-    if (qrLivePrayerWindow?.isActive && qrLivePrayerWindow?.prayerLabel) {
-      return `Bitte den QR-Code noch einmal scannen, um sich für ${qrLivePrayerWindow.prayerLabel} einzutragen.`;
+    if (qrLastAttendanceStatus === 'inactive_prayer') {
+      return currentContext.prayerWindow?.nextLabel
+        ? `Gebetsfenster geschlossen. Nächstes Gebet: ${currentContext.prayerWindow.nextLabel}.`
+        : 'Gebetsfenster geschlossen.';
     }
-    if (qrLivePrayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${qrLivePrayerWindow.nextLabel}.`;
+    if (currentContext.isActive && currentPrayerLabel) {
+      return `Bitte den QR-Code noch einmal scannen, um sich für ${currentPrayerLabel} einzutragen.`;
+    }
+    if (currentContext.prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${currentContext.prayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
-  }, [qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrLiveTimesToday, qrRegistration]);
+  }, [qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration, resolveQrPrayerContext]);
+
 
 
   useEffect(() => {
@@ -4417,6 +4431,15 @@ function AppContent() {
       setQrScanPageVisible(true);
       return;
     }
+    if (overrideLoading) {
+      setQrStatusTone('neutral');
+      setQrStatusMessage('Gebetszeiten werden gerade geladen. Bitte in einem Moment erneut scannen.');
+      setQrScanPageVisible(true);
+      return;
+    }
+
+    const qrPrayerContext = resolveQrPrayerContext();
+
     setAttendanceMode('prayer');
     setQrScanPageVisible(true);
     setQrStatusMessage('');
@@ -4442,30 +4465,44 @@ function AppContent() {
         return;
       }
       setQrFlowMode('registered');
-      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member);
-      const activeQrPrayerKey = String(result?.targetKeys?.[0] || '');
+
+      if (!qrPrayerContext.isActive || !qrPrayerContext.prayerKey) {
+        setQrLastAttendanceStatus('inactive_prayer');
+        setQrLastAttendancePrayerKey('');
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
+        setQrStatusTone('negative');
+        setQrStatusMessage('Kein aktives Gebetsfenster.');
+        return;
+      }
+
+      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member, {
+        runtimeContext: qrPrayerContext,
+      });
+      const activeQrPrayerKey = String(qrPrayerContext.prayerKey || result?.targetKeys?.[0] || '');
+      const activeQrPrayerLabel = qrPrayerContext.prayerLabel || getDisplayPrayerLabel(activeQrPrayerKey, qrPrayerContext.timesToday);
+
       if (result?.status === 'inactive_prayer') {
         setQrLastAttendanceStatus('inactive_prayer');
         setQrLastAttendancePrayerKey('');
-        setQrLastAttendanceDateISO(toISO(qrLiveNow));
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('negative');
         setQrStatusMessage('Kein aktives Gebetsfenster.');
       } else if (result?.status === 'duplicate') {
         setQrLastAttendanceStatus('duplicate');
         setQrLastAttendancePrayerKey(activeQrPrayerKey);
-        setQrLastAttendanceDateISO(toISO(qrLiveNow));
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('positive');
-        setQrStatusMessage(`Sie wurden bereits für das ${getDisplayPrayerLabel(activeQrPrayerKey, qrLiveTimesToday)} Gebet eingetragen.`);
+        setQrStatusMessage(`Sie wurden bereits für das ${activeQrPrayerLabel} Gebet eingetragen.`);
       } else if (result?.status === 'counted') {
         setQrLastAttendanceStatus('counted');
         setQrLastAttendancePrayerKey(activeQrPrayerKey);
-        setQrLastAttendanceDateISO(toISO(qrLiveNow));
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('positive');
-        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${getDisplayPrayerLabel(activeQrPrayerKey, qrLiveTimesToday)}.`);
+        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${activeQrPrayerLabel}.`);
       } else {
         setQrLastAttendanceStatus('error');
         setQrLastAttendancePrayerKey('');
-        setQrLastAttendanceDateISO(toISO(qrLiveNow));
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('negative');
         setQrStatusMessage('QR-Check-in konnte nicht verarbeitet werden.');
       }
@@ -4476,7 +4513,8 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [loadStoredQrRegistration, qrLivePrayerWindow, qrRegistration, qrLiveTimesToday, qrLiveNow]);
+  }, [loadStoredQrRegistration, overrideLoading, resolveQrPrayerContext]);
+
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
@@ -4509,7 +4547,7 @@ function AppContent() {
     }
 
     const runtimeOverride = prayerOverride;
-    const runtimeContext = getRuntimePrayerContext(runtimeOverride, availableDates);
+    const runtimeContext = options?.runtimeContext || getRuntimePrayerContext(runtimeOverride, availableDates);
     const runtimeNow = runtimeContext.now;
     const runtimeISO = runtimeContext.iso;
     const runtimeTimesToday = runtimeContext.timesToday;
