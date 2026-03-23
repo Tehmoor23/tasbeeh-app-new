@@ -4527,7 +4527,8 @@ function AppContent() {
       };
     }
 
-    if (modeType === 'prayer' && (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey)) {
+    const forcedPrayerKey = String(options?.forcedPrayerKey || '');
+    if (modeType === 'prayer' && !forcedPrayerKey && (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey)) {
       setToast('Derzeit kein aktives Gebetszeitfenster');
       setRefreshTick((v) => v + 1);
       return { status: 'inactive_prayer' };
@@ -4547,7 +4548,6 @@ function AppContent() {
     if (modeType === 'program') {
       targetKeys.push(toLocationKey(runtimeProgramWindow.label || 'programm'));
     } else {
-      const forcedPrayerKey = String(options?.forcedPrayerKey || '');
       const prayer = forcedPrayerKey || runtimePrayerWindow.prayerKey;
       const runtimeSoharAsrMerged = isValidTime(runtimeTimesToday.sohar) && runtimeTimesToday.sohar === runtimeTimesToday.asr;
       const runtimeMaghribIshaaMerged = isValidTime(runtimeTimesToday.maghrib) && runtimeTimesToday.maghrib === runtimeTimesToday.ishaa;
