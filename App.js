@@ -1382,7 +1382,7 @@ function AppContent() {
   const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
-  const shouldRestrictToQrScanView = APP_MODE === 'qr' && !currentAccount;
+  const shouldRestrictToQrView = APP_MODE === 'qr' && !currentAccount;
 
   const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
   const effectivePermissions = {
@@ -2449,10 +2449,10 @@ function AppContent() {
   }, [activeTab, shouldRestrictToPrayerView]);
 
   useEffect(() => {
-    if (!shouldRestrictToQrScanView) return;
-    setQrPageVisible(false);
-    setQrScanPageVisible(true);
-  }, [shouldRestrictToQrScanView]);
+    if (!shouldRestrictToQrView) return;
+    setQrPageVisible(true);
+    setQrScanPageVisible(false);
+  }, [shouldRestrictToQrView]);
 
   useEffect(() => {
     if (isSuperAdmin) loadAdminAccounts();
@@ -6369,8 +6369,8 @@ function AppContent() {
     </ScrollView>
   );
 
-  const body = shouldRestrictToQrScanView
-    ? renderQrScanPage()
+  const body = shouldRestrictToQrView
+    ? renderQrPage()
     : shouldRestrictToPrayerView
       ? renderPrayer()
       : isQrScanPageVisible
@@ -6402,7 +6402,7 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView && !shouldRestrictToQrScanView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount)) ? (
+      {!shouldRestrictToPrayerView && !shouldRestrictToQrView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount)) ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect(styles.tabItem)}>
