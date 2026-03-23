@@ -1805,7 +1805,7 @@ function AppContent() {
   useEffect(() => {
     setActiveMosqueScope(activeMosqueKey);
   }, [activeMosqueKey]);
-  const todayISO = toISO(qrLiveNow);
+  const todayISO = toISO(now);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
   const overrideDisplayDate = useMemo(() => addDays(now, overrideEditDayOffset), [now, overrideEditDayOffset]);
   const overrideDisplayDateISO = useMemo(() => toISO(overrideDisplayDate), [overrideDisplayDate]);
@@ -4254,9 +4254,9 @@ function AppContent() {
     if (!selectedDetailedMember?.idNumber || !selectedStatsDateISO) return;
     const firstWeek = detailedLast8Weeks[0];
     if (!firstWeek) return;
-    if (selectedStatsDateISO >= firstWeek.startISO && selectedStatsDateISO <= toISO(qrLiveNow)) return;
+    if (selectedStatsDateISO >= firstWeek.startISO && selectedStatsDateISO <= toISO(now)) return;
     const minISO = selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
-    const maxISO = selectedStatsDateISO > toISO(qrLiveNow) ? selectedStatsDateISO : toISO(qrLiveNow);
+    const maxISO = selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
     loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO);
   }, [selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
 
@@ -4265,7 +4265,7 @@ function AppContent() {
     const firstWeek = detailedLast8Weeks[0];
     if (!firstWeek) return undefined;
     const minISO = selectedStatsDateISO && selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
-    const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(qrLiveNow) ? selectedStatsDateISO : toISO(qrLiveNow);
+    const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
 
     const refreshDetailedLogs = () => {
       loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO, { bypassCache: true, silent: true });
@@ -4751,10 +4751,10 @@ function AppContent() {
               <>
                 <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
-                <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{qrLivePrayerWindow.nextLabel}</Text>
+                <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
                 <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                   <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
-                    Das Zeitfenster öffnet sich in {formatMinutesUntil(qrLivePrayerWindow.minutesUntilNextWindow)}
+                    Das Zeitfenster öffnet sich in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}
                   </Text>
                 </View>
               </>
@@ -6057,9 +6057,9 @@ function AppContent() {
           <>
             <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Gebetsfenster geschlossen</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
-            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{qrLivePrayerWindow.nextLabel}</Text>
+            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
             <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
-              <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(qrLivePrayerWindow.minutesUntilNextWindow)}</Text>
+              <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}</Text>
             </View>
           </>
         )}
@@ -6484,7 +6484,7 @@ function AppContent() {
                           setDetailedPrayerRange('currentWeek');
                           const firstWeek = getLast8Weeks(now)[0];
                           const minISO = selectedStatsDateISO && selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
-                          const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(qrLiveNow) ? selectedStatsDateISO : toISO(qrLiveNow);
+                          const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
                           loadDetailedLogsForMember(member.idNumber, minISO, maxISO);
                         }}
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
