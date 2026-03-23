@@ -2249,11 +2249,8 @@ function AppContent() {
     const midnightTs = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0).getTime();
     if (midnightTs > nowTs) candidates.push(midnightTs);
 
-    const hasActiveWindow = resolvePrayerWindow(now, timesToday, timesTomorrow).isActive;
-    if (!hasActiveWindow) {
-      const nextMinuteTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0).getTime();
-      if (nextMinuteTs > nowTs) candidates.push(nextMinuteTs);
-    }
+    const nextMinuteTs = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes() + 1, 0, 0).getTime();
+    if (nextMinuteTs > nowTs) candidates.push(nextMinuteTs);
     if (programConfigToday && isValidTime(programConfigToday.startTime)) {
       const startMins = Number(programConfigToday.startTime.slice(0, 2)) * 60 + Number(programConfigToday.startTime.slice(3));
       const openTs = atMinutesOfDay(now, startMins - 30).getTime();
