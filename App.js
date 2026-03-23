@@ -763,6 +763,32 @@ const buildPrayerTimes = (raw, isRamadanWindow = false) => ({
   jumma: FIXED_TIMES.jumma,
 });
 
+const getRuntimePrayerContext = (overrideConfig, availablePrayerDates = []) => {
+  const runtimeNow = applyForcedTestDate(getBerlinNow());
+  if (isValidTime(FORCE_TIME)) {
+    runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
+  }
+  const runtimeISO = toISO(runtimeNow);
+  const runtimeIsRamadanToday = runtimeISO <= RAMADAN_END_ISO;
+  const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availablePrayerDates)) : null;
+  const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
+  const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw, runtimeIsRamadanToday);
+  const runtimeWithManual = applyManualPrayerAdjustments(runtimeBaseTimesToday, overrideConfig);
+  const runtimeTimesToday = applyPrayerTimeOverride(runtimeWithManual, overrideConfig);
+  const runtimeTomorrowISO = toISO(addDays(runtimeNow, 1));
+  const runtimeIsRamadanTomorrow = runtimeTomorrowISO <= RAMADAN_END_ISO;
+  const runtimeTomorrowRaw = runtimeIsRamadanTomorrow ? (RAMADAN_RAW[runtimeTomorrowISO] || null) : null;
+  const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw, runtimeIsRamadanTomorrow);
+  const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
+  return {
+    now: runtimeNow,
+    iso: runtimeISO,
+    timesToday: runtimeTimesToday,
+    timesTomorrow: runtimeTimesTomorrow,
+    prayerWindow: runtimePrayerWindow,
+  };
+};
+
 const applyManualPrayerAdjustments = (baseTimes, overrideConfig) => {
   const manual = overrideConfig?.manualTimes || {};
   const next = { ...baseTimes };
@@ -1804,7 +1830,7 @@ function AppContent() {
   useEffect(() => {
     setActiveMosqueScope(activeMosqueKey);
   }, [activeMosqueKey]);
-  const todayISO = toISO(now);
+  const todayISO = toISO(qrLiveNow);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
   const overrideDisplayDate = useMemo(() => addDays(now, overrideEditDayOffset), [now, overrideEditDayOffset]);
   const overrideDisplayDateISO = useMemo(() => toISO(overrideDisplayDate), [overrideDisplayDate]);
@@ -2682,34 +2708,38 @@ function AppContent() {
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
+  const qrRuntimeContext = useMemo(() => getRuntimePrayerContext(prayerOverride, availableDates), [availableDates, prayerOverride, qrCountdownSeconds]);
+  const qrLiveNow = qrRuntimeContext.now;
+  const qrLivePrayerWindow = qrRuntimeContext.prayerWindow;
+  const qrLiveTimesToday = qrRuntimeContext.timesToday;
   const qrRegisteredGuidance = useMemo(() => {
     if (!qrRegistration?.idNumber) return '';
-    const currentDateISO = toISO(now);
-    const currentPrayerKey = prayerWindow?.prayerKey || '';
+    const currentDateISO = toISO(qrLiveNow);
+    const currentPrayerKey = qrLivePrayerWindow?.prayerKey || '';
     const isCurrentPrayerAlreadyHandled = Boolean(
-      prayerWindow?.isActive
+      qrLivePrayerWindow?.isActive
       && currentPrayerKey
       && qrLastAttendanceDateISO === currentDateISO
       && qrLastAttendancePrayerKey === currentPrayerKey
       && ['counted', 'duplicate'].includes(qrLastAttendanceStatus),
     );
     if (isCurrentPrayerAlreadyHandled) {
-      return `Sie wurden bereits für das ${getDisplayPrayerLabel(currentPrayerKey, timesToday)} Gebet eingetragen.`;
+      return `Sie wurden bereits für das ${getDisplayPrayerLabel(currentPrayerKey, qrLiveTimesToday)} Gebet eingetragen.`;
     }
-    if (prayerWindow?.isActive && prayerWindow?.prayerLabel) {
-      return `Bitte den QR-Code noch einmal scannen, um sich für ${prayerWindow.prayerLabel} einzutragen.`;
+    if (qrLivePrayerWindow?.isActive && qrLivePrayerWindow?.prayerLabel) {
+      return `Bitte den QR-Code noch einmal scannen, um sich für ${qrLivePrayerWindow.prayerLabel} einzutragen.`;
     }
-    if (prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${prayerWindow.nextLabel}.`;
+    if (qrLivePrayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${qrLivePrayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
-  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration, timesToday]);
+  }, [qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrLiveTimesToday, qrRegistration]);
 
 
   useEffect(() => {
     if (!['counted', 'duplicate'].includes(qrLastAttendanceStatus)) return;
-    const currentDateISO = toISO(now);
-    const currentPrayerKey = prayerWindow?.prayerKey || '';
+    const currentDateISO = toISO(qrLiveNow);
+    const currentPrayerKey = qrLivePrayerWindow?.prayerKey || '';
     const isSamePrayerWindow = Boolean(
-      prayerWindow?.isActive
+      qrLivePrayerWindow?.isActive
       && currentPrayerKey
       && qrLastAttendanceDateISO === currentDateISO
       && qrLastAttendancePrayerKey === currentPrayerKey
@@ -2718,7 +2748,7 @@ function AppContent() {
       setQrStatusMessage('');
       setQrStatusTone('neutral');
     }
-  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrStatusMessage]);
+  }, [qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
   const membersDirectory = MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
 
@@ -4223,9 +4253,9 @@ function AppContent() {
     if (!selectedDetailedMember?.idNumber || !selectedStatsDateISO) return;
     const firstWeek = detailedLast8Weeks[0];
     if (!firstWeek) return;
-    if (selectedStatsDateISO >= firstWeek.startISO && selectedStatsDateISO <= toISO(now)) return;
+    if (selectedStatsDateISO >= firstWeek.startISO && selectedStatsDateISO <= toISO(qrLiveNow)) return;
     const minISO = selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
-    const maxISO = selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
+    const maxISO = selectedStatsDateISO > toISO(qrLiveNow) ? selectedStatsDateISO : toISO(qrLiveNow);
     loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO);
   }, [selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
 
@@ -4234,7 +4264,7 @@ function AppContent() {
     const firstWeek = detailedLast8Weeks[0];
     if (!firstWeek) return undefined;
     const minISO = selectedStatsDateISO && selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
-    const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
+    const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(qrLiveNow) ? selectedStatsDateISO : toISO(qrLiveNow);
 
     const refreshDetailedLogs = () => {
       loadDetailedLogsForMember(selectedDetailedMember.idNumber, minISO, maxISO, { bypassCache: true, silent: true });
@@ -4411,30 +4441,30 @@ function AppContent() {
         return;
       }
       setQrFlowMode('registered');
-      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member, { forcedPrayerKey: prayerWindow?.prayerKey || '' });
-      const activeQrPrayerKey = String((prayerWindow?.isActive && prayerWindow?.prayerKey) ? prayerWindow.prayerKey : (result?.targetKeys?.[0] || ''));
+      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member, { forcedPrayerKey: qrLivePrayerWindow?.prayerKey || '' });
+      const activeQrPrayerKey = String((qrLivePrayerWindow?.isActive && qrLivePrayerWindow?.prayerKey) ? qrLivePrayerWindow.prayerKey : (result?.targetKeys?.[0] || ''));
       if (result?.status === 'inactive_prayer') {
         setQrLastAttendanceStatus('inactive_prayer');
         setQrLastAttendancePrayerKey('');
-        setQrLastAttendanceDateISO(toISO(now));
+        setQrLastAttendanceDateISO(toISO(qrLiveNow));
         setQrStatusTone('negative');
         setQrStatusMessage('Kein aktives Gebetsfenster.');
       } else if (result?.status === 'duplicate') {
         setQrLastAttendanceStatus('duplicate');
         setQrLastAttendancePrayerKey(activeQrPrayerKey);
-        setQrLastAttendanceDateISO(toISO(now));
+        setQrLastAttendanceDateISO(toISO(qrLiveNow));
         setQrStatusTone('positive');
-        setQrStatusMessage(`Sie wurden bereits für das ${getDisplayPrayerLabel(activeQrPrayerKey, timesToday)} Gebet eingetragen.`);
+        setQrStatusMessage(`Sie wurden bereits für das ${getDisplayPrayerLabel(activeQrPrayerKey, qrLiveTimesToday)} Gebet eingetragen.`);
       } else if (result?.status === 'counted') {
         setQrLastAttendanceStatus('counted');
         setQrLastAttendancePrayerKey(activeQrPrayerKey);
-        setQrLastAttendanceDateISO(toISO(now));
+        setQrLastAttendanceDateISO(toISO(qrLiveNow));
         setQrStatusTone('positive');
-        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${getDisplayPrayerLabel(activeQrPrayerKey, timesToday)}.`);
+        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${getDisplayPrayerLabel(activeQrPrayerKey, qrLiveTimesToday)}.`);
       } else {
         setQrLastAttendanceStatus('error');
         setQrLastAttendancePrayerKey('');
-        setQrLastAttendanceDateISO(toISO(now));
+        setQrLastAttendanceDateISO(toISO(qrLiveNow));
         setQrStatusTone('negative');
         setQrStatusMessage('QR-Check-in konnte nicht verarbeitet werden.');
       }
@@ -4445,7 +4475,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [loadStoredQrRegistration, now, prayerWindow, qrRegistration, timesToday]);
+  }, [loadStoredQrRegistration, qrLivePrayerWindow, qrRegistration, qrLiveTimesToday, qrLiveNow]);
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
@@ -4477,24 +4507,12 @@ function AppContent() {
       return { status: 'missing_member' };
     }
 
-    const runtimeNow = applyForcedTestDate(getBerlinNow());
-    if (isValidTime(FORCE_TIME)) {
-      runtimeNow.setHours(Number(FORCE_TIME.slice(0, 2)), Number(FORCE_TIME.slice(3)), 0, 0);
-    }
-
-    const runtimeISO = toISO(runtimeNow);
-    const runtimeIsRamadanToday = runtimeISO <= RAMADAN_END_ISO;
-    const runtimeSelectedISO = runtimeIsRamadanToday ? (RAMADAN_RAW[runtimeISO] ? runtimeISO : findClosestISO(runtimeISO, availableDates)) : null;
-    const runtimeRaw = runtimeSelectedISO ? RAMADAN_RAW[runtimeSelectedISO] : null;
-    const runtimeBaseTimesToday = buildPrayerTimes(runtimeRaw, runtimeIsRamadanToday);
     const runtimeOverride = prayerOverride;
-    const runtimeWithManual = applyManualPrayerAdjustments(runtimeBaseTimesToday, runtimeOverride);
-    const runtimeTimesToday = applyPrayerTimeOverride(runtimeWithManual, runtimeOverride);
-    const runtimeTomorrowISO = toISO(addDays(runtimeNow, 1));
-    const runtimeIsRamadanTomorrow = runtimeTomorrowISO <= RAMADAN_END_ISO;
-    const runtimeTomorrowRaw = runtimeIsRamadanTomorrow ? (RAMADAN_RAW[runtimeTomorrowISO] || null) : null;
-    const runtimeTimesTomorrow = buildPrayerTimes(runtimeTomorrowRaw, runtimeIsRamadanTomorrow);
-    const runtimePrayerWindow = resolvePrayerWindow(runtimeNow, runtimeTimesToday, runtimeTimesTomorrow);
+    const runtimeContext = getRuntimePrayerContext(runtimeOverride, availableDates);
+    const runtimeNow = runtimeContext.now;
+    const runtimeISO = runtimeContext.iso;
+    const runtimeTimesToday = runtimeContext.timesToday;
+    const runtimePrayerWindow = runtimeContext.prayerWindow;
 
     const runtimeProgramConfig = (programConfigByDate || {})[runtimeISO] || null;
     let runtimeProgramWindow = { isConfigured: false, isActive: false, label: null };
@@ -4732,10 +4750,10 @@ function AppContent() {
               <>
                 <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
-                <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+                <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{qrLivePrayerWindow.nextLabel}</Text>
                 <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                   <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>
-                    Das Zeitfenster öffnet sich in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}
+                    Das Zeitfenster öffnet sich in {formatMinutesUntil(qrLivePrayerWindow.minutesUntilNextWindow)}
                   </Text>
                 </View>
               </>
@@ -6022,9 +6040,9 @@ function AppContent() {
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
-        {prayerWindow.isActive && prayerWindow.prayerKey ? (
+        {qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
           <>
-            <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(prayerWindow.prayerKey, timesToday)}</Text>
+            <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(qrLivePrayerWindow.prayerKey, qrLiveTimesToday)}</Text>
             <Text style={[styles.qrPageHint, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
             <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
               {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
@@ -6038,9 +6056,9 @@ function AppContent() {
           <>
             <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Gebetsfenster geschlossen</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
-            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{qrLivePrayerWindow.nextLabel}</Text>
             <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
-              <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}</Text>
+              <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(qrLivePrayerWindow.minutesUntilNextWindow)}</Text>
             </View>
           </>
         )}
@@ -6465,7 +6483,7 @@ function AppContent() {
                           setDetailedPrayerRange('currentWeek');
                           const firstWeek = getLast8Weeks(now)[0];
                           const minISO = selectedStatsDateISO && selectedStatsDateISO < firstWeek.startISO ? selectedStatsDateISO : firstWeek.startISO;
-                          const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(now) ? selectedStatsDateISO : toISO(now);
+                          const maxISO = selectedStatsDateISO && selectedStatsDateISO > toISO(qrLiveNow) ? selectedStatsDateISO : toISO(qrLiveNow);
                           loadDetailedLogsForMember(member.idNumber, minISO, maxISO);
                         }}
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
