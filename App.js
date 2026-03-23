@@ -4442,8 +4442,8 @@ function AppContent() {
         return;
       }
       setQrFlowMode('registered');
-      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member, { forcedPrayerKey: qrLivePrayerWindow?.prayerKey || '' });
-      const activeQrPrayerKey = String((qrLivePrayerWindow?.isActive && qrLivePrayerWindow?.prayerKey) ? qrLivePrayerWindow.prayerKey : (result?.targetKeys?.[0] || ''));
+      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member);
+      const activeQrPrayerKey = String(result?.targetKeys?.[0] || '');
       if (result?.status === 'inactive_prayer') {
         setQrLastAttendanceStatus('inactive_prayer');
         setQrLastAttendancePrayerKey('');
