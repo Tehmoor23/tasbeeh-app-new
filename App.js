@@ -33,6 +33,7 @@ const STORAGE_KEYS = {
   announcementText: '@tasbeeh_announcement_text',
   qrBrowserDeviceId: '@tasbeeh_qr_browser_device_id',
   qrRegistration: '@tasbeeh_qr_registration',
+  qrActivePage: '@tasbeeh_qr_active_page',
 };
 
 const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
@@ -1292,7 +1293,6 @@ function AppContent() {
   const [qrRegistration, setQrRegistration] = useState(null);
   const [qrStatusMessage, setQrStatusMessage] = useState('');
   const [qrStatusTone, setQrStatusTone] = useState('neutral');
-  const [qrPageTapCount, setQrPageTapCount] = useState(0);
   const [qrLastAttendanceStatus, setQrLastAttendanceStatus] = useState('idle');
   const [qrLastAttendancePrayerKey, setQrLastAttendancePrayerKey] = useState('');
   const [qrLastAttendanceDateISO, setQrLastAttendanceDateISO] = useState('');
@@ -2392,12 +2392,6 @@ function AppContent() {
     const timer = setTimeout(() => setManualMetaTapCount(0), 1200);
     return () => clearTimeout(timer);
   }, [manualMetaTapCount]);
-
-  useEffect(() => {
-    if (!qrPageTapCount) return undefined;
-    const timer = setTimeout(() => setQrPageTapCount(0), 1500);
-    return () => clearTimeout(timer);
-  }, [qrPageTapCount]);
 
   useEffect(() => {
     ensureSuperAdminBootstrap();
@@ -4600,18 +4594,6 @@ function AppContent() {
     }
   }, [loadStoredQrRegistration, prayerOverrideReady, resolveQrPrayerContext]);
 
-  const handleQrTitleExitPress = useCallback(() => {
-    setQrPageTapCount((prev) => {
-      const next = prev + 1;
-      if (next >= 10) {
-        setQrPageVisible(false);
-        setQrScanPageVisible(false);
-        return 0;
-      }
-      return next;
-    });
-  }, []);
-
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
     const applyQrFromUrl = () => {
@@ -4640,6 +4622,37 @@ function AppContent() {
     setPendingQrPayload('');
     handleQrScanFlow(payload);
   }, [handleQrScanFlow, pendingQrPayload, prayerOverrideReady]);
+
+  useEffect(() => {
+    if (!isWebRuntime || typeof window === 'undefined') return;
+    const persistedQrPage = window.sessionStorage?.getItem(STORAGE_KEYS.qrActivePage);
+    if (persistedQrPage === 'scan') {
+      setQrScanPageVisible(true);
+      setQrPageVisible(false);
+    } else if (persistedQrPage === 'display') {
+      setQrPageVisible(true);
+      setQrScanPageVisible(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isWebRuntime || typeof window === 'undefined') return;
+    if (isQrScanPageVisible) {
+      window.sessionStorage?.setItem(STORAGE_KEYS.qrActivePage, 'scan');
+      return;
+    }
+    if (isQrPageVisible) {
+      window.sessionStorage?.setItem(STORAGE_KEYS.qrActivePage, 'display');
+      return;
+    }
+    window.sessionStorage?.removeItem(STORAGE_KEYS.qrActivePage);
+  }, [isQrPageVisible, isQrScanPageVisible]);
+
+  const handleTabPress = useCallback((tabKey) => {
+    setActiveTab(tabKey);
+    setQrPageVisible(false);
+    setQrScanPageVisible(false);
+  }, []);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null, options = {}) => {
     const nowTs = Date.now();
@@ -6189,9 +6202,7 @@ function AppContent() {
   const renderQrPage = () => (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Pressable onPress={handleQrTitleExitPress}>
-          <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
-        </Pressable>
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
         {qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
           <>
             <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(qrLivePrayerWindow.prayerKey, qrLiveTimesToday)}</Text>
@@ -6224,9 +6235,7 @@ function AppContent() {
 
     <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-        <Pressable onPress={handleQrTitleExitPress}>
-          <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
-        </Pressable>
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
         {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
         {qrStatusMessage ? (
           <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
@@ -6384,10 +6393,10 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView && !isQrScanPageVisible && (!isQrPageVisible || Boolean(currentAccount)) ? (
+      {!shouldRestrictToPrayerView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount)) ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
-            <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
+            <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect(styles.tabItem)}>
               <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
             </Pressable>
           ))}
