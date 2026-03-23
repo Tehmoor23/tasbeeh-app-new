@@ -31,7 +31,14 @@ const STORAGE_KEYS = {
   activeMosque: '@tasbeeh_active_mosque',
   programConfigsByDate: '@tasbeeh_program_configs_by_date',
   announcementText: '@tasbeeh_announcement_text',
+  qrBrowserDeviceId: '@tasbeeh_qr_browser_device_id',
+  qrRegistration: '@tasbeeh_qr_registration',
 };
+
+const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
+const QR_SCAN_PARAM = 'qrCheckin';
+const QR_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const QR_COUNTDOWN_SECONDS = Math.floor(QR_REFRESH_INTERVAL_MS / 1000);
 
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
@@ -1119,6 +1126,47 @@ function renderInlineBoldSegments(text, textStyle, boldStyle) {
   });
 }
 
+
+const isWebRuntime = Platform.OS === 'web';
+
+const getQrCycleStart = (timestamp = Date.now()) => Math.floor(timestamp / QR_REFRESH_INTERVAL_MS) * QR_REFRESH_INTERVAL_MS;
+const formatQrCountdown = (seconds) => {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(safeSeconds / 60);
+  const secs = safeSeconds % 60;
+  return `${mins}:${String(secs).padStart(2, '0')}`;
+};
+const createQrPayload = ({ mosqueKey, cycleStart }) => ({
+  type: 'prayer_attendance',
+  mosqueKey,
+  cycleStart,
+  expiresAt: cycleStart + QR_REFRESH_INTERVAL_MS,
+  version: 1,
+});
+const encodeQrPayload = (payload) => {
+  try {
+    return encodeURIComponent(JSON.stringify(payload));
+  } catch {
+    return '';
+  }
+};
+const decodeQrPayload = (value) => {
+  try {
+    return JSON.parse(decodeURIComponent(String(value || '')));
+  } catch {
+    return null;
+  }
+};
+const buildQrScanUrl = ({ mosqueKey, cycleStart }) => {
+  const payload = createQrPayload({ mosqueKey, cycleStart });
+  const encodedPayload = encodeQrPayload(payload);
+  if (!encodedPayload) return '';
+  if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
+  const url = new URL(window.location.href);
+  url.searchParams.set(QR_SCAN_PARAM, encodedPayload);
+  return url.toString();
+};
+const buildQrImageUrl = (scanUrl) => `https://api.qrserver.com/v1/create-qr-code/?size=720x720&margin=24&data=${encodeURIComponent(scanUrl)}`;
 function PrivacySection({ section, theme, isLast }) {
   return (
     <View style={[styles.privacySection, isLast && styles.privacySectionLast]}>
@@ -1206,6 +1254,21 @@ function AppContent() {
   const [manualMaghribTime, setManualMaghribTime] = useState('');
   const [manualIshaaTime, setManualIshaaTime] = useState('');
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
+  const [isQrModalVisible, setQrModalVisible] = useState(false);
+  const [isQrScanModalVisible, setQrScanModalVisible] = useState(false);
+  const [qrBrowserDeviceId, setQrBrowserDeviceId] = useState('');
+  const [qrRegistration, setQrRegistration] = useState(null);
+  const [qrStatusMessage, setQrStatusMessage] = useState('');
+  const [qrStatusTone, setQrStatusTone] = useState('neutral');
+  const [qrFlowMode, setQrFlowMode] = useState('landing');
+  const [qrRegistrationTanzeem, setQrRegistrationTanzeem] = useState('');
+  const [qrRegistrationMajlis, setQrRegistrationMajlis] = useState('');
+  const [qrRegistrationSearchQuery, setQrRegistrationSearchQuery] = useState('');
+  const [qrSubmitting, setQrSubmitting] = useState(false);
+  const [qrCycleStart, setQrCycleStart] = useState(() => getQrCycleStart());
+  const [qrCountdownSeconds, setQrCountdownSeconds] = useState(QR_COUNTDOWN_SECONDS);
+  const [qrImageUri, setQrImageUri] = useState('');
+  const [qrPendingImageUri, setQrPendingImageUri] = useState('');
   const [attendanceMode, setAttendanceMode] = useState('prayer');
   const [statsMode, setStatsMode] = useState('prayer');
 
@@ -1236,6 +1299,32 @@ function AppContent() {
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
   const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
+
+
+  const qrScanUrl = useMemo(() => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart }), [activeMosqueKey, qrCycleStart]);
+  const qrCurrentRegistrationMember = useMemo(() => {
+    if (!qrRegistration?.idNumber) return null;
+    return MEMBER_DIRECTORY_DATA.find((entry) => String(entry.idNumber) === String(qrRegistration.idNumber)) || null;
+  }, [qrRegistration]);
+  const qrRegistrationMajlisChoices = useMemo(() => (
+    MEMBER_DIRECTORY_DATA
+      .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
+      .map((entry) => entry.majlis)
+      .filter((value, index, arr) => value && arr.indexOf(value) === index)
+      .sort((a, b) => a.localeCompare(b, 'de'))
+  ), [qrRegistrationTanzeem]);
+  const qrRegistrationMemberChoices = useMemo(() => (
+    MEMBER_DIRECTORY_DATA
+      .filter((entry) => entry.tanzeem === qrRegistrationTanzeem && entry.majlis === qrRegistrationMajlis)
+      .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber), 'de'))
+  ), [qrRegistrationMajlis, qrRegistrationTanzeem]);
+  const qrRegistrationSearchDigits = String(qrRegistrationSearchQuery || '').replace(/[^0-9]/g, '');
+  const qrRegistrationSearchResults = useMemo(() => {
+    if (qrRegistrationSearchDigits.length < 4) return [];
+    return MEMBER_DIRECTORY_DATA
+      .filter((entry) => String(entry.idNumber || '').includes(qrRegistrationSearchDigits))
+      .slice(0, 24);
+  }, [qrRegistrationSearchDigits]);
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalScrollRef = useRef(null);
@@ -4104,6 +4193,180 @@ function AppContent() {
     return () => clearInterval(timer);
   }, [isDetailedIdOverviewVisible, selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
 
+
+  useEffect(() => {
+    const initQrRegistration = async () => {
+      try {
+        const existingBrowserDeviceId = await AsyncStorage.getItem(STORAGE_KEYS.qrBrowserDeviceId);
+        if (existingBrowserDeviceId) {
+          setQrBrowserDeviceId(existingBrowserDeviceId);
+        } else {
+          const generated = Crypto.randomUUID ? Crypto.randomUUID() : await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${Date.now()}_${Math.random()}`);
+          await AsyncStorage.setItem(STORAGE_KEYS.qrBrowserDeviceId, generated);
+          setQrBrowserDeviceId(generated);
+        }
+
+        const localRegistrationRaw = await AsyncStorage.getItem(STORAGE_KEYS.qrRegistration);
+        if (localRegistrationRaw) {
+          const parsed = JSON.parse(localRegistrationRaw);
+          if (parsed?.idNumber) setQrRegistration(parsed);
+        }
+      } catch (error) {
+        console.error('QR registration init failed', error);
+      }
+    };
+    initQrRegistration();
+  }, []);
+
+  useEffect(() => {
+    const nextImageUri = buildQrImageUrl(qrScanUrl);
+    if (!qrImageUri) {
+      setQrImageUri(nextImageUri);
+      setQrPendingImageUri('');
+      return;
+    }
+    if (nextImageUri !== qrImageUri) setQrPendingImageUri(nextImageUri);
+  }, [qrImageUri, qrScanUrl]);
+
+  useEffect(() => {
+    const tick = () => {
+      const nowMs = Date.now();
+      const activeCycleStart = getQrCycleStart(nowMs);
+      setQrCycleStart((prev) => (prev === activeCycleStart ? prev : activeCycleStart));
+      const nextRefreshAt = activeCycleStart + QR_REFRESH_INTERVAL_MS;
+      setQrCountdownSeconds(Math.max(0, Math.ceil((nextRefreshAt - nowMs) / 1000)));
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const persistQrRegistration = useCallback(async (registration) => {
+    setQrRegistration(registration);
+    await AsyncStorage.setItem(STORAGE_KEYS.qrRegistration, JSON.stringify(registration));
+  }, []);
+
+  const loadStoredQrRegistration = useCallback(async () => {
+    if (!qrBrowserDeviceId) return null;
+    const remoteRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId);
+    if (remoteRegistration?.idNumber) {
+      await persistQrRegistration(remoteRegistration);
+      return remoteRegistration;
+    }
+    return null;
+  }, [persistQrRegistration, qrBrowserDeviceId]);
+
+  const handleQrMemberRegistration = useCallback(async (member) => {
+    if (!member?.idNumber || !qrBrowserDeviceId) {
+      setQrStatusTone('negative');
+      setQrStatusMessage('Bitte zuerst eine gültige ID auswählen.');
+      return;
+    }
+    setQrSubmitting(true);
+    try {
+      const existingRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId);
+      if (existingRegistration?.idNumber && String(existingRegistration.idNumber) !== String(member.idNumber)) {
+        setQrStatusTone('negative');
+        setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
+        return;
+      }
+      const nextRegistration = {
+        browserDeviceId: qrBrowserDeviceId,
+        idNumber: String(member.idNumber),
+        tanzeem: String(member.tanzeem || '').toLowerCase(),
+        majlis: String(member.majlis || ''),
+        mosqueKey: activeMosqueKey,
+        updatedAt: new Date().toISOString(),
+        createdAt: existingRegistration?.createdAt || new Date().toISOString(),
+      };
+      await setGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId, nextRegistration);
+      await persistQrRegistration(nextRegistration);
+      setQrFlowMode('registered');
+      setQrStatusTone('positive');
+      setQrStatusMessage('Erfolgreiche Registrierung. Bitte Browserdaten nicht löschen und möglichst immer denselben Browser verwenden.');
+      setQrRegistrationSearchQuery('');
+    } catch (error) {
+      console.error('QR registration failed', error);
+      setQrStatusTone('negative');
+      setQrStatusMessage('Registrierung fehlgeschlagen. Bitte Internet prüfen.');
+    } finally {
+      setQrSubmitting(false);
+    }
+  }, [activeMosqueKey, persistQrRegistration, qrBrowserDeviceId]);
+
+  const handleQrScanFlow = useCallback(async (encodedPayload) => {
+    if (!isWebRuntime || !encodedPayload) return;
+    const payload = decodeQrPayload(encodedPayload);
+    if (!payload || payload.type !== 'prayer_attendance') return;
+    const nowMs = Date.now();
+    if (Number(payload.expiresAt) <= nowMs) {
+      setQrStatusTone('negative');
+      setQrStatusMessage('Dieser QR-Code ist abgelaufen. Bitte den aktuellen QR-Code erneut scannen.');
+      setQrScanModalVisible(true);
+      return;
+    }
+    setAttendanceMode('prayer');
+    setQrScanModalVisible(true);
+    setQrStatusMessage('');
+    setQrStatusTone('neutral');
+    setQrSubmitting(true);
+    try {
+      let registration = qrRegistration;
+      if (!registration?.idNumber) {
+        registration = await loadStoredQrRegistration();
+      }
+      if (!registration?.idNumber) {
+        setQrFlowMode('register');
+        setQrStatusTone('neutral');
+        setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
+        return;
+      }
+      const member = MEMBER_DIRECTORY_DATA.find((entry) => String(entry.idNumber) === String(registration.idNumber));
+      if (!member) {
+        setQrFlowMode('register');
+        setQrStatusTone('negative');
+        setQrStatusMessage('Die gespeicherte Registrierung wurde in der Mitgliederliste nicht gefunden. Bitte erneut registrieren.');
+        return;
+      }
+      setQrFlowMode('registered');
+      const result = await countAttendance('prayer', 'member', registration.majlis || member.majlis, member);
+      if (result?.status === 'inactive_prayer') {
+        setQrStatusTone('negative');
+        setQrStatusMessage('Kein aktives Gebetsfenster.');
+      } else if (result?.status === 'duplicate') {
+        setQrStatusTone('positive');
+        setQrStatusMessage('Bereits eingetragen.');
+      } else if (result?.status === 'counted') {
+        setQrStatusTone('positive');
+        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${getDisplayPrayerLabel(result.targetKeys?.[0], timesToday)}.`);
+      } else {
+        setQrStatusTone('negative');
+        setQrStatusMessage('QR-Check-in konnte nicht verarbeitet werden.');
+      }
+    } catch (error) {
+      console.error('QR scan flow failed', error);
+      setQrStatusTone('negative');
+      setQrStatusMessage('QR-Check-in fehlgeschlagen. Bitte Internet prüfen.');
+    } finally {
+      setQrSubmitting(false);
+    }
+  }, [loadStoredQrRegistration, qrRegistration, timesToday]);
+
+  useEffect(() => {
+    if (!isWebRuntime || typeof window === 'undefined') return undefined;
+    const applyQrFromUrl = () => {
+      const url = new URL(window.location.href);
+      const encodedPayload = url.searchParams.get(QR_SCAN_PARAM);
+      if (!encodedPayload) return;
+      url.searchParams.delete(QR_SCAN_PARAM);
+      window.history.replaceState({}, '', url.toString());
+      handleQrScanFlow(encodedPayload);
+    };
+    applyQrFromUrl();
+    window.addEventListener('popstate', applyQrFromUrl);
+    return () => window.removeEventListener('popstate', applyQrFromUrl);
+  }, [handleQrScanFlow]);
+
   const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
@@ -4116,7 +4379,7 @@ function AppContent() {
 
     if (kind === 'member' && (!selectedMember || !selectedMember.idNumber)) {
       setToast('Bitte erst ID auswählen');
-      return;
+      return { status: 'missing_member' };
     }
 
     const runtimeNow = applyForcedTestDate(getBerlinNow());
@@ -4153,7 +4416,7 @@ function AppContent() {
     if (modeType === 'prayer' && (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey)) {
       setToast('Derzeit kein aktives Gebetszeitfenster');
       setRefreshTick((v) => v + 1);
-      return;
+      return { status: 'inactive_prayer' };
     }
 
     if (modeType === 'program' && !runtimeProgramWindow.isActive) {
@@ -4217,7 +4480,7 @@ function AppContent() {
           setTerminalMode('tanzeem');
           setSelectedTanzeem('');
           setSelectedMajlis('');
-          return;
+          return { status: 'duplicate' };
         }
       }
 
@@ -4288,9 +4551,11 @@ function AppContent() {
       setTerminalMode('tanzeem');
       setSelectedTanzeem('');
       setSelectedMajlis('');
+      return { status: 'counted', targetKeys };
     } catch {
       Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
       setToast('Datenbankfehler – bitte Internet prüfen');
+      return { status: 'error' };
     }
   };
 
@@ -4565,6 +4830,9 @@ function AppContent() {
 
         <View style={styles.privacyNoticeWrap}>
           <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
+          <Pressable onPress={() => setQrModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
+            <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>QR-Code anzeigen</Text>
+          </Pressable>
           <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
@@ -5691,6 +5959,105 @@ function AppContent() {
       ) : null}
 
 
+      <Modal visible={isQrModalVisible} animationType="slide" transparent onRequestClose={() => setQrModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <View style={[styles.privacyModalCard, styles.qrModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+            <Text style={[styles.basmalaText, { color: theme.muted, paddingTop: 0 }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
+            <View style={styles.logoWrap}>
+              <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
+            </View>
+            <Text style={[styles.privacyModalTitle, { color: theme.text }]}>QR-Code anzeigen</Text>
+            <Text style={[styles.qrModalSubtitle, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
+            <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}> 
+              {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
+              {qrPendingImageUri ? <Image source={{ uri: qrPendingImageUri }} style={styles.qrCodePreloadImage} resizeMode="contain" onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }} /> : null}
+            </View>
+            <View style={[styles.qrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}> 
+              <Text style={[styles.qrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
+            </View>
+            <Text style={[styles.qrModalHint, { color: theme.muted }]}>Für Dauerbetrieb einfach offen lassen – der QR-Code wird ohne harten Reload aktualisiert.</Text>
+            <Pressable onPress={() => setQrModalVisible(false)} style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
+              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schließen</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isQrScanModalVisible} animationType="slide" transparent onRequestClose={() => setQrScanModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <View style={[styles.privacyModalCard, styles.qrScanModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
+            <Text style={[styles.privacyModalTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
+            {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
+            {qrStatusMessage ? (
+              <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
+                <Text style={[styles.qrStatusText, { color: theme.text }]}>{qrStatusMessage}</Text>
+              </View>
+            ) : null}
+            {qrRegistration?.idNumber && qrCurrentRegistrationMember ? (
+              <Text style={[styles.qrRegisteredMeta, { color: theme.muted }]}>Registriert: {qrCurrentRegistrationMember.idNumber} · {TANZEEM_LABELS[qrCurrentRegistrationMember.tanzeem] || qrCurrentRegistrationMember.tanzeem} · {qrCurrentRegistrationMember.majlis}</Text>
+            ) : null}
+            {qrFlowMode === 'register' ? (
+              <>
+                <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Einmalige Registrierung</Text>
+                <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم ایک بار رجسٹریشن مکمل کریں</Text>
+                <View style={styles.tanzeemRow}>
+                  {TANZEEM_OPTIONS.map((tanzeem) => (
+                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(''); }}>
+                      <Text style={[styles.presetBtnText, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <TextInput
+                  value={qrRegistrationSearchQuery}
+                  onChangeText={(value) => setQrRegistrationSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
+                  placeholder="Direkt ID-Nummer suchen"
+                  placeholderTextColor={theme.muted}
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  style={[styles.idSearchInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                />
+                {qrRegistrationSearchDigits.length >= 4 && qrRegistrationSearchResults.length > 0 ? (
+                  <View style={styles.quickSearchResultsWrap}>
+                    {qrRegistrationSearchResults.map((member) => (
+                      <Pressable key={`qr_search_${member.tanzeem}_${member.majlis}_${member.idNumber}`} onPress={() => handleQrMemberRegistration(member)} style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}>
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+                {qrRegistrationTanzeem ? (
+                  <View style={styles.gridWrap}>
+                    {qrRegistrationMajlisChoices.map((majlis) => (
+                      <Pressable key={`qr_majlis_${majlis}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: qrRegistrationMajlis === majlis ? theme.button : theme.bg, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMajlis(majlis)}>
+                        <Text style={[styles.gridText, { color: qrRegistrationMajlis === majlis ? theme.buttonText : theme.text }]}>{majlis}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+                {qrRegistrationMajlis ? (
+                  <View style={[styles.gridWrap, styles.idGridWrap]}>
+                    {qrRegistrationMemberChoices.map((member) => (
+                      <Pressable key={`qr_member_${member.tanzeem}_${member.majlis}_${member.idNumber}`} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.bg, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => handleQrMemberRegistration(member)}>
+                        <Text style={[styles.gridText, { color: theme.text }]}>{member.idNumber}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            {qrFlowMode === 'registered' ? (
+              <View style={[styles.qrDeviceHintCard, { borderColor: theme.border, backgroundColor: theme.bg }]}> 
+                <Text style={[styles.qrDeviceHintText, { color: theme.text }]}>Bitte Browserdaten nicht löschen, möglichst immer denselben Browser verwenden und bei gelöschten Daten erneut registrieren.</Text>
+              </View>
+            ) : null}
+            <Pressable onPress={() => setQrScanModalVisible(false)} style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
+              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schließen</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+
       <Modal visible={isAdminLoginVisible} animationType="fade" transparent onRequestClose={() => setAdminLoginVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
           <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
@@ -6263,6 +6630,22 @@ const styles = StyleSheet.create({
   tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
+  qrModalCard: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 12 },
+  qrScanModalCard: { width: '100%', maxWidth: 620, alignSelf: 'center', gap: 12, maxHeight: '88%' },
+  qrModalSubtitle: { textAlign: 'center', fontSize: 14, fontWeight: '600' },
+  qrCodeCard: { borderWidth: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
+  qrCodeImage: { width: 280, height: 280 },
+  qrCodePreloadImage: { width: 1, height: 1, opacity: 0, position: 'absolute' },
+  qrTimerChip: { alignSelf: 'center', borderWidth: 1, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14 },
+  qrTimerText: { fontSize: 14, fontWeight: '800' },
+  qrModalHint: { textAlign: 'center', fontSize: 12, fontWeight: '600' },
+  qrStatusCard: { borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(59,130,246,0.08)' },
+  qrStatusCardPositive: { backgroundColor: 'rgba(34,197,94,0.14)' },
+  qrStatusCardNegative: { backgroundColor: 'rgba(239,68,68,0.14)' },
+  qrStatusText: { textAlign: 'center', fontSize: 14, fontWeight: '700' },
+  qrRegisteredMeta: { textAlign: 'center', fontSize: 12, fontWeight: '600' },
+  qrDeviceHintCard: { borderWidth: 1, borderRadius: 14, padding: 12 },
+  qrDeviceHintText: { textAlign: 'center', fontSize: 13, lineHeight: 20, fontWeight: '600' },
   tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
   tabLabelTablet: { fontSize: 14 },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
