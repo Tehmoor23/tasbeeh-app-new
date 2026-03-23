@@ -4414,7 +4414,7 @@ function AppContent() {
         return;
       }
       setQrFlowMode('registered');
-      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member);
+      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member, { forcedPrayerKey: prayerWindow?.prayerKey || '' });
       const activeQrPrayerKey = String((prayerWindow?.isActive && prayerWindow?.prayerKey) ? prayerWindow.prayerKey : (result?.targetKeys?.[0] || ''));
       if (result?.status === 'inactive_prayer') {
         setQrLastAttendanceStatus('inactive_prayer');
@@ -4465,7 +4465,7 @@ function AppContent() {
     return () => window.removeEventListener('popstate', applyQrFromUrl);
   }, [handleQrScanFlow]);
 
-  const countAttendance = async (modeType, kind, locationName, selectedMember = null) => {
+  const countAttendance = async (modeType, kind, locationName, selectedMember = null, options = {}) => {
     const nowTs = Date.now();
     if (nowTs - terminalLastCountRef.current < 2000) return;
     terminalLastCountRef.current = nowTs;
@@ -4531,7 +4531,8 @@ function AppContent() {
     if (modeType === 'program') {
       targetKeys.push(toLocationKey(runtimeProgramWindow.label || 'programm'));
     } else {
-      const prayer = runtimePrayerWindow.prayerKey;
+      const forcedPrayerKey = String(options?.forcedPrayerKey || '');
+      const prayer = forcedPrayerKey || runtimePrayerWindow.prayerKey;
       const runtimeSoharAsrMerged = isValidTime(runtimeTimesToday.sohar) && runtimeTimesToday.sohar === runtimeTimesToday.asr;
       const runtimeMaghribIshaaMerged = isValidTime(runtimeTimesToday.maghrib) && runtimeTimesToday.maghrib === runtimeTimesToday.ishaa;
       if (runtimeSoharAsrMerged && ['sohar', 'asr'].includes(prayer)) {
