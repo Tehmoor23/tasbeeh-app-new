@@ -4593,14 +4593,6 @@ function AppContent() {
     }
   }, [loadStoredQrRegistration, prayerOverrideReady, resolveQrPrayerContext]);
 
-  const handleQrPageBackPress = useCallback(() => {
-    setQrPageVisible(false);
-    if (APP_MODE === 'display') {
-      setActiveTab('gebetsplan');
-    }
-  }, []);
-
-
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
     const applyQrFromUrl = () => {
@@ -6203,9 +6195,6 @@ function AppContent() {
             <Text style={[styles.urduText, { color: theme.muted }]}>حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔</Text>
           </>
         )}
-        <Pressable onPress={handleQrPageBackPress} style={({ pressed }) => [[styles.saveBtn, styles.qrPageCloseBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
-          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
-        </Pressable>
       </View>
     </ScrollView>
   );
