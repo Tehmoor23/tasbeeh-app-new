@@ -6116,12 +6116,13 @@ function AppContent() {
         ) : (
           <>
             <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Derzeit kein Gebet</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>فی الحال کوئی نماز نہیں</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
             <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
             <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
               <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}</Text>
             </View>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 18 }]}>Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔</Text>
           </>
         )}
         <Pressable onPress={() => setQrPageVisible(false)} style={({ pressed }) => [[styles.saveBtn, styles.qrPageCloseBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
