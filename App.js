@@ -1292,6 +1292,7 @@ function AppContent() {
   const [qrRegistration, setQrRegistration] = useState(null);
   const [qrStatusMessage, setQrStatusMessage] = useState('');
   const [qrStatusTone, setQrStatusTone] = useState('neutral');
+  const [qrPageTapCount, setQrPageTapCount] = useState(0);
   const [qrLastAttendanceStatus, setQrLastAttendanceStatus] = useState('idle');
   const [qrLastAttendancePrayerKey, setQrLastAttendancePrayerKey] = useState('');
   const [qrLastAttendanceDateISO, setQrLastAttendanceDateISO] = useState('');
@@ -2391,6 +2392,12 @@ function AppContent() {
     const timer = setTimeout(() => setManualMetaTapCount(0), 1200);
     return () => clearTimeout(timer);
   }, [manualMetaTapCount]);
+
+  useEffect(() => {
+    if (!qrPageTapCount) return undefined;
+    const timer = setTimeout(() => setQrPageTapCount(0), 1500);
+    return () => clearTimeout(timer);
+  }, [qrPageTapCount]);
 
   useEffect(() => {
     ensureSuperAdminBootstrap();
@@ -4593,6 +4600,17 @@ function AppContent() {
     }
   }, [loadStoredQrRegistration, prayerOverrideReady, resolveQrPrayerContext]);
 
+  const handleQrPageTitlePress = useCallback(() => {
+    setQrPageTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 10) {
+        setQrPageVisible(false);
+        return 0;
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
     const applyQrFromUrl = () => {
@@ -6170,7 +6188,9 @@ function AppContent() {
   const renderQrPage = () => (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
+        <Pressable onPress={handleQrPageTitlePress}>
+          <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
+        </Pressable>
         {qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
           <>
             <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(qrLivePrayerWindow.prayerKey, qrLiveTimesToday)}</Text>
@@ -6364,7 +6384,7 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView && !isQrPageVisible && !isQrScanPageVisible ? (
+      {!shouldRestrictToPrayerView && !isQrScanPageVisible && (!isQrPageVisible || Boolean(currentAccount)) ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
