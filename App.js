@@ -908,13 +908,22 @@ const loadFirebaseRuntime = () => {
     const { doc, getFirestore, onSnapshot } = require('firebase/firestore');
     const auth = require('firebase/auth');
     const firebaseApp = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
+    let authInstance;
+    try {
+      if (Platform.OS !== 'web' && auth.initializeAuth && auth.getReactNativePersistence) {
+        authInstance = auth.initializeAuth(firebaseApp, {
+          persistence: auth.getReactNativePersistence(AsyncStorage),
+        });
+      }
+    } catch {}
+    if (!authInstance) authInstance = auth.getAuth(firebaseApp);
     return {
       app: firebaseApp,
       db: getFirestore(firebaseApp),
       doc,
       onSnapshot,
       authApi: auth,
-      auth: auth.getAuth(firebaseApp),
+      auth: authInstance,
     };
   } catch {
     return null;
@@ -1332,28 +1341,7 @@ function AppContent() {
   }, [qrRegistrationSearchDigits]);
 
 
-  const qrRegisteredGuidance = useMemo(() => {
-    if (!qrRegistration?.idNumber) return '';
-    const currentDateISO = toISO(now);
-    const currentPrayerKey = prayerWindow?.prayerKey || '';
-    const isCurrentPrayerAlreadyHandled = Boolean(
-      prayerWindow?.isActive
-      && currentPrayerKey
-      && qrLastAttendanceDateISO === currentDateISO
-      && qrLastAttendancePrayerKey === currentPrayerKey
-      && ['counted', 'duplicate'].includes(qrLastAttendanceStatus),
-    );
-    if (isCurrentPrayerAlreadyHandled) {
-      return 'Sie wurden bereits für das aktuelle Gebet eingetragen.';
-    }
-    if (prayerWindow?.isActive && prayerWindow?.prayerLabel) {
-      return `Bitte den QR-Code noch einmal scannen, um sich für ${prayerWindow.prayerLabel} einzutragen.`;
-    }
-    if (prayerWindow?.nextLabel) {
-      return `Gebetsfenster geschlossen. Nächstes Gebet: ${prayerWindow.nextLabel}.`;
-    }
-    return 'Gebetsfenster geschlossen.';
-  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration]);
+
 
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalScrollRef = useRef(null);
@@ -2696,6 +2684,24 @@ function AppContent() {
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
+  const qrRegisteredGuidance = useMemo(() => {
+    if (!qrRegistration?.idNumber) return '';
+    const currentDateISO = toISO(now);
+    const currentPrayerKey = prayerWindow?.prayerKey || '';
+    const isCurrentPrayerAlreadyHandled = Boolean(
+      prayerWindow?.isActive
+      && currentPrayerKey
+      && qrLastAttendanceDateISO === currentDateISO
+      && qrLastAttendancePrayerKey === currentPrayerKey
+      && ['counted', 'duplicate'].includes(qrLastAttendanceStatus),
+    );
+    if (isCurrentPrayerAlreadyHandled) return 'Sie wurden bereits für das aktuelle Gebet eingetragen.';
+    if (prayerWindow?.isActive && prayerWindow?.prayerLabel) {
+      return `Bitte den QR-Code noch einmal scannen, um sich für ${prayerWindow.prayerLabel} einzutragen.`;
+    }
+    if (prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${prayerWindow.nextLabel}.`;
+    return 'Gebetsfenster geschlossen.';
+  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration]);
   const membersDirectory = MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
 
