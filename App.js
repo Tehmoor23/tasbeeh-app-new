@@ -2704,6 +2704,23 @@ function AppContent() {
     if (prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${prayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
   }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration, timesToday]);
+
+
+  useEffect(() => {
+    if (!['counted', 'duplicate'].includes(qrLastAttendanceStatus)) return;
+    const currentDateISO = toISO(now);
+    const currentPrayerKey = prayerWindow?.prayerKey || '';
+    const isSamePrayerWindow = Boolean(
+      prayerWindow?.isActive
+      && currentPrayerKey
+      && qrLastAttendanceDateISO === currentDateISO
+      && qrLastAttendancePrayerKey === currentPrayerKey
+    );
+    if (!isSamePrayerWindow && qrStatusMessage) {
+      setQrStatusMessage('');
+      setQrStatusTone('neutral');
+    }
+  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrStatusMessage]);
   const membersDirectory = MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
 
