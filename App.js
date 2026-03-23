@@ -2012,7 +2012,7 @@ function AppContent() {
     if (dayOffset === 1) {
       return normalizedPending?.dateISO === displayDateISO
         ? normalizePrayerOverride(normalizedPending)
-        : normalizePrayerOverride(null);
+        : normalizedBase;
     }
     return normalizedBase;
   }, []);
