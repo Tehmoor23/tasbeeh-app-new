@@ -1254,7 +1254,7 @@ function AppContent() {
   const [manualMaghribTime, setManualMaghribTime] = useState('');
   const [manualIshaaTime, setManualIshaaTime] = useState('');
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
-  const [isQrModalVisible, setQrModalVisible] = useState(false);
+  const [isQrPageVisible, setQrPageVisible] = useState(false);
   const [isQrScanModalVisible, setQrScanModalVisible] = useState(false);
   const [qrBrowserDeviceId, setQrBrowserDeviceId] = useState('');
   const [qrRegistration, setQrRegistration] = useState(null);
@@ -4830,7 +4830,7 @@ function AppContent() {
 
         <View style={styles.privacyNoticeWrap}>
           <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
-          <Pressable onPress={() => setQrModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
+          <Pressable onPress={() => setQrPageVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>QR-Code anzeigen</Text>
           </Pressable>
           <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
@@ -5921,15 +5921,36 @@ function AppContent() {
   );
   };
 
+  const renderQrPage = () => (
+    <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
+      <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
+        <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
+        <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
+          {qrPendingImageUri ? <Image source={{ uri: qrPendingImageUri }} style={styles.qrCodePreloadImage} resizeMode="contain" onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }} /> : null}
+        </View>
+        <View style={[styles.qrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+          <Text style={[styles.qrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
+        </View>
+        <Pressable onPress={() => setQrPageVisible(false)} style={({ pressed }) => [[styles.saveBtn, styles.qrPageCloseBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
+          <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
+        </Pressable>
+      </View>
+    </ScrollView>
+  );
+
   const body = shouldRestrictToPrayerView
     ? renderPrayer()
-    : activeTab === 'gebetsplan'
-      ? renderPrayer()
-      : activeTab === 'terminal'
-        ? renderTerminal()
-        : activeTab === 'stats'
-          ? renderStats()
-          : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
+    : isQrPageVisible
+      ? renderQrPage()
+      : activeTab === 'gebetsplan'
+        ? renderPrayer()
+        : activeTab === 'terminal'
+          ? renderTerminal()
+          : activeTab === 'stats'
+            ? renderStats()
+            : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
@@ -5948,7 +5969,7 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView ? (
+      {!shouldRestrictToPrayerView && !isQrPageVisible ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => setActiveTab(tab.key)} style={withPressEffect(styles.tabItem)}>
@@ -5958,30 +5979,6 @@ function AppContent() {
         </View>
       ) : null}
 
-
-      <Modal visible={isQrModalVisible} animationType="slide" transparent onRequestClose={() => setQrModalVisible(false)}>
-        <View style={styles.privacyModalBackdrop}>
-          <View style={[styles.privacyModalCard, styles.qrModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-            <Text style={[styles.basmalaText, { color: theme.muted, paddingTop: 0 }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
-            <View style={styles.logoWrap}>
-              <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
-            </View>
-            <Text style={[styles.privacyModalTitle, { color: theme.text }]}>QR-Code anzeigen</Text>
-            <Text style={[styles.qrModalSubtitle, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
-            <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}> 
-              {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
-              {qrPendingImageUri ? <Image source={{ uri: qrPendingImageUri }} style={styles.qrCodePreloadImage} resizeMode="contain" onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }} /> : null}
-            </View>
-            <View style={[styles.qrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}> 
-              <Text style={[styles.qrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
-            </View>
-            <Text style={[styles.qrModalHint, { color: theme.muted }]}>Für Dauerbetrieb einfach offen lassen – der QR-Code wird ohne harten Reload aktualisiert.</Text>
-            <Pressable onPress={() => setQrModalVisible(false)} style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
-              <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Schließen</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
 
       <Modal visible={isQrScanModalVisible} animationType="slide" transparent onRequestClose={() => setQrScanModalVisible(false)}>
         <View style={styles.privacyModalBackdrop}>
@@ -6630,15 +6627,16 @@ const styles = StyleSheet.create({
   tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
-  qrModalCard: { width: '100%', maxWidth: 560, alignSelf: 'center', gap: 12 },
+  qrPageCard: { alignItems: 'center', paddingVertical: 22, gap: 14 },
+  qrPageTitle: { textAlign: 'center', fontSize: 24, fontWeight: '800' },
+  qrPageSubtitle: { textAlign: 'center', fontSize: 14, fontWeight: '600' },
+  qrPageCloseBtn: { alignSelf: 'stretch', marginTop: 4 },
   qrScanModalCard: { width: '100%', maxWidth: 620, alignSelf: 'center', gap: 12, maxHeight: '88%' },
-  qrModalSubtitle: { textAlign: 'center', fontSize: 14, fontWeight: '600' },
   qrCodeCard: { borderWidth: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
   qrCodeImage: { width: 280, height: 280 },
   qrCodePreloadImage: { width: 1, height: 1, opacity: 0, position: 'absolute' },
   qrTimerChip: { alignSelf: 'center', borderWidth: 1, borderRadius: 999, paddingVertical: 8, paddingHorizontal: 14 },
   qrTimerText: { fontSize: 14, fontWeight: '800' },
-  qrModalHint: { textAlign: 'center', fontSize: 12, fontWeight: '600' },
   qrStatusCard: { borderWidth: 1, borderRadius: 14, padding: 12, backgroundColor: 'rgba(59,130,246,0.08)' },
   qrStatusCardPositive: { backgroundColor: 'rgba(34,197,94,0.14)' },
   qrStatusCardNegative: { backgroundColor: 'rgba(239,68,68,0.14)' },
