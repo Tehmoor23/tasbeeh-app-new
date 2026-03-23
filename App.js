@@ -57,7 +57,7 @@ const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
 const FORCE_TEST_DATE_ENABLED = false;
-const FORCE_TEST_DATE_ISO = '2026-03-25'; // development override for testing (YYYY-MM-DD)
+const FORCE_TEST_DATE_ISO = '2026-03-15'; // development override for testing (YYYY-MM-DD)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -2012,7 +2012,7 @@ function AppContent() {
     if (dayOffset === 1) {
       return normalizedPending?.dateISO === displayDateISO
         ? normalizePrayerOverride(normalizedPending)
-        : normalizePrayerOverride(null);
+        : normalizedBase;
     }
     return normalizedBase;
   }, []);
