@@ -4229,29 +4229,48 @@ function AppContent() {
   }, [isDetailedIdOverviewVisible, selectedDetailedMember, selectedStatsDateISO, detailedLast8Weeks, now]);
 
 
+  const clearQrRegistration = useCallback(async () => {
+    setQrRegistration(null);
+    setQrFlowMode('landing');
+    setQrLastAttendanceStatus('idle');
+    setQrLastAttendancePrayerKey('');
+    setQrLastAttendanceDateISO('');
+    await AsyncStorage.removeItem(STORAGE_KEYS.qrRegistration);
+  }, []);
+
+  const ensureQrBrowserDeviceId = useCallback(async () => {
+    const existingBrowserDeviceId = await AsyncStorage.getItem(STORAGE_KEYS.qrBrowserDeviceId);
+    if (existingBrowserDeviceId) {
+      setQrBrowserDeviceId(existingBrowserDeviceId);
+      return existingBrowserDeviceId;
+    }
+    const generated = Crypto.randomUUID ? Crypto.randomUUID() : await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${Date.now()}_${Math.random()}`);
+    await AsyncStorage.setItem(STORAGE_KEYS.qrBrowserDeviceId, generated);
+    setQrBrowserDeviceId(generated);
+    return generated;
+  }, []);
+
   useEffect(() => {
     const initQrRegistration = async () => {
       try {
-        const existingBrowserDeviceId = await AsyncStorage.getItem(STORAGE_KEYS.qrBrowserDeviceId);
-        if (existingBrowserDeviceId) {
-          setQrBrowserDeviceId(existingBrowserDeviceId);
-        } else {
-          const generated = Crypto.randomUUID ? Crypto.randomUUID() : await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, `${Date.now()}_${Math.random()}`);
-          await AsyncStorage.setItem(STORAGE_KEYS.qrBrowserDeviceId, generated);
-          setQrBrowserDeviceId(generated);
+        const browserDeviceId = await ensureQrBrowserDeviceId();
+        if (!browserDeviceId || !hasFirebaseConfig()) {
+          await clearQrRegistration();
+          return;
         }
-
-        const localRegistrationRaw = await AsyncStorage.getItem(STORAGE_KEYS.qrRegistration);
-        if (localRegistrationRaw) {
-          const parsed = JSON.parse(localRegistrationRaw);
-          if (parsed?.idNumber) setQrRegistration(parsed);
+        const remoteRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId);
+        if (remoteRegistration?.idNumber) {
+          await AsyncStorage.setItem(STORAGE_KEYS.qrRegistration, JSON.stringify(remoteRegistration));
+          setQrRegistration(remoteRegistration);
+        } else {
+          await clearQrRegistration();
         }
       } catch (error) {
         console.error('QR registration init failed', error);
       }
     };
     initQrRegistration();
-  }, []);
+  }, [clearQrRegistration, ensureQrBrowserDeviceId]);
 
   useEffect(() => {
     const nextImageUri = buildQrImageUrl(qrScanUrl);
@@ -4282,31 +4301,37 @@ function AppContent() {
   }, []);
 
   const loadStoredQrRegistration = useCallback(async () => {
-    if (!qrBrowserDeviceId) return null;
-    const remoteRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId);
+    const browserDeviceId = qrBrowserDeviceId || await ensureQrBrowserDeviceId();
+    if (!browserDeviceId || !hasFirebaseConfig()) {
+      await clearQrRegistration();
+      return null;
+    }
+    const remoteRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId);
     if (remoteRegistration?.idNumber) {
       await persistQrRegistration(remoteRegistration);
       return remoteRegistration;
     }
+    await clearQrRegistration();
     return null;
-  }, [persistQrRegistration, qrBrowserDeviceId]);
+  }, [clearQrRegistration, ensureQrBrowserDeviceId, persistQrRegistration, qrBrowserDeviceId]);
 
   const handleQrMemberRegistration = useCallback(async (member) => {
-    if (!member?.idNumber || !qrBrowserDeviceId) {
+    const browserDeviceId = qrBrowserDeviceId || await ensureQrBrowserDeviceId();
+    if (!member?.idNumber || !browserDeviceId) {
       setQrStatusTone('negative');
       setQrStatusMessage('Bitte zuerst eine gültige ID auswählen.');
       return;
     }
     setQrSubmitting(true);
     try {
-      const existingRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId);
+      const existingRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId);
       if (existingRegistration?.idNumber && String(existingRegistration.idNumber) !== String(member.idNumber)) {
         setQrStatusTone('negative');
         setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
         return;
       }
       const nextRegistration = {
-        browserDeviceId: qrBrowserDeviceId,
+        browserDeviceId,
         idNumber: String(member.idNumber),
         tanzeem: String(member.tanzeem || '').toLowerCase(),
         majlis: String(member.majlis || ''),
@@ -4314,7 +4339,7 @@ function AppContent() {
         updatedAt: new Date().toISOString(),
         createdAt: existingRegistration?.createdAt || new Date().toISOString(),
       };
-      await setGlobalDocData(QR_REGISTRATION_COLLECTION, qrBrowserDeviceId, nextRegistration);
+      await setGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId, nextRegistration);
       await persistQrRegistration(nextRegistration);
       setQrFlowMode('registered');
       setQrRegistrationMode('tanzeem');
@@ -4332,7 +4357,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, persistQrRegistration, qrBrowserDeviceId]);
+  }, [activeMosqueKey, ensureQrBrowserDeviceId, persistQrRegistration, qrBrowserDeviceId]);
 
   const handleQrScanFlow = useCallback(async (encodedPayload) => {
     if (!isWebRuntime || !encodedPayload) return;
@@ -4351,10 +4376,7 @@ function AppContent() {
     setQrStatusTone('neutral');
     setQrSubmitting(true);
     try {
-      let registration = qrRegistration;
-      if (!registration?.idNumber) {
-        registration = await loadStoredQrRegistration();
-      }
+      const registration = await loadStoredQrRegistration();
       if (!registration?.idNumber) {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
