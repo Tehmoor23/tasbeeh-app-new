@@ -1273,14 +1273,11 @@ function AppContent() {
   const [pendingQrPayload, setPendingQrPayload] = useState('');
   const [overrideSaving, setOverrideSaving] = useState(false);
   const [mergeOverrideEnabled, setMergeOverrideEnabled] = useState(false);
-  const [mergeEditDayOffset, setMergeEditDayOffset] = useState(0);
-  const mergeEditDayOffsetRef = useRef(0);
-  const [mergeMetaTapCount, setMergeMetaTapCount] = useState(0);
+  const [overrideEditDayOffset, setOverrideEditDayOffset] = useState(0);
+  const overrideEditDayOffsetRef = useRef(0);
+  const [overrideMetaTapCount, setOverrideMetaTapCount] = useState(0);
   const [mergeOverrideSoharAsrTime, setMergeOverrideSoharAsrTime] = useState('');
   const [mergeOverrideMaghribIshaaTime, setMergeOverrideMaghribIshaaTime] = useState('');
-  const [manualEditDayOffset, setManualEditDayOffset] = useState(0);
-  const manualEditDayOffsetRef = useRef(0);
-  const [manualMetaTapCount, setManualMetaTapCount] = useState(0);
   const [manualFajrTime, setManualFajrTime] = useState('');
   const [manualSoharTime, setManualSoharTime] = useState('');
   const [manualAsrTime, setManualAsrTime] = useState('');
@@ -1831,10 +1828,8 @@ function AppContent() {
   }, [activeMosqueKey]);
   const todayISO = toISO(now);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
-  const mergeDisplayDate = useMemo(() => addDays(now, mergeEditDayOffset), [now, mergeEditDayOffset]);
-  const mergeDisplayDateISO = useMemo(() => toISO(mergeDisplayDate), [mergeDisplayDate]);
-  const manualDisplayDate = useMemo(() => addDays(now, manualEditDayOffset), [now, manualEditDayOffset]);
-  const manualDisplayDateISO = useMemo(() => toISO(manualDisplayDate), [manualDisplayDate]);
+  const overrideDisplayDate = useMemo(() => addDays(now, overrideEditDayOffset), [now, overrideEditDayOffset]);
+  const overrideDisplayDateISO = useMemo(() => toISO(overrideDisplayDate), [overrideDisplayDate]);
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   useEffect(() => {
     if (selectedStatsWeekStartISO) return;
@@ -2115,37 +2110,30 @@ function AppContent() {
   }, [activeMosqueKey]);
 
   useEffect(() => {
-    setMergeEditDayOffset(0);
-    mergeEditDayOffsetRef.current = 0;
-    setMergeMetaTapCount(0);
-    setManualEditDayOffset(0);
-    manualEditDayOffsetRef.current = 0;
-    setManualMetaTapCount(0);
+    setOverrideEditDayOffset(0);
+    overrideEditDayOffsetRef.current = 0;
+    setOverrideMetaTapCount(0);
   }, [activeMosqueKey]);
 
   useEffect(() => {
-    mergeEditDayOffsetRef.current = mergeEditDayOffset;
-  }, [mergeEditDayOffset]);
+    overrideEditDayOffsetRef.current = overrideEditDayOffset;
+  }, [overrideEditDayOffset]);
 
   useEffect(() => {
-    manualEditDayOffsetRef.current = manualEditDayOffset;
-  }, [manualEditDayOffset]);
-
-  useEffect(() => {
-    const editableOverride = resolveEditablePrayerOverride(mergeEditDayOffset, mergeDisplayDateISO, prayerOverride, pendingPrayerOverride);
+    const editableOverride = resolveEditablePrayerOverride(overrideEditDayOffset, overrideDisplayDateISO, prayerOverride, pendingPrayerOverride);
     setMergeOverrideEnabled(editableOverride.enabled);
     setMergeOverrideSoharAsrTime(editableOverride.soharAsrTime || '');
     setMergeOverrideMaghribIshaaTime(editableOverride.maghribIshaaTime || '');
-  }, [mergeDisplayDateISO, mergeEditDayOffset, pendingPrayerOverride, prayerOverride, resolveEditablePrayerOverride]);
+  }, [overrideDisplayDateISO, overrideEditDayOffset, pendingPrayerOverride, prayerOverride, resolveEditablePrayerOverride]);
 
   useEffect(() => {
-    const editableOverride = resolveEditablePrayerOverride(manualEditDayOffset, manualDisplayDateISO, prayerOverride, pendingPrayerOverride);
+    const editableOverride = resolveEditablePrayerOverride(overrideEditDayOffset, overrideDisplayDateISO, prayerOverride, pendingPrayerOverride);
     setManualFajrTime(editableOverride.manualTimes.fajr || '');
     setManualSoharTime(editableOverride.manualTimes.sohar || '');
     setManualAsrTime(editableOverride.manualTimes.asr || '');
     setManualMaghribTime(editableOverride.manualTimes.maghrib || '');
     setManualIshaaTime(editableOverride.manualTimes.ishaa || '');
-  }, [manualDisplayDateISO, manualEditDayOffset, pendingPrayerOverride, prayerOverride, resolveEditablePrayerOverride]);
+  }, [overrideDisplayDateISO, overrideEditDayOffset, pendingPrayerOverride, prayerOverride, resolveEditablePrayerOverride]);
 
   useEffect(() => {
     if (!pendingPrayerOverride || pendingPrayerOverride.dateISO !== todayISO) return;
@@ -2174,26 +2162,13 @@ function AppContent() {
     rolloutPendingOverride();
   }, [pendingPrayerOverride, todayISO, activeMosqueKey]);
 
-  const onMergeMetaPress = () => {
-    setMergeMetaTapCount((prev) => {
+  const onOverrideMetaPress = () => {
+    setOverrideMetaTapCount((prev) => {
       const next = prev + 1;
       if (next >= 3) {
-        const nextOffset = mergeEditDayOffsetRef.current === 0 ? 1 : 0;
-        mergeEditDayOffsetRef.current = nextOffset;
-        setMergeEditDayOffset(nextOffset);
-        return 0;
-      }
-      return next;
-    });
-  };
-
-  const onManualMetaPress = () => {
-    setManualMetaTapCount((prev) => {
-      const next = prev + 1;
-      if (next >= 3) {
-        const nextOffset = manualEditDayOffsetRef.current === 0 ? 1 : 0;
-        manualEditDayOffsetRef.current = nextOffset;
-        setManualEditDayOffset(nextOffset);
+        const nextOffset = overrideEditDayOffsetRef.current === 0 ? 1 : 0;
+        overrideEditDayOffsetRef.current = nextOffset;
+        setOverrideEditDayOffset(nextOffset);
         return 0;
       }
       return next;
@@ -2231,9 +2206,9 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = mergeEditDayOffsetRef.current === 1;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       const currentEditableOverride = resolveEditablePrayerOverride(
-        mergeEditDayOffsetRef.current,
+        overrideEditDayOffsetRef.current,
         isTomorrowEdit ? tomorrowISO : todayISO,
         prayerOverride,
         pendingPrayerOverride,
@@ -2278,9 +2253,9 @@ function AppContent() {
     }
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = manualEditDayOffsetRef.current === 1;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       const currentEditableOverride = resolveEditablePrayerOverride(
-        manualEditDayOffsetRef.current,
+        overrideEditDayOffsetRef.current,
         isTomorrowEdit ? tomorrowISO : todayISO,
         prayerOverride,
         pendingPrayerOverride,
@@ -2383,16 +2358,10 @@ function AppContent() {
   }, [globalThemeTapCount]);
 
   useEffect(() => {
-    if (!mergeMetaTapCount) return undefined;
-    const timer = setTimeout(() => setMergeMetaTapCount(0), 1200);
+    if (!overrideMetaTapCount) return undefined;
+    const timer = setTimeout(() => setOverrideMetaTapCount(0), 1200);
     return () => clearTimeout(timer);
-  }, [mergeMetaTapCount]);
-
-  useEffect(() => {
-    if (!manualMetaTapCount) return undefined;
-    const timer = setTimeout(() => setManualMetaTapCount(0), 1200);
-    return () => clearTimeout(timer);
-  }, [manualMetaTapCount]);
+  }, [overrideMetaTapCount]);
 
   useEffect(() => {
     ensureSuperAdminBootstrap();
@@ -5952,8 +5921,7 @@ function AppContent() {
   };
 
   const renderSettings = () => {
-    const mergeSettingsDate = germanDateLong(mergeDisplayDate);
-    const manualSettingsDate = germanDateLong(manualDisplayDate);
+    const settingsDate = germanDateLong(overrideDisplayDate);
     const programSettingsDate = germanDateLong(now);
 
     return (
@@ -6021,8 +5989,8 @@ function AppContent() {
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten zusammenlegen</Text>
-        <Pressable onPress={onMergeMetaPress}>
-          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${mergeSettingsDate} · ${activeMosque.label}`}</Text>
+        <Pressable onPress={onOverrideMetaPress}>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
         </Pressable>
 
         {overrideLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
@@ -6061,8 +6029,8 @@ function AppContent() {
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeiten anpassen</Text>
-        <Pressable onPress={onManualMetaPress}>
-          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${manualSettingsDate} · ${activeMosque.label}`}</Text>
+        <Pressable onPress={onOverrideMetaPress}>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{`${settingsDate} · ${activeMosque.label}`}</Text>
         </Pressable>
 
         <View style={styles.mergeInputWrap}>
