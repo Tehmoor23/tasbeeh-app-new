@@ -2695,13 +2695,15 @@ function AppContent() {
       && qrLastAttendancePrayerKey === currentPrayerKey
       && ['counted', 'duplicate'].includes(qrLastAttendanceStatus),
     );
-    if (isCurrentPrayerAlreadyHandled) return 'Sie wurden bereits für das aktuelle Gebet eingetragen.';
+    if (isCurrentPrayerAlreadyHandled) {
+      return `Sie wurden bereits für das ${getDisplayPrayerLabel(currentPrayerKey, timesToday)} Gebet eingetragen.`;
+    }
     if (prayerWindow?.isActive && prayerWindow?.prayerLabel) {
       return `Bitte den QR-Code noch einmal scannen, um sich für ${prayerWindow.prayerLabel} einzutragen.`;
     }
     if (prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${prayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
-  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration]);
+  }, [now, prayerWindow, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration, timesToday]);
   const membersDirectory = MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
 
@@ -4406,7 +4408,7 @@ function AppContent() {
         setQrLastAttendancePrayerKey(String(result.targetKeys?.[0] || prayerWindow?.prayerKey || ''));
         setQrLastAttendanceDateISO(toISO(now));
         setQrStatusTone('positive');
-        setQrStatusMessage('Sie wurden bereits für das aktuelle Gebet eingetragen.');
+        setQrStatusMessage(`Sie wurden bereits für das ${getDisplayPrayerLabel(String(result.targetKeys?.[0] || prayerWindow?.prayerKey || ''), timesToday)} Gebet eingetragen.`);
       } else if (result?.status === 'counted') {
         setQrLastAttendanceStatus('counted');
         setQrLastAttendancePrayerKey(String(result.targetKeys?.[0] || ''));
@@ -6002,14 +6004,28 @@ function AppContent() {
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
-        <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
-        <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
-          {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
-          {qrPendingImageUri ? <Image source={{ uri: qrPendingImageUri }} style={styles.qrCodePreloadImage} resizeMode="contain" onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }} /> : null}
-        </View>
-        <View style={[styles.qrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
-          <Text style={[styles.qrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
-        </View>
+        {prayerWindow.isActive && prayerWindow.prayerKey ? (
+          <>
+            <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(prayerWindow.prayerKey, timesToday)}</Text>
+            <Text style={[styles.qrPageHint, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
+            <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+              {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
+              {qrPendingImageUri ? <Image source={{ uri: qrPendingImageUri }} style={styles.qrCodePreloadImage} resizeMode="contain" onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }} /> : null}
+            </View>
+            <View style={[styles.qrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+              <Text style={[styles.qrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Gebetsfenster geschlossen</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Nächstes Gebet:</Text>
+            <Text style={[styles.nextPrayerValue, { color: theme.text }]}>{prayerWindow.nextLabel}</Text>
+            <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
+              <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}</Text>
+            </View>
+          </>
+        )}
         <Pressable onPress={() => setQrPageVisible(false)} style={({ pressed }) => [[styles.saveBtn, styles.qrPageCloseBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}>
           <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
         </Pressable>
@@ -6018,6 +6034,7 @@ function AppContent() {
   );
 
   const renderQrScanPage = () => (
+
     <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
@@ -6767,6 +6784,7 @@ const styles = StyleSheet.create({
   qrPageCard: { alignItems: 'center', paddingVertical: 22, gap: 14 },
   qrPageTitle: { textAlign: 'center', fontSize: 24, fontWeight: '800' },
   qrPageSubtitle: { textAlign: 'center', fontSize: 14, fontWeight: '600' },
+  qrPageHint: { textAlign: 'center', fontSize: 12, fontWeight: '600' },
   qrPageCloseBtn: { alignSelf: 'stretch', marginTop: 4 },
   qrCodeCard: { borderWidth: 1, borderRadius: 20, padding: 16, alignItems: 'center', justifyContent: 'center' },
   qrCodeImage: { width: 280, height: 280 },
