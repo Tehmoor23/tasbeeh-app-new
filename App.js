@@ -1251,6 +1251,8 @@ function AppContent() {
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
   const [pendingPrayerOverride, setPendingPrayerOverride] = useState(null);
   const [overrideLoading, setOverrideLoading] = useState(false);
+  const [prayerOverrideReady, setPrayerOverrideReady] = useState(false);
+  const [pendingQrPayload, setPendingQrPayload] = useState('');
   const [overrideSaving, setOverrideSaving] = useState(false);
   const [overrideEnabled, setOverrideEnabled] = useState(false);
   const [overrideEditDayOffset, setOverrideEditDayOffset] = useState(0);
@@ -2004,6 +2006,7 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
+    setPrayerOverrideReady(false);
     setOverrideLoading(true);
 
     const applyEditableOverride = (baseOverride, pendingOverride) => {
@@ -2024,6 +2027,7 @@ function AppContent() {
       setManualAsrTime(normalized.manualTimes.asr || '');
       setManualMaghribTime(normalized.manualTimes.maghrib || '');
       setManualIshaaTime(normalized.manualTimes.ishaa || '');
+      setPrayerOverrideReady(true);
       setOverrideLoading(false);
     };
 
@@ -2039,6 +2043,7 @@ function AppContent() {
         .then(([globalData, pendingData]) => applyFromData(globalData, pendingData))
         .catch(() => {
           if (!cancelled) {
+            setPrayerOverrideReady(true);
             setOverrideLoading(false);
             setToast('Override konnte nicht geladen werden');
           }
@@ -2064,6 +2069,7 @@ function AppContent() {
       },
       () => {
         if (!cancelled) {
+          setPrayerOverrideReady(true);
           setOverrideLoading(false);
           setToast('Override konnte nicht geladen werden');
         }
@@ -2078,6 +2084,7 @@ function AppContent() {
       },
       () => {
         if (!cancelled) {
+          setPrayerOverrideReady(true);
           setOverrideLoading(false);
           setToast('Override konnte nicht geladen werden');
         }
@@ -4422,6 +4429,14 @@ function AppContent() {
 
   const handleQrScanFlow = useCallback(async (encodedPayload) => {
     if (!isWebRuntime || !encodedPayload) return;
+    if (!prayerOverrideReady) {
+      setPendingQrPayload(encodedPayload);
+      setQrScanPageVisible(true);
+      setQrStatusTone('neutral');
+      setQrStatusMessage('Gebetszeiten werden geladen. QR-Scan wird gleich verarbeitet.');
+      setQrSubmitting(false);
+      return;
+    }
     const payload = decodeQrPayload(encodedPayload);
     if (!payload || payload.type !== 'prayer_attendance') return;
     const nowMs = Date.now();
@@ -4431,13 +4446,6 @@ function AppContent() {
       setQrScanPageVisible(true);
       return;
     }
-    if (overrideLoading) {
-      setQrStatusTone('neutral');
-      setQrStatusMessage('Gebetszeiten werden gerade geladen. Bitte in einem Moment erneut scannen.');
-      setQrScanPageVisible(true);
-      return;
-    }
-
     const qrPrayerContext = resolveQrPrayerContext();
 
     setAttendanceMode('prayer');
@@ -4513,7 +4521,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [loadStoredQrRegistration, overrideLoading, resolveQrPrayerContext]);
+  }, [loadStoredQrRegistration, prayerOverrideReady, resolveQrPrayerContext]);
 
 
   useEffect(() => {
@@ -4524,12 +4532,26 @@ function AppContent() {
       if (!encodedPayload) return;
       url.searchParams.delete(QR_SCAN_PARAM);
       window.history.replaceState({}, '', url.toString());
+      if (!prayerOverrideReady) {
+        setPendingQrPayload(encodedPayload);
+        setQrScanPageVisible(true);
+        setQrStatusTone('neutral');
+        setQrStatusMessage('Gebetszeiten werden geladen. QR-Scan wird gleich verarbeitet.');
+        return;
+      }
       handleQrScanFlow(encodedPayload);
     };
     applyQrFromUrl();
     window.addEventListener('popstate', applyQrFromUrl);
     return () => window.removeEventListener('popstate', applyQrFromUrl);
-  }, [handleQrScanFlow]);
+  }, [handleQrScanFlow, prayerOverrideReady]);
+
+  useEffect(() => {
+    if (!prayerOverrideReady || !pendingQrPayload) return;
+    const payload = pendingQrPayload;
+    setPendingQrPayload('');
+    handleQrScanFlow(payload);
+  }, [handleQrScanFlow, pendingQrPayload, prayerOverrideReady]);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null, options = {}) => {
     const nowTs = Date.now();
