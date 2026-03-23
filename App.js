@@ -4415,6 +4415,7 @@ function AppContent() {
       }
       setQrFlowMode('registered');
       const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member);
+      const activeQrPrayerKey = String((prayerWindow?.isActive && prayerWindow?.prayerKey) ? prayerWindow.prayerKey : (result?.targetKeys?.[0] || ''));
       if (result?.status === 'inactive_prayer') {
         setQrLastAttendanceStatus('inactive_prayer');
         setQrLastAttendancePrayerKey('');
@@ -4423,16 +4424,16 @@ function AppContent() {
         setQrStatusMessage('Kein aktives Gebetsfenster.');
       } else if (result?.status === 'duplicate') {
         setQrLastAttendanceStatus('duplicate');
-        setQrLastAttendancePrayerKey(String(result.targetKeys?.[0] || prayerWindow?.prayerKey || ''));
+        setQrLastAttendancePrayerKey(activeQrPrayerKey);
         setQrLastAttendanceDateISO(toISO(now));
         setQrStatusTone('positive');
-        setQrStatusMessage(`Sie wurden bereits für das ${getDisplayPrayerLabel(String(result.targetKeys?.[0] || prayerWindow?.prayerKey || ''), timesToday)} Gebet eingetragen.`);
+        setQrStatusMessage(`Sie wurden bereits für das ${getDisplayPrayerLabel(activeQrPrayerKey, timesToday)} Gebet eingetragen.`);
       } else if (result?.status === 'counted') {
         setQrLastAttendanceStatus('counted');
-        setQrLastAttendancePrayerKey(String(result.targetKeys?.[0] || ''));
+        setQrLastAttendancePrayerKey(activeQrPrayerKey);
         setQrLastAttendanceDateISO(toISO(now));
         setQrStatusTone('positive');
-        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${getDisplayPrayerLabel(result.targetKeys?.[0], timesToday)}.`);
+        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${getDisplayPrayerLabel(activeQrPrayerKey, timesToday)}.`);
       } else {
         setQrLastAttendanceStatus('error');
         setQrLastAttendancePrayerKey('');
