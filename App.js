@@ -306,6 +306,7 @@ const FIXED_TIMES = {
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+const PRAYER_OVERRIDE_DEFAULT_SUFFIX = 'BUS';
 const PRAYER_OVERRIDE_GLOBAL_DOC_ID = 'global';
 const PRAYER_OVERRIDE_PENDING_DOC_ID = 'pending_next_day';
 const ANNOUNCEMENT_COLLECTION = 'prayer_announcements';
@@ -945,7 +946,10 @@ const setActiveMosqueScope = (key) => {
   activeMosqueScopeKey = getMosqueOptionByKey(key).key;
 };
 const resolveScopedCollectionForMosque = (collection, mosqueKey) => {
-  const suffix = getMosqueOptionByKey(mosqueKey).suffix;
+  const mosqueSuffix = getMosqueOptionByKey(mosqueKey).suffix;
+  const suffix = (!mosqueSuffix && collection === PRAYER_OVERRIDE_COLLECTION)
+    ? PRAYER_OVERRIDE_DEFAULT_SUFFIX
+    : mosqueSuffix;
   return suffix ? `${collection}_${suffix}` : collection;
 };
 const resolveScopedCollection = (collection) => resolveScopedCollectionForMosque(collection, activeMosqueScopeKey);
