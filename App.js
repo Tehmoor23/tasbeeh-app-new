@@ -886,8 +886,12 @@ const normalizePrayerOverride = (data) => ({
 const normalizePendingPrayerOverride = (data) => {
   const dateISO = typeof data?.dateISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.dateISO) ? data.dateISO : null;
   if (!dateISO) return null;
+  const savedFromDateISO = typeof data?.savedFromDateISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.savedFromDateISO)
+    ? data.savedFromDateISO
+    : null;
   return {
     dateISO,
+    savedFromDateISO,
     enabled: Boolean(data?.enabled),
     soharAsrTime: isValidTime(data?.soharAsrTime) ? data.soharAsrTime : null,
     maghribIshaaTime: isValidTime(data?.maghribIshaaTime) ? data.maghribIshaaTime : null,
@@ -898,6 +902,7 @@ const normalizePendingPrayerOverride = (data) => {
       maghrib: isValidTime(data?.manualTimes?.maghrib) ? data.manualTimes.maghrib : '',
       ishaa: isValidTime(data?.manualTimes?.ishaa) ? data.manualTimes.ishaa : '',
     },
+    updatedAt: data?.updatedAt || null,
   };
 };
 
