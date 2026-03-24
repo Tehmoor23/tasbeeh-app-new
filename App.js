@@ -38,7 +38,6 @@ const STORAGE_KEYS = {
 
 const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
 const QR_SCAN_PARAM = 'qrCheckin';
-const QR_SCAN_TARGET_BASE_URL = 'https://tasbeeh-1e356.web.app';
 const QR_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const QR_COUNTDOWN_SECONDS = Math.floor(QR_REFRESH_INTERVAL_MS / 1000);
 
@@ -1218,7 +1217,7 @@ const buildQrScanUrl = ({ mosqueKey, cycleStart }) => {
   const encodedPayload = encodeQrPayload(payload);
   if (!encodedPayload) return '';
   if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
-  const url = new URL(QR_SCAN_TARGET_BASE_URL);
+  const url = new URL(window.location.href);
   url.searchParams.set(QR_SCAN_PARAM, encodedPayload);
   return url.toString();
 };
