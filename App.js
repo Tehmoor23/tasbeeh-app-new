@@ -308,7 +308,6 @@ const FIXED_TIMES = {
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
 const PRAYER_OVERRIDE_GLOBAL_DOC_ID = 'global';
 const PRAYER_OVERRIDE_PENDING_DOC_ID = 'pending_next_day';
-const PRAYER_OVERRIDE_DEFAULT_SUFFIX = 'BUS';
 const ANNOUNCEMENT_COLLECTION = 'prayer_announcements';
 const ANNOUNCEMENT_DOC_ID = 'current';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
@@ -944,12 +943,6 @@ const resolveScopedCollection = (collection) => {
   const suffix = getMosqueOptionByKey(activeMosqueScopeKey).suffix;
   return suffix ? `${collection}_${suffix}` : collection;
 };
-const resolvePrayerOverrideCollection = () => {
-  const suffix = getMosqueOptionByKey(activeMosqueScopeKey).suffix;
-  if (suffix) return `${PRAYER_OVERRIDE_COLLECTION}_${suffix}`;
-  return `${PRAYER_OVERRIDE_COLLECTION}_${PRAYER_OVERRIDE_DEFAULT_SUFFIX}`;
-};
-const isDefaultMosqueScope = () => !getMosqueOptionByKey(activeMosqueScopeKey).suffix;
 
 async function incrementDocCounters(collection, id, fieldPaths) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
@@ -1013,38 +1006,6 @@ async function deleteDocData(collection, id) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'DELETE' });
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
-}
-
-async function getPrayerOverrideDocData(id) {
-  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const res = await fetch(docUrl(resolvePrayerOverrideCollection(), id));
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error('Firestore read failed');
-  const json = await res.json();
-  return fromFirestoreValue({ mapValue: { fields: json.fields || {} } });
-}
-
-async function setPrayerOverrideDocData(id, data) {
-  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const body = { fields: toFirestoreValue(data).mapValue.fields };
-  const res = await fetch(docUrl(resolvePrayerOverrideCollection(), id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!res.ok) throw new Error('Firestore write failed');
-}
-
-async function deletePrayerOverrideDocData(id) {
-  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const res = await fetch(docUrl(resolvePrayerOverrideCollection(), id), { method: 'DELETE' });
-  if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
-}
-
-async function migrateDefaultPrayerOverrideGlobalIfNeeded() {
-  if (!hasFirebaseConfig() || !isDefaultMosqueScope()) return;
-  const migratedGlobal = await getPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID);
-  if (migratedGlobal) return;
-
-  const legacyGlobal = await getGlobalDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
-  if (!legacyGlobal) return;
-  await setPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID, legacyGlobal);
 }
 
 
@@ -2092,13 +2053,10 @@ function AppContent() {
     };
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
-      Promise.resolve()
-        .then(() => migrateDefaultPrayerOverrideGlobalIfNeeded())
-        .catch(() => {})
-        .then(() => Promise.all([
-          getPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID),
-          getPrayerOverrideDocData(PRAYER_OVERRIDE_PENDING_DOC_ID),
-        ]))
+      Promise.all([
+        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID),
+        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID),
+      ])
         .then(([globalData, pendingData]) => applyFromData(globalData, pendingData))
         .catch(() => {
           if (!cancelled) {
@@ -2112,53 +2070,43 @@ function AppContent() {
       };
     }
 
+    const baseCollection = resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION);
+    const globalRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
+    const pendingRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_PENDING_DOC_ID);
     let latestGlobal = null;
     let latestPending = null;
-    let unsubGlobal = () => {};
-    let unsubPending = () => {};
 
-    const setupRealtimeSubscriptions = async () => {
-      try {
-        await migrateDefaultPrayerOverrideGlobalIfNeeded();
-      } catch {}
-      if (cancelled) return;
+    const sync = () => applyFromData(latestGlobal, latestPending);
 
-      const baseCollection = resolvePrayerOverrideCollection();
-      const globalRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
-      const pendingRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_PENDING_DOC_ID);
-      const sync = () => applyFromData(latestGlobal, latestPending);
+    const unsubGlobal = firebaseRuntime.onSnapshot(
+      globalRef,
+      (snapshot) => {
+        latestGlobal = snapshot.exists() ? snapshot.data() : null;
+        sync();
+      },
+      () => {
+        if (!cancelled) {
+          setPrayerOverrideReady(true);
+          setOverrideLoading(false);
+          setToast('Override konnte nicht geladen werden');
+        }
+      },
+    );
 
-      unsubGlobal = firebaseRuntime.onSnapshot(
-        globalRef,
-        (snapshot) => {
-          latestGlobal = snapshot.exists() ? snapshot.data() : null;
-          sync();
-        },
-        () => {
-          if (!cancelled) {
-            setPrayerOverrideReady(true);
-            setOverrideLoading(false);
-            setToast('Override konnte nicht geladen werden');
-          }
-        },
-      );
-
-      unsubPending = firebaseRuntime.onSnapshot(
-        pendingRef,
-        (snapshot) => {
-          latestPending = snapshot.exists() ? snapshot.data() : null;
-          sync();
-        },
-        () => {
-          if (!cancelled) {
-            setPrayerOverrideReady(true);
-            setOverrideLoading(false);
-            setToast('Override konnte nicht geladen werden');
-          }
-        },
-      );
-    };
-    setupRealtimeSubscriptions();
+    const unsubPending = firebaseRuntime.onSnapshot(
+      pendingRef,
+      (snapshot) => {
+        latestPending = snapshot.exists() ? snapshot.data() : null;
+        sync();
+      },
+      () => {
+        if (!cancelled) {
+          setPrayerOverrideReady(true);
+          setOverrideLoading(false);
+          setToast('Override konnte nicht geladen werden');
+        }
+      },
+    );
 
     return () => {
       cancelled = true;
@@ -2182,8 +2130,8 @@ function AppContent() {
 
     const rolloutPendingOverride = async () => {
       try {
-        const currentGlobalOverride = normalizePrayerOverride(await getPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID));
-        await setPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
+        const currentGlobalOverride = normalizePrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID));
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
           enabled: pendingPrayerOverride.enabled || currentGlobalOverride.enabled,
           soharAsrTime: pendingPrayerOverride.soharAsrTime || currentGlobalOverride.soharAsrTime || null,
           maghribIshaaTime: pendingPrayerOverride.maghribIshaaTime || currentGlobalOverride.maghribIshaaTime || null,
@@ -2196,7 +2144,7 @@ function AppContent() {
           },
           updatedAt: new Date().toISOString(),
         });
-        await deletePrayerOverrideDocData(PRAYER_OVERRIDE_PENDING_DOC_ID);
+        await deleteDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID);
       } catch {
         setToast('Morgen-Override konnte nicht übernommen werden');
       }
@@ -2273,13 +2221,13 @@ function AppContent() {
         },
       };
       if (isTomorrowEdit) {
-        await setPrayerOverrideDocData(PRAYER_OVERRIDE_PENDING_DOC_ID, {
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payloadWithMergedManualTimes,
           dateISO: tomorrowISO,
         });
         setToast('Override für morgen gespeichert ✓');
       } else {
-        await setPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes);
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes);
         setPrayerOverride(normalizePrayerOverride(payloadWithMergedManualTimes));
         setToast('Override gespeichert ✓');
       }
@@ -2327,13 +2275,13 @@ function AppContent() {
         updatedAt: new Date().toISOString(),
       };
       if (isTomorrowEdit) {
-        await setPrayerOverrideDocData(PRAYER_OVERRIDE_PENDING_DOC_ID, {
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
           dateISO: tomorrowISO,
         });
         setToast('Für morgen gespeichert ✓');
       } else {
-        await setPrayerOverrideDocData(PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
         setPrayerOverride(normalizePrayerOverride(payload));
         setToast('Gespeichert ✓');
       }
