@@ -56,7 +56,7 @@ const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
-const FORCE_TEST_DATE_ENABLED = false;
+const FORCE_TEST_DATE_ENABLED = true;
 const FORCE_TEST_DATE_ISO = '2026-03-25'; // development override for testing (YYYY-MM-DD)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
@@ -886,8 +886,12 @@ const normalizePrayerOverride = (data) => ({
 const normalizePendingPrayerOverride = (data) => {
   const dateISO = typeof data?.dateISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.dateISO) ? data.dateISO : null;
   if (!dateISO) return null;
+  const savedFromDateISO = typeof data?.savedFromDateISO === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.savedFromDateISO)
+    ? data.savedFromDateISO
+    : null;
   return {
     dateISO,
+    savedFromDateISO,
     enabled: Boolean(data?.enabled),
     soharAsrTime: isValidTime(data?.soharAsrTime) ? data.soharAsrTime : null,
     maghribIshaaTime: isValidTime(data?.maghribIshaaTime) ? data.maghribIshaaTime : null,
@@ -898,6 +902,7 @@ const normalizePendingPrayerOverride = (data) => {
       maghrib: isValidTime(data?.manualTimes?.maghrib) ? data.manualTimes.maghrib : '',
       ishaa: isValidTime(data?.manualTimes?.ishaa) ? data.manualTimes.ishaa : '',
     },
+    updatedAt: data?.updatedAt || null,
   };
 };
 
