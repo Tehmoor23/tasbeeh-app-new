@@ -1273,16 +1273,24 @@ function AppContent() {
   const [pendingQrPayload, setPendingQrPayload] = useState('');
   const [overrideSaving, setOverrideSaving] = useState(false);
   const [overrideEnabled, setOverrideEnabled] = useState(false);
+  const [pendingDraftOverrideEnabled, setPendingDraftOverrideEnabled] = useState(false);
   const [overrideEditDayOffset, setOverrideEditDayOffset] = useState(0);
   const overrideEditDayOffsetRef = useRef(0);
   const [overrideMetaTapCount, setOverrideMetaTapCount] = useState(0);
   const [overrideSoharAsrTime, setOverrideSoharAsrTime] = useState('');
+  const [pendingDraftOverrideSoharAsrTime, setPendingDraftOverrideSoharAsrTime] = useState('');
   const [overrideMaghribIshaaTime, setOverrideMaghribIshaaTime] = useState('');
+  const [pendingDraftOverrideMaghribIshaaTime, setPendingDraftOverrideMaghribIshaaTime] = useState('');
   const [manualFajrTime, setManualFajrTime] = useState('');
+  const [pendingDraftManualFajrTime, setPendingDraftManualFajrTime] = useState('');
   const [manualSoharTime, setManualSoharTime] = useState('');
+  const [pendingDraftManualSoharTime, setPendingDraftManualSoharTime] = useState('');
   const [manualAsrTime, setManualAsrTime] = useState('');
+  const [pendingDraftManualAsrTime, setPendingDraftManualAsrTime] = useState('');
   const [manualMaghribTime, setManualMaghribTime] = useState('');
+  const [pendingDraftManualMaghribTime, setPendingDraftManualMaghribTime] = useState('');
   const [manualIshaaTime, setManualIshaaTime] = useState('');
+  const [pendingDraftManualIshaaTime, setPendingDraftManualIshaaTime] = useState('');
   const [isPrivacyModalVisible, setPrivacyModalVisible] = useState(false);
   const [isQrPageVisible, setQrPageVisible] = useState(false);
   const [isQrScanPageVisible, setQrScanPageVisible] = useState(false);
@@ -1830,6 +1838,15 @@ function AppContent() {
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
   const overrideDisplayDate = useMemo(() => addDays(now, overrideEditDayOffset), [now, overrideEditDayOffset]);
   const overrideDisplayDateISO = useMemo(() => toISO(overrideDisplayDate), [overrideDisplayDate]);
+  const isTomorrowEditMode = overrideEditDayOffset === 1;
+  const editOverrideEnabled = isTomorrowEditMode ? pendingDraftOverrideEnabled : overrideEnabled;
+  const editOverrideSoharAsrTime = isTomorrowEditMode ? pendingDraftOverrideSoharAsrTime : overrideSoharAsrTime;
+  const editOverrideMaghribIshaaTime = isTomorrowEditMode ? pendingDraftOverrideMaghribIshaaTime : overrideMaghribIshaaTime;
+  const editManualFajrTime = isTomorrowEditMode ? pendingDraftManualFajrTime : manualFajrTime;
+  const editManualSoharTime = isTomorrowEditMode ? pendingDraftManualSoharTime : manualSoharTime;
+  const editManualAsrTime = isTomorrowEditMode ? pendingDraftManualAsrTime : manualAsrTime;
+  const editManualMaghribTime = isTomorrowEditMode ? pendingDraftManualMaghribTime : manualMaghribTime;
+  const editManualIshaaTime = isTomorrowEditMode ? pendingDraftManualIshaaTime : manualIshaaTime;
   useEffect(() => { if (!selectedStatsDateISO) setSelectedStatsDateISO(todayISO); }, [todayISO, selectedStatsDateISO]);
   useEffect(() => {
     if (selectedStatsWeekStartISO) return;
@@ -2028,23 +2045,28 @@ function AppContent() {
     setPrayerOverrideReady(false);
     setOverrideLoading(true);
     const applyEditableOverride = (baseOverride, pendingOverride) => {
-      const isTomorrowEdit = overrideEditDayOffset === 1;
-      const hasPendingForDisplayDate = pendingOverride?.dateISO === overrideDisplayDateISO;
-      const source = hasPendingForDisplayDate
-        ? pendingOverride
-        : (isTomorrowEdit ? null : baseOverride);
-      const normalized = normalizePrayerOverride(source);
+      const hasPendingForTomorrow = pendingOverride?.dateISO === tomorrowISO;
+      const normalizedToday = normalizePrayerOverride(baseOverride);
+      const normalizedTomorrow = normalizePrayerOverride(hasPendingForTomorrow ? pendingOverride : null);
       if (cancelled) return;
       setPrayerOverride(baseOverride);
       setPendingPrayerOverride(pendingOverride);
-      setOverrideEnabled(normalized.enabled);
-      setOverrideSoharAsrTime(normalized.soharAsrTime || '');
-      setOverrideMaghribIshaaTime(normalized.maghribIshaaTime || '');
-      setManualFajrTime(normalized.manualTimes.fajr || '');
-      setManualSoharTime(normalized.manualTimes.sohar || '');
-      setManualAsrTime(normalized.manualTimes.asr || '');
-      setManualMaghribTime(normalized.manualTimes.maghrib || '');
-      setManualIshaaTime(normalized.manualTimes.ishaa || '');
+      setOverrideEnabled(normalizedToday.enabled);
+      setOverrideSoharAsrTime(normalizedToday.soharAsrTime || '');
+      setOverrideMaghribIshaaTime(normalizedToday.maghribIshaaTime || '');
+      setManualFajrTime(normalizedToday.manualTimes.fajr || '');
+      setManualSoharTime(normalizedToday.manualTimes.sohar || '');
+      setManualAsrTime(normalizedToday.manualTimes.asr || '');
+      setManualMaghribTime(normalizedToday.manualTimes.maghrib || '');
+      setManualIshaaTime(normalizedToday.manualTimes.ishaa || '');
+      setPendingDraftOverrideEnabled(normalizedTomorrow.enabled);
+      setPendingDraftOverrideSoharAsrTime(normalizedTomorrow.soharAsrTime || '');
+      setPendingDraftOverrideMaghribIshaaTime(normalizedTomorrow.maghribIshaaTime || '');
+      setPendingDraftManualFajrTime(normalizedTomorrow.manualTimes.fajr || '');
+      setPendingDraftManualSoharTime(normalizedTomorrow.manualTimes.sohar || '');
+      setPendingDraftManualAsrTime(normalizedTomorrow.manualTimes.asr || '');
+      setPendingDraftManualMaghribTime(normalizedTomorrow.manualTimes.maghrib || '');
+      setPendingDraftManualIshaaTime(normalizedTomorrow.manualTimes.ishaa || '');
       setPrayerOverrideReady(true);
       setOverrideLoading(false);
     };
@@ -2113,7 +2135,7 @@ function AppContent() {
       unsubGlobal();
       unsubPending();
     };
-  }, [activeMosqueKey, overrideDisplayDateISO]);
+  }, [activeMosqueKey, overrideDisplayDateISO, tomorrowISO]);
 
   useEffect(() => {
     setOverrideEditDayOffset(0);
@@ -2167,17 +2189,31 @@ function AppContent() {
   };
 
   const onOverrideEnabledChange = (value) => {
-    setOverrideEnabled(value);
+    if (overrideEditDayOffsetRef.current === 1) {
+      setPendingDraftOverrideEnabled(value);
+    } else {
+      setOverrideEnabled(value);
+    }
     if (!value) {
-      setOverrideSoharAsrTime('');
-      setOverrideMaghribIshaaTime('');
+      if (overrideEditDayOffsetRef.current === 1) {
+        setPendingDraftOverrideSoharAsrTime('');
+        setPendingDraftOverrideMaghribIshaaTime('');
+      } else {
+        setOverrideSoharAsrTime('');
+        setOverrideMaghribIshaaTime('');
+      }
     }
   };
 
   const savePrayerOverride = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
-    const cleanSoharAsr = overrideSoharAsrTime.trim();
-    const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
+    const cleanSoharAsr = editOverrideSoharAsrTime.trim();
+    const cleanMaghribIshaa = editOverrideMaghribIshaaTime.trim();
+    const cleanManualFajr = editManualFajrTime.trim();
+    const cleanManualSohar = editManualSoharTime.trim();
+    const cleanManualAsr = editManualAsrTime.trim();
+    const cleanManualMaghrib = editManualMaghribTime.trim();
+    const cleanManualIshaa = editManualIshaaTime.trim();
 
     if (cleanSoharAsr && !isValidTime(cleanSoharAsr)) {
       Alert.alert('Ungültige Zeit', 'Sohar+Asr muss im Format HH:MM sein.');
@@ -2189,15 +2225,15 @@ function AppContent() {
     }
 
     const payload = {
-      enabled: overrideEnabled,
+      enabled: editOverrideEnabled,
       soharAsrTime: cleanSoharAsr || null,
       maghribIshaaTime: cleanMaghribIshaa || null,
       manualTimes: {
-        fajr: manualFajrTime.trim() || null,
-        sohar: manualSoharTime.trim() || null,
-        asr: manualAsrTime.trim() || null,
-        maghrib: manualMaghribTime.trim() || null,
-        ishaa: manualIshaaTime.trim() || null,
+        fajr: cleanManualFajr || null,
+        sohar: cleanManualSohar || null,
+        asr: cleanManualAsr || null,
+        maghrib: cleanManualMaghrib || null,
+        ishaa: cleanManualIshaa || null,
       },
       updatedAt: new Date().toISOString(),
     };
@@ -2208,16 +2244,16 @@ function AppContent() {
       if (isTomorrowEdit) {
         const existingPending = normalizePendingPrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID));
         const mergedManualTimes = {
-          fajr: manualFajrTime.trim() || existingPending?.manualTimes?.fajr || '',
-          sohar: manualSoharTime.trim() || existingPending?.manualTimes?.sohar || '',
-          asr: manualAsrTime.trim() || existingPending?.manualTimes?.asr || '',
-          maghrib: manualMaghribTime.trim() || existingPending?.manualTimes?.maghrib || '',
-          ishaa: manualIshaaTime.trim() || existingPending?.manualTimes?.ishaa || '',
+          fajr: cleanManualFajr || existingPending?.manualTimes?.fajr || '',
+          sohar: cleanManualSohar || existingPending?.manualTimes?.sohar || '',
+          asr: cleanManualAsr || existingPending?.manualTimes?.asr || '',
+          maghrib: cleanManualMaghrib || existingPending?.manualTimes?.maghrib || '',
+          ishaa: cleanManualIshaa || existingPending?.manualTimes?.ishaa || '',
         };
         const partialPayload = {
           dateISO: tomorrowISO,
           updatedAt: new Date().toISOString(),
-          ...(overrideEnabled || existingPending?.enabled ? { enabled: true } : {}),
+          ...(editOverrideEnabled || existingPending?.enabled ? { enabled: true } : {}),
           ...((cleanSoharAsr || existingPending?.soharAsrTime) ? { soharAsrTime: cleanSoharAsr || existingPending?.soharAsrTime } : {}),
           ...((cleanMaghribIshaa || existingPending?.maghribIshaaTime) ? { maghribIshaaTime: cleanMaghribIshaa || existingPending?.maghribIshaaTime } : {}),
           ...(Object.values(mergedManualTimes).some(Boolean)
@@ -2252,11 +2288,11 @@ function AppContent() {
   const saveManualPrayerTimes = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const manualEntries = {
-      fajr: manualFajrTime.trim(),
-      sohar: manualSoharTime.trim(),
-      asr: manualAsrTime.trim(),
-      maghrib: manualMaghribTime.trim(),
-      ishaa: manualIshaaTime.trim(),
+      fajr: editManualFajrTime.trim(),
+      sohar: editManualSoharTime.trim(),
+      asr: editManualAsrTime.trim(),
+      maghrib: editManualMaghribTime.trim(),
+      ishaa: editManualIshaaTime.trim(),
     };
     const invalid = Object.entries(manualEntries).find(([, value]) => value && !isValidTime(value));
     if (invalid) {
@@ -2267,9 +2303,9 @@ function AppContent() {
       setOverrideSaving(true);
       const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       const payload = {
-        enabled: overrideEnabled,
-        soharAsrTime: overrideSoharAsrTime.trim() || null,
-        maghribIshaaTime: overrideMaghribIshaaTime.trim() || null,
+        enabled: editOverrideEnabled,
+        soharAsrTime: editOverrideSoharAsrTime.trim() || null,
+        maghribIshaaTime: editOverrideMaghribIshaaTime.trim() || null,
         manualTimes: {
           fajr: manualEntries.fajr || null,
           sohar: manualEntries.sohar || null,
@@ -2291,9 +2327,9 @@ function AppContent() {
         const partialPayload = {
           dateISO: tomorrowISO,
           updatedAt: new Date().toISOString(),
-          ...(overrideEnabled || existingPending?.enabled ? { enabled: true } : {}),
-          ...((overrideSoharAsrTime.trim() || existingPending?.soharAsrTime) ? { soharAsrTime: overrideSoharAsrTime.trim() || existingPending?.soharAsrTime } : {}),
-          ...((overrideMaghribIshaaTime.trim() || existingPending?.maghribIshaaTime) ? { maghribIshaaTime: overrideMaghribIshaaTime.trim() || existingPending?.maghribIshaaTime } : {}),
+          ...(editOverrideEnabled || existingPending?.enabled ? { enabled: true } : {}),
+          ...((editOverrideSoharAsrTime.trim() || existingPending?.soharAsrTime) ? { soharAsrTime: editOverrideSoharAsrTime.trim() || existingPending?.soharAsrTime } : {}),
+          ...((editOverrideMaghribIshaaTime.trim() || existingPending?.maghribIshaaTime) ? { maghribIshaaTime: editOverrideMaghribIshaaTime.trim() || existingPending?.maghribIshaaTime } : {}),
           ...(Object.values(mergedManualTimes).some(Boolean)
             ? {
               manualTimes: {
@@ -6028,26 +6064,26 @@ function AppContent() {
 
         <View style={styles.mergeSwitchWrap}>
           <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Zusammenlegung aktivieren</Text>
-          <Switch value={overrideEnabled} onValueChange={onOverrideEnabledChange} />
+          <Switch value={editOverrideEnabled} onValueChange={onOverrideEnabledChange} />
         </View>
 
-        <View style={[styles.mergeInputWrap, !overrideEnabled && styles.mergeInputDisabled]}>
+        <View style={[styles.mergeInputWrap, !editOverrideEnabled && styles.mergeInputDisabled]}>
           <TextInput
-            value={overrideSoharAsrTime}
-            onChangeText={setOverrideSoharAsrTime}
+            value={editOverrideSoharAsrTime}
+            onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftOverrideSoharAsrTime(value) : setOverrideSoharAsrTime(value))}
             placeholder="Sohar/Asr (HH:MM)"
             placeholderTextColor={theme.muted}
             autoCapitalize="none"
-            editable={overrideEnabled}
+            editable={editOverrideEnabled}
             style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
           />
           <TextInput
-            value={overrideMaghribIshaaTime}
-            onChangeText={setOverrideMaghribIshaaTime}
+            value={editOverrideMaghribIshaaTime}
+            onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftOverrideMaghribIshaaTime(value) : setOverrideMaghribIshaaTime(value))}
             placeholder="Maghrib/Ishaa (HH:MM)"
             placeholderTextColor={theme.muted}
             autoCapitalize="none"
-            editable={overrideEnabled}
+            editable={editOverrideEnabled}
             style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
           />
         </View>
@@ -6065,11 +6101,11 @@ function AppContent() {
         </Pressable>
 
         <View style={styles.mergeInputWrap}>
-          <TextInput value={manualFajrTime} onChangeText={setManualFajrTime} placeholder="Fajr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-          <TextInput value={manualSoharTime} onChangeText={setManualSoharTime} placeholder="Sohar (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-          <TextInput value={manualAsrTime} onChangeText={setManualAsrTime} placeholder="Asr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-          <TextInput value={manualMaghribTime} onChangeText={setManualMaghribTime} placeholder="Maghrib (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-          <TextInput value={manualIshaaTime} onChangeText={setManualIshaaTime} placeholder="Ishaa (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={editManualFajrTime} onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftManualFajrTime(value) : setManualFajrTime(value))} placeholder="Fajr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={editManualSoharTime} onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftManualSoharTime(value) : setManualSoharTime(value))} placeholder="Sohar (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={editManualAsrTime} onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftManualAsrTime(value) : setManualAsrTime(value))} placeholder="Asr (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={editManualMaghribTime} onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftManualMaghribTime(value) : setManualMaghribTime(value))} placeholder="Maghrib (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={editManualIshaaTime} onChangeText={(value) => (isTomorrowEditMode ? setPendingDraftManualIshaaTime(value) : setManualIshaaTime(value))} placeholder="Ishaa (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: overrideSaving ? 0.6 : 1 }], pressed && styles.buttonPressed]} disabled={overrideSaving} onPress={saveManualPrayerTimes}>
