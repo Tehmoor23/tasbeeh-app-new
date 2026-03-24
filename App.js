@@ -2130,22 +2130,18 @@ function AppContent() {
 
     const rolloutPendingOverride = async () => {
       try {
-        const currentGlobalOverride = normalizePrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID));
-        const mergedPayload = {
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
           enabled: pendingPrayerOverride.enabled,
-          soharAsrTime: pendingPrayerOverride.soharAsrTime || currentGlobalOverride.soharAsrTime || null,
-          maghribIshaaTime: pendingPrayerOverride.maghribIshaaTime || currentGlobalOverride.maghribIshaaTime || null,
+          soharAsrTime: pendingPrayerOverride.soharAsrTime || null,
+          maghribIshaaTime: pendingPrayerOverride.maghribIshaaTime || null,
           manualTimes: {
-            fajr: pendingPrayerOverride.manualTimes.fajr || currentGlobalOverride.manualTimes.fajr || null,
-            sohar: pendingPrayerOverride.manualTimes.sohar || currentGlobalOverride.manualTimes.sohar || null,
-            asr: pendingPrayerOverride.manualTimes.asr || currentGlobalOverride.manualTimes.asr || null,
-            maghrib: pendingPrayerOverride.manualTimes.maghrib || currentGlobalOverride.manualTimes.maghrib || null,
-            ishaa: pendingPrayerOverride.manualTimes.ishaa || currentGlobalOverride.manualTimes.ishaa || null,
+            fajr: pendingPrayerOverride.manualTimes.fajr || null,
+            sohar: pendingPrayerOverride.manualTimes.sohar || null,
+            asr: pendingPrayerOverride.manualTimes.asr || null,
+            maghrib: pendingPrayerOverride.manualTimes.maghrib || null,
+            ishaa: pendingPrayerOverride.manualTimes.ishaa || null,
           },
           updatedAt: new Date().toISOString(),
-        };
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
-          ...mergedPayload,
         });
         await deleteDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID);
       } catch {
@@ -2207,11 +2203,11 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideDisplayDateISO !== todayISO;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: overrideDisplayDateISO,
+          dateISO: tomorrowISO,
         });
         setToast('Override für morgen gespeichert ✓');
       } else {
@@ -2243,7 +2239,7 @@ function AppContent() {
     }
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideDisplayDateISO !== todayISO;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       const payload = {
         enabled: overrideEnabled,
         soharAsrTime: overrideSoharAsrTime.trim() || null,
@@ -2260,7 +2256,7 @@ function AppContent() {
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: overrideDisplayDateISO,
+          dateISO: tomorrowISO,
         });
         setToast('Für morgen gespeichert ✓');
       } else {
