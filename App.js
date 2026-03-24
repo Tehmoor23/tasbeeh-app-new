@@ -2178,11 +2178,6 @@ function AppContent() {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const cleanSoharAsr = overrideSoharAsrTime.trim();
     const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
-    const cleanManualFajr = manualFajrTime.trim();
-    const cleanManualSohar = manualSoharTime.trim();
-    const cleanManualAsr = manualAsrTime.trim();
-    const cleanManualMaghrib = manualMaghribTime.trim();
-    const cleanManualIshaa = manualIshaaTime.trim();
 
     if (cleanSoharAsr && !isValidTime(cleanSoharAsr)) {
       Alert.alert('Ungültige Zeit', 'Sohar+Asr muss im Format HH:MM sein.');
@@ -2198,11 +2193,11 @@ function AppContent() {
       soharAsrTime: cleanSoharAsr || null,
       maghribIshaaTime: cleanMaghribIshaa || null,
       manualTimes: {
-        fajr: cleanManualFajr || null,
-        sohar: cleanManualSohar || null,
-        asr: cleanManualAsr || null,
-        maghrib: cleanManualMaghrib || null,
-        ishaa: cleanManualIshaa || null,
+        fajr: manualFajrTime.trim() || null,
+        sohar: manualSoharTime.trim() || null,
+        asr: manualAsrTime.trim() || null,
+        maghrib: manualMaghribTime.trim() || null,
+        ishaa: manualIshaaTime.trim() || null,
       },
       updatedAt: new Date().toISOString(),
     };
@@ -2211,34 +2206,9 @@ function AppContent() {
       setOverrideSaving(true);
       const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
       if (isTomorrowEdit) {
-        const existingPending = normalizePendingPrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID));
-        const mergedManualTimes = {
-          fajr: cleanManualFajr || existingPending?.manualTimes?.fajr || '',
-          sohar: cleanManualSohar || existingPending?.manualTimes?.sohar || '',
-          asr: cleanManualAsr || existingPending?.manualTimes?.asr || '',
-          maghrib: cleanManualMaghrib || existingPending?.manualTimes?.maghrib || '',
-          ishaa: cleanManualIshaa || existingPending?.manualTimes?.ishaa || '',
-        };
-        const partialPayload = {
-          dateISO: tomorrowISO,
-          updatedAt: new Date().toISOString(),
-          ...(overrideEnabled || existingPending?.enabled ? { enabled: true } : {}),
-          ...((cleanSoharAsr || existingPending?.soharAsrTime) ? { soharAsrTime: cleanSoharAsr || existingPending?.soharAsrTime } : {}),
-          ...((cleanMaghribIshaa || existingPending?.maghribIshaaTime) ? { maghribIshaaTime: cleanMaghribIshaa || existingPending?.maghribIshaaTime } : {}),
-          ...(Object.values(mergedManualTimes).some(Boolean)
-            ? {
-              manualTimes: {
-                ...(mergedManualTimes.fajr ? { fajr: mergedManualTimes.fajr } : {}),
-                ...(mergedManualTimes.sohar ? { sohar: mergedManualTimes.sohar } : {}),
-                ...(mergedManualTimes.asr ? { asr: mergedManualTimes.asr } : {}),
-                ...(mergedManualTimes.maghrib ? { maghrib: mergedManualTimes.maghrib } : {}),
-                ...(mergedManualTimes.ishaa ? { ishaa: mergedManualTimes.ishaa } : {}),
-              },
-            }
-            : {}),
-        };
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
-          ...partialPayload,
+          ...payload,
+          dateISO: tomorrowISO,
         });
         setToast('Override für morgen gespeichert ✓');
       } else {
@@ -2285,34 +2255,9 @@ function AppContent() {
         updatedAt: new Date().toISOString(),
       };
       if (isTomorrowEdit) {
-        const existingPending = normalizePendingPrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID));
-        const mergedManualTimes = {
-          fajr: manualEntries.fajr || existingPending?.manualTimes?.fajr || '',
-          sohar: manualEntries.sohar || existingPending?.manualTimes?.sohar || '',
-          asr: manualEntries.asr || existingPending?.manualTimes?.asr || '',
-          maghrib: manualEntries.maghrib || existingPending?.manualTimes?.maghrib || '',
-          ishaa: manualEntries.ishaa || existingPending?.manualTimes?.ishaa || '',
-        };
-        const partialPayload = {
-          dateISO: tomorrowISO,
-          updatedAt: new Date().toISOString(),
-          ...(overrideEnabled || existingPending?.enabled ? { enabled: true } : {}),
-          ...((overrideSoharAsrTime.trim() || existingPending?.soharAsrTime) ? { soharAsrTime: overrideSoharAsrTime.trim() || existingPending?.soharAsrTime } : {}),
-          ...((overrideMaghribIshaaTime.trim() || existingPending?.maghribIshaaTime) ? { maghribIshaaTime: overrideMaghribIshaaTime.trim() || existingPending?.maghribIshaaTime } : {}),
-          ...(Object.values(mergedManualTimes).some(Boolean)
-            ? {
-              manualTimes: {
-                ...(mergedManualTimes.fajr ? { fajr: mergedManualTimes.fajr } : {}),
-                ...(mergedManualTimes.sohar ? { sohar: mergedManualTimes.sohar } : {}),
-                ...(mergedManualTimes.asr ? { asr: mergedManualTimes.asr } : {}),
-                ...(mergedManualTimes.maghrib ? { maghrib: mergedManualTimes.maghrib } : {}),
-                ...(mergedManualTimes.ishaa ? { ishaa: mergedManualTimes.ishaa } : {}),
-              },
-            }
-            : {}),
-        };
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
-          ...partialPayload,
+          ...payload,
+          dateISO: tomorrowISO,
         });
         setToast('Für morgen gespeichert ✓');
       } else {
