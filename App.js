@@ -2045,28 +2045,32 @@ function AppContent() {
     setPrayerOverrideReady(false);
     setOverrideLoading(true);
     const applyEditableOverride = (baseOverride, pendingOverride) => {
+      const isTomorrowEdit = overrideEditDayOffset === 1;
       const hasPendingForTomorrow = pendingOverride?.dateISO === tomorrowISO;
       const normalizedToday = normalizePrayerOverride(baseOverride);
       const normalizedTomorrow = normalizePrayerOverride(hasPendingForTomorrow ? pendingOverride : null);
       if (cancelled) return;
       setPrayerOverride(baseOverride);
       setPendingPrayerOverride(pendingOverride);
-      setOverrideEnabled(normalizedToday.enabled);
-      setOverrideSoharAsrTime(normalizedToday.soharAsrTime || '');
-      setOverrideMaghribIshaaTime(normalizedToday.maghribIshaaTime || '');
-      setManualFajrTime(normalizedToday.manualTimes.fajr || '');
-      setManualSoharTime(normalizedToday.manualTimes.sohar || '');
-      setManualAsrTime(normalizedToday.manualTimes.asr || '');
-      setManualMaghribTime(normalizedToday.manualTimes.maghrib || '');
-      setManualIshaaTime(normalizedToday.manualTimes.ishaa || '');
-      setPendingDraftOverrideEnabled(normalizedTomorrow.enabled);
-      setPendingDraftOverrideSoharAsrTime(normalizedTomorrow.soharAsrTime || '');
-      setPendingDraftOverrideMaghribIshaaTime(normalizedTomorrow.maghribIshaaTime || '');
-      setPendingDraftManualFajrTime(normalizedTomorrow.manualTimes.fajr || '');
-      setPendingDraftManualSoharTime(normalizedTomorrow.manualTimes.sohar || '');
-      setPendingDraftManualAsrTime(normalizedTomorrow.manualTimes.asr || '');
-      setPendingDraftManualMaghribTime(normalizedTomorrow.manualTimes.maghrib || '');
-      setPendingDraftManualIshaaTime(normalizedTomorrow.manualTimes.ishaa || '');
+      if (isTomorrowEdit) {
+        setPendingDraftOverrideEnabled(normalizedTomorrow.enabled);
+        setPendingDraftOverrideSoharAsrTime(normalizedTomorrow.soharAsrTime || '');
+        setPendingDraftOverrideMaghribIshaaTime(normalizedTomorrow.maghribIshaaTime || '');
+        setPendingDraftManualFajrTime(normalizedTomorrow.manualTimes.fajr || '');
+        setPendingDraftManualSoharTime(normalizedTomorrow.manualTimes.sohar || '');
+        setPendingDraftManualAsrTime(normalizedTomorrow.manualTimes.asr || '');
+        setPendingDraftManualMaghribTime(normalizedTomorrow.manualTimes.maghrib || '');
+        setPendingDraftManualIshaaTime(normalizedTomorrow.manualTimes.ishaa || '');
+      } else {
+        setOverrideEnabled(normalizedToday.enabled);
+        setOverrideSoharAsrTime(normalizedToday.soharAsrTime || '');
+        setOverrideMaghribIshaaTime(normalizedToday.maghribIshaaTime || '');
+        setManualFajrTime(normalizedToday.manualTimes.fajr || '');
+        setManualSoharTime(normalizedToday.manualTimes.sohar || '');
+        setManualAsrTime(normalizedToday.manualTimes.asr || '');
+        setManualMaghribTime(normalizedToday.manualTimes.maghrib || '');
+        setManualIshaaTime(normalizedToday.manualTimes.ishaa || '');
+      }
       setPrayerOverrideReady(true);
       setOverrideLoading(false);
     };
