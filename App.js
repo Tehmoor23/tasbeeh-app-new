@@ -2207,11 +2207,11 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideDisplayDateISO !== todayISO;
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: tomorrowISO,
+          dateISO: overrideDisplayDateISO,
         });
         setToast('Override für morgen gespeichert ✓');
       } else {
@@ -2243,7 +2243,7 @@ function AppContent() {
     }
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideDisplayDateISO !== todayISO;
       const payload = {
         enabled: overrideEnabled,
         soharAsrTime: overrideSoharAsrTime.trim() || null,
@@ -2260,7 +2260,7 @@ function AppContent() {
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: tomorrowISO,
+          dateISO: overrideDisplayDateISO,
         });
         setToast('Für morgen gespeichert ✓');
       } else {
