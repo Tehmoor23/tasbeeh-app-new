@@ -45,7 +45,7 @@ const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = 'full'; // 'full', 'display' oder 'qr'
+const APP_MODE = 'qr'; // 'full', 'display' oder 'qr'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -2449,9 +2449,10 @@ function AppContent() {
 
   useEffect(() => {
     if (!shouldRestrictToQrView) return;
-    setQrPageVisible(true);
-    setQrScanPageVisible(false);
-  }, [shouldRestrictToQrView]);
+    if (!isQrScanPageVisible) {
+      setQrPageVisible(true);
+    }
+  }, [isQrScanPageVisible, shouldRestrictToQrView]);
 
   useEffect(() => {
     if (isSuperAdmin) loadAdminAccounts();
@@ -6368,7 +6369,7 @@ function AppContent() {
   );
 
   const body = shouldRestrictToQrView
-    ? renderQrPage()
+    ? (isQrScanPageVisible ? renderQrScanPage() : renderQrPage())
     : shouldRestrictToPrayerView
       ? renderPrayer()
       : isQrScanPageVisible
