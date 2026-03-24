@@ -56,8 +56,8 @@ const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
-const FORCE_TEST_DATE_ENABLED = false;
-const FORCE_TEST_DATE_ISO = '2026-03-15'; // development override for testing (YYYY-MM-DD)
+const FORCE_TEST_DATE_ENABLED = true;
+const FORCE_TEST_DATE_ISO = '2026-03-25'; // development override for testing (YYYY-MM-DD)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
   'Baitus Sabuh Süd',
@@ -939,10 +939,11 @@ const getMosqueOptionByKey = (key) => MOSQUE_OPTIONS.find((item) => item.key ===
 const setActiveMosqueScope = (key) => {
   activeMosqueScopeKey = getMosqueOptionByKey(key).key;
 };
-const resolveScopedCollection = (collection) => {
-  const suffix = getMosqueOptionByKey(activeMosqueScopeKey).suffix;
+const resolveScopedCollectionForMosque = (collection, mosqueKey) => {
+  const suffix = getMosqueOptionByKey(mosqueKey).suffix;
   return suffix ? `${collection}_${suffix}` : collection;
 };
+const resolveScopedCollection = (collection) => resolveScopedCollectionForMosque(collection, activeMosqueScopeKey);
 
 async function incrementDocCounters(collection, id, fieldPaths) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
@@ -963,9 +964,9 @@ async function incrementDocCounters(collection, id, fieldPaths) {
   if (!res.ok) throw new Error('Firestore increment failed');
 }
 
-async function getDocData(collection, id) {
+async function getDocData(collection, id, mosqueKey = activeMosqueScopeKey) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const res = await fetch(docUrl(resolveScopedCollection(collection), id));
+  const res = await fetch(docUrl(resolveScopedCollectionForMosque(collection, mosqueKey), id));
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('Firestore read failed');
   const json = await res.json();
@@ -995,16 +996,16 @@ async function listDocIds(collection, pageSize = 300) {
 }
 
 
-async function setDocData(collection, id, data) {
+async function setDocData(collection, id, data, mosqueKey = activeMosqueScopeKey) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const body = { fields: toFirestoreValue(data).mapValue.fields };
-  const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const res = await fetch(docUrl(resolveScopedCollectionForMosque(collection, mosqueKey), id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   if (!res.ok) throw new Error('Firestore write failed');
 }
 
-async function deleteDocData(collection, id) {
+async function deleteDocData(collection, id, mosqueKey = activeMosqueScopeKey) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
-  const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'DELETE' });
+  const res = await fetch(docUrl(resolveScopedCollectionForMosque(collection, mosqueKey), id), { method: 'DELETE' });
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
@@ -2027,6 +2028,15 @@ function AppContent() {
     let cancelled = false;
     setPrayerOverrideReady(false);
     setOverrideLoading(true);
+    const prayerOverrideCollectionForMosque = resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey);
+    if (__DEV__) {
+      console.log('[PrayerOverride:scope]', {
+        activeMosqueKey,
+        scopedCollection: prayerOverrideCollectionForMosque,
+        globalDocId: PRAYER_OVERRIDE_GLOBAL_DOC_ID,
+        pendingDocId: PRAYER_OVERRIDE_PENDING_DOC_ID,
+      });
+    }
     const applyEditableOverride = (baseOverride, pendingOverride) => {
       const isTomorrowEdit = overrideEditDayOffset === 1;
       const hasPendingForDisplayDate = pendingOverride?.dateISO === overrideDisplayDateISO;
@@ -2054,8 +2064,8 @@ function AppContent() {
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
       Promise.all([
-        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID),
-        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID),
+        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, activeMosqueKey),
+        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, activeMosqueKey),
       ])
         .then(([globalData, pendingData]) => applyFromData(globalData, pendingData))
         .catch(() => {
@@ -2070,7 +2080,7 @@ function AppContent() {
       };
     }
 
-    const baseCollection = resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION);
+    const baseCollection = prayerOverrideCollectionForMosque;
     const globalRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
     const pendingRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_PENDING_DOC_ID);
     let latestGlobal = null;
@@ -2126,11 +2136,39 @@ function AppContent() {
   }, [overrideEditDayOffset]);
 
   useEffect(() => {
-    if (!pendingPrayerOverride || pendingPrayerOverride.dateISO !== todayISO) return;
+    if (!pendingPrayerOverride) return;
+    const pendingDateISO = String(pendingPrayerOverride.dateISO || '');
+    const savedFromDateISO = String(pendingPrayerOverride.savedFromDateISO || '');
+    if (pendingDateISO !== todayISO) return;
+    if (savedFromDateISO === todayISO) {
+      if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+        console.log('[PrayerOverride:default:skipImmediateRollout]', {
+          now: now.toISOString(),
+          activeMosqueKey,
+          todayISO,
+          tomorrowISO,
+          overrideDisplayDateISO,
+          pendingDateISO,
+          savedFromDateISO,
+        });
+      }
+      return;
+    }
+    if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+      console.log('[PrayerOverride:default:beforeRollout]', {
+        now: now.toISOString(),
+        activeMosqueKey,
+        todayISO,
+        tomorrowISO,
+        overrideDisplayDateISO,
+        pendingDateISO,
+        savedFromDateISO,
+      });
+    }
 
     const rolloutPendingOverride = async () => {
       try {
-        const currentGlobalOverride = normalizePrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID));
+        const currentGlobalOverride = normalizePrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, activeMosqueKey));
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
           enabled: pendingPrayerOverride.enabled || currentGlobalOverride.enabled,
           soharAsrTime: pendingPrayerOverride.soharAsrTime || currentGlobalOverride.soharAsrTime || null,
@@ -2143,15 +2181,15 @@ function AppContent() {
             ishaa: pendingPrayerOverride.manualTimes.ishaa || currentGlobalOverride.manualTimes.ishaa || null,
           },
           updatedAt: new Date().toISOString(),
-        });
-        await deleteDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID);
+        }, activeMosqueKey);
+        await deleteDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, activeMosqueKey);
       } catch {
         setToast('Morgen-Override konnte nicht übernommen werden');
       }
     };
 
     rolloutPendingOverride();
-  }, [pendingPrayerOverride, todayISO, activeMosqueKey]);
+  }, [pendingPrayerOverride, todayISO, tomorrowISO, overrideDisplayDateISO, activeMosqueKey, now]);
 
   const onOverrideMetaPress = () => {
     setOverrideMetaTapCount((prev) => {
@@ -2173,6 +2211,11 @@ function AppContent() {
       setOverrideMaghribIshaaTime('');
     }
   };
+  const resolvePendingTargetDateISO = useCallback(() => {
+    if (tomorrowISO !== todayISO) return tomorrowISO;
+    const todayDate = parseISO(todayISO) || now;
+    return toISO(addDays(todayDate, 1));
+  }, [todayISO, tomorrowISO, now]);
 
   const savePrayerOverride = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
@@ -2221,13 +2264,35 @@ function AppContent() {
         },
       };
       if (isTomorrowEdit) {
+        const pendingTargetDateISO = resolvePendingTargetDateISO();
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:beforeSaveTomorrow]', {
+            now: now.toISOString(),
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            overrideDisplayDateISO,
+            pendingDateISO: pendingPrayerOverride?.dateISO || null,
+            pendingTargetDateISO,
+          });
+        }
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payloadWithMergedManualTimes,
-          dateISO: tomorrowISO,
-        });
+          dateISO: pendingTargetDateISO,
+          savedFromDateISO: todayISO,
+        }, activeMosqueKey);
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:afterSaveTomorrow]', {
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            pendingTargetDateISO,
+          });
+        }
         setToast('Override für morgen gespeichert ✓');
       } else {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes);
+        if (__DEV__) console.log('[PrayerOverride:saveToday]', { activeMosqueKey, collection: resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey), docId: PRAYER_OVERRIDE_GLOBAL_DOC_ID });
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes, activeMosqueKey);
         setPrayerOverride(normalizePrayerOverride(payloadWithMergedManualTimes));
         setToast('Override gespeichert ✓');
       }
@@ -2275,13 +2340,35 @@ function AppContent() {
         updatedAt: new Date().toISOString(),
       };
       if (isTomorrowEdit) {
+        const pendingTargetDateISO = resolvePendingTargetDateISO();
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:beforeSaveTomorrowManual]', {
+            now: now.toISOString(),
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            overrideDisplayDateISO,
+            pendingDateISO: pendingPrayerOverride?.dateISO || null,
+            pendingTargetDateISO,
+          });
+        }
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: tomorrowISO,
-        });
+          dateISO: pendingTargetDateISO,
+          savedFromDateISO: todayISO,
+        }, activeMosqueKey);
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:afterSaveTomorrowManual]', {
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            pendingTargetDateISO,
+          });
+        }
         setToast('Für morgen gespeichert ✓');
       } else {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
+        if (__DEV__) console.log('[PrayerOverride:saveTodayManual]', { activeMosqueKey, collection: resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey), docId: PRAYER_OVERRIDE_GLOBAL_DOC_ID });
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload, activeMosqueKey);
         setPrayerOverride(normalizePrayerOverride(payload));
         setToast('Gespeichert ✓');
       }
