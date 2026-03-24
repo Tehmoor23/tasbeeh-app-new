@@ -6250,7 +6250,7 @@ function AppContent() {
       ) : null}
 
       <View style={styles.appMetaWrap}>
-        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.1.0</Text>
+        <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.2.0</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
       </View>
     </ScrollView>
