@@ -2136,7 +2136,35 @@ function AppContent() {
   }, [overrideEditDayOffset]);
 
   useEffect(() => {
-    if (!pendingPrayerOverride || pendingPrayerOverride.dateISO !== todayISO) return;
+    if (!pendingPrayerOverride) return;
+    const pendingDateISO = String(pendingPrayerOverride.dateISO || '');
+    const savedFromDateISO = String(pendingPrayerOverride.savedFromDateISO || '');
+    if (pendingDateISO !== todayISO) return;
+    if (savedFromDateISO === todayISO) {
+      if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+        console.log('[PrayerOverride:default:skipImmediateRollout]', {
+          now: now.toISOString(),
+          activeMosqueKey,
+          todayISO,
+          tomorrowISO,
+          overrideDisplayDateISO,
+          pendingDateISO,
+          savedFromDateISO,
+        });
+      }
+      return;
+    }
+    if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+      console.log('[PrayerOverride:default:beforeRollout]', {
+        now: now.toISOString(),
+        activeMosqueKey,
+        todayISO,
+        tomorrowISO,
+        overrideDisplayDateISO,
+        pendingDateISO,
+        savedFromDateISO,
+      });
+    }
 
     const rolloutPendingOverride = async () => {
       try {
@@ -2161,7 +2189,7 @@ function AppContent() {
     };
 
     rolloutPendingOverride();
-  }, [pendingPrayerOverride, todayISO, activeMosqueKey]);
+  }, [pendingPrayerOverride, todayISO, tomorrowISO, overrideDisplayDateISO, activeMosqueKey, now]);
 
   const onOverrideMetaPress = () => {
     setOverrideMetaTapCount((prev) => {
@@ -2183,6 +2211,11 @@ function AppContent() {
       setOverrideMaghribIshaaTime('');
     }
   };
+  const resolvePendingTargetDateISO = useCallback(() => {
+    if (tomorrowISO !== todayISO) return tomorrowISO;
+    const todayDate = parseISO(todayISO) || now;
+    return toISO(addDays(todayDate, 1));
+  }, [todayISO, tomorrowISO, now]);
 
   const savePrayerOverride = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
@@ -2231,11 +2264,31 @@ function AppContent() {
         },
       };
       if (isTomorrowEdit) {
-        if (__DEV__) console.log('[PrayerOverride:saveTomorrow]', { activeMosqueKey, collection: resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey), docId: PRAYER_OVERRIDE_PENDING_DOC_ID });
+        const pendingTargetDateISO = resolvePendingTargetDateISO();
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:beforeSaveTomorrow]', {
+            now: now.toISOString(),
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            overrideDisplayDateISO,
+            pendingDateISO: pendingPrayerOverride?.dateISO || null,
+            pendingTargetDateISO,
+          });
+        }
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payloadWithMergedManualTimes,
-          dateISO: tomorrowISO,
+          dateISO: pendingTargetDateISO,
+          savedFromDateISO: todayISO,
         }, activeMosqueKey);
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:afterSaveTomorrow]', {
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            pendingTargetDateISO,
+          });
+        }
         setToast('Override für morgen gespeichert ✓');
       } else {
         if (__DEV__) console.log('[PrayerOverride:saveToday]', { activeMosqueKey, collection: resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey), docId: PRAYER_OVERRIDE_GLOBAL_DOC_ID });
@@ -2287,11 +2340,31 @@ function AppContent() {
         updatedAt: new Date().toISOString(),
       };
       if (isTomorrowEdit) {
-        if (__DEV__) console.log('[PrayerOverride:saveTomorrowManual]', { activeMosqueKey, collection: resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey), docId: PRAYER_OVERRIDE_PENDING_DOC_ID });
+        const pendingTargetDateISO = resolvePendingTargetDateISO();
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:beforeSaveTomorrowManual]', {
+            now: now.toISOString(),
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            overrideDisplayDateISO,
+            pendingDateISO: pendingPrayerOverride?.dateISO || null,
+            pendingTargetDateISO,
+          });
+        }
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: tomorrowISO,
+          dateISO: pendingTargetDateISO,
+          savedFromDateISO: todayISO,
         }, activeMosqueKey);
+        if (__DEV__ && activeMosqueKey === DEFAULT_MOSQUE_KEY) {
+          console.log('[PrayerOverride:default:afterSaveTomorrowManual]', {
+            activeMosqueKey,
+            todayISO,
+            tomorrowISO,
+            pendingTargetDateISO,
+          });
+        }
         setToast('Für morgen gespeichert ✓');
       } else {
         if (__DEV__) console.log('[PrayerOverride:saveTodayManual]', { activeMosqueKey, collection: resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey), docId: PRAYER_OVERRIDE_GLOBAL_DOC_ID });
