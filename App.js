@@ -56,7 +56,7 @@ const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
 // const FORCE_TIME = '05:31'; // development override for testing
-const FORCE_TEST_DATE_ENABLED = true;
+const FORCE_TEST_DATE_ENABLED = false;
 const FORCE_TEST_DATE_ISO = '2026-03-25'; // development override for testing (YYYY-MM-DD)
 const TERMINAL_LOCATIONS = [
   'Baitus Sabuh Nord',
@@ -306,6 +306,7 @@ const FIXED_TIMES = {
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
+const PRAYER_OVERRIDE_DEFAULT_SUFFIX = 'BUS';
 const PRAYER_OVERRIDE_GLOBAL_DOC_ID = 'global';
 const PRAYER_OVERRIDE_PENDING_DOC_ID = 'pending_next_day';
 const ANNOUNCEMENT_COLLECTION = 'prayer_announcements';
@@ -945,7 +946,10 @@ const setActiveMosqueScope = (key) => {
   activeMosqueScopeKey = getMosqueOptionByKey(key).key;
 };
 const resolveScopedCollectionForMosque = (collection, mosqueKey) => {
-  const suffix = getMosqueOptionByKey(mosqueKey).suffix;
+  const mosqueSuffix = getMosqueOptionByKey(mosqueKey).suffix;
+  const suffix = (!mosqueSuffix && collection === PRAYER_OVERRIDE_COLLECTION)
+    ? PRAYER_OVERRIDE_DEFAULT_SUFFIX
+    : mosqueSuffix;
   return suffix ? `${collection}_${suffix}` : collection;
 };
 const resolveScopedCollection = (collection) => resolveScopedCollectionForMosque(collection, activeMosqueScopeKey);
