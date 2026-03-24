@@ -2449,9 +2449,10 @@ function AppContent() {
 
   useEffect(() => {
     if (!shouldRestrictToQrView) return;
-    setQrPageVisible(true);
-    setQrScanPageVisible(false);
-  }, [shouldRestrictToQrView]);
+    if (!isQrScanPageVisible) {
+      setQrPageVisible(true);
+    }
+  }, [isQrScanPageVisible, shouldRestrictToQrView]);
 
   useEffect(() => {
     if (isSuperAdmin) loadAdminAccounts();
@@ -6368,7 +6369,7 @@ function AppContent() {
   );
 
   const body = shouldRestrictToQrView
-    ? renderQrPage()
+    ? (isQrScanPageVisible ? renderQrScanPage() : renderQrPage())
     : shouldRestrictToPrayerView
       ? renderPrayer()
       : isQrScanPageVisible
