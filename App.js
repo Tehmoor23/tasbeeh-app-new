@@ -2178,6 +2178,7 @@ function AppContent() {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const cleanSoharAsr = overrideSoharAsrTime.trim();
     const cleanMaghribIshaa = overrideMaghribIshaaTime.trim();
+    const targetOverrideDateISO = overrideDisplayDateISO > todayISO ? overrideDisplayDateISO : null;
 
     if (cleanSoharAsr && !isValidTime(cleanSoharAsr)) {
       Alert.alert('Ungültige Zeit', 'Sohar+Asr muss im Format HH:MM sein.');
@@ -2204,9 +2205,9 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideEditDayOffset === 1;
+      const isFutureEdit = Boolean(targetOverrideDateISO);
       const editableOverride = normalizePrayerOverride(
-        isTomorrowEdit && pendingPrayerOverride?.dateISO === tomorrowISO
+        isFutureEdit && pendingPrayerOverride?.dateISO === targetOverrideDateISO
           ? pendingPrayerOverride
           : prayerOverride,
       );
@@ -2220,10 +2221,10 @@ function AppContent() {
           ishaa: payload.manualTimes.ishaa || editableOverride.manualTimes.ishaa || null,
         },
       };
-      if (isTomorrowEdit) {
+      if (isFutureEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payloadWithMergedManualTimes,
-          dateISO: tomorrowISO,
+          dateISO: targetOverrideDateISO,
         });
         setToast('Override für morgen gespeichert ✓');
       } else {
@@ -2241,6 +2242,7 @@ function AppContent() {
 
   const saveManualPrayerTimes = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
+    const targetOverrideDateISO = overrideDisplayDateISO > todayISO ? overrideDisplayDateISO : null;
     const manualEntries = {
       fajr: manualFajrTime.trim(),
       sohar: manualSoharTime.trim(),
@@ -2255,9 +2257,9 @@ function AppContent() {
     }
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideEditDayOffset === 1;
+      const isFutureEdit = Boolean(targetOverrideDateISO);
       const editableOverride = normalizePrayerOverride(
-        isTomorrowEdit && pendingPrayerOverride?.dateISO === tomorrowISO
+        isFutureEdit && pendingPrayerOverride?.dateISO === targetOverrideDateISO
           ? pendingPrayerOverride
           : prayerOverride,
       );
@@ -2274,10 +2276,10 @@ function AppContent() {
         },
         updatedAt: new Date().toISOString(),
       };
-      if (isTomorrowEdit) {
+      if (isFutureEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
-          dateISO: tomorrowISO,
+          dateISO: targetOverrideDateISO,
         });
         setToast('Für morgen gespeichert ✓');
       } else {
