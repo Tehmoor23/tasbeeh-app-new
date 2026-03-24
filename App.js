@@ -2204,7 +2204,7 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideEditDayOffset === 1;
+      const isTomorrowEdit = overrideEditDayOffset === 1;
       const editableOverride = normalizePrayerOverride(
         isTomorrowEdit && pendingPrayerOverride?.dateISO === tomorrowISO
           ? pendingPrayerOverride
