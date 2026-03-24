@@ -939,10 +939,11 @@ const getMosqueOptionByKey = (key) => MOSQUE_OPTIONS.find((item) => item.key ===
 const setActiveMosqueScope = (key) => {
   activeMosqueScopeKey = getMosqueOptionByKey(key).key;
 };
-const resolveScopedCollection = (collection) => {
-  const suffix = getMosqueOptionByKey(activeMosqueScopeKey).suffix;
+const resolveScopedCollectionForMosque = (collection, mosqueKey) => {
+  const suffix = getMosqueOptionByKey(mosqueKey).suffix;
   return suffix ? `${collection}_${suffix}` : collection;
 };
+const resolveScopedCollection = (collection) => resolveScopedCollectionForMosque(collection, activeMosqueScopeKey);
 
 async function incrementDocCounters(collection, id, fieldPaths) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
@@ -1005,6 +1006,32 @@ async function setDocData(collection, id, data) {
 async function deleteDocData(collection, id) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const res = await fetch(docUrl(resolveScopedCollection(collection), id), { method: 'DELETE' });
+  if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
+}
+
+async function getDocDataForMosque(collection, id, mosqueKey) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const res = await fetch(docUrl(resolveScopedCollectionForMosque(collection, mosqueKey), id));
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error('Firestore read failed');
+  const json = await res.json();
+  return fromFirestoreValue({ mapValue: { fields: json.fields || {} } });
+}
+
+async function setDocDataForMosque(collection, id, data, mosqueKey) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const body = { fields: toFirestoreValue(data).mapValue.fields };
+  const res = await fetch(docUrl(resolveScopedCollectionForMosque(collection, mosqueKey), id), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error('Firestore write failed');
+}
+
+async function deleteDocDataForMosque(collection, id, mosqueKey) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const res = await fetch(docUrl(resolveScopedCollectionForMosque(collection, mosqueKey), id), { method: 'DELETE' });
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
@@ -2054,8 +2081,8 @@ function AppContent() {
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
       Promise.all([
-        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID),
-        getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID),
+        getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, activeMosqueKey),
+        getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, activeMosqueKey),
       ])
         .then(([globalData, pendingData]) => applyFromData(globalData, pendingData))
         .catch(() => {
@@ -2070,7 +2097,7 @@ function AppContent() {
       };
     }
 
-    const baseCollection = resolveScopedCollection(PRAYER_OVERRIDE_COLLECTION);
+    const baseCollection = resolveScopedCollectionForMosque(PRAYER_OVERRIDE_COLLECTION, activeMosqueKey);
     const globalRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_GLOBAL_DOC_ID);
     const pendingRef = firebaseRuntime.doc(firebaseRuntime.db, baseCollection, PRAYER_OVERRIDE_PENDING_DOC_ID);
     let latestGlobal = null;
@@ -2130,8 +2157,8 @@ function AppContent() {
 
     const rolloutPendingOverride = async () => {
       try {
-        const currentGlobalOverride = normalizePrayerOverride(await getDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID));
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
+        const currentGlobalOverride = normalizePrayerOverride(await getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, activeMosqueKey));
+        await setDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, {
           enabled: pendingPrayerOverride.enabled || currentGlobalOverride.enabled,
           soharAsrTime: pendingPrayerOverride.soharAsrTime || currentGlobalOverride.soharAsrTime || null,
           maghribIshaaTime: pendingPrayerOverride.maghribIshaaTime || currentGlobalOverride.maghribIshaaTime || null,
@@ -2143,8 +2170,8 @@ function AppContent() {
             ishaa: pendingPrayerOverride.manualTimes.ishaa || currentGlobalOverride.manualTimes.ishaa || null,
           },
           updatedAt: new Date().toISOString(),
-        });
-        await deleteDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID);
+        }, activeMosqueKey);
+        await deleteDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, activeMosqueKey);
       } catch {
         setToast('Morgen-Override konnte nicht übernommen werden');
       }
@@ -2222,13 +2249,13 @@ function AppContent() {
         },
       };
       if (isFutureEdit) {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
+        await setDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payloadWithMergedManualTimes,
           dateISO: targetOverrideDateISO,
-        });
+        }, activeMosqueKey);
         setToast('Override für morgen gespeichert ✓');
       } else {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes);
+        await setDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes, activeMosqueKey);
         setPrayerOverride(normalizePrayerOverride(payloadWithMergedManualTimes));
         setToast('Override gespeichert ✓');
       }
@@ -2277,13 +2304,13 @@ function AppContent() {
         updatedAt: new Date().toISOString(),
       };
       if (isFutureEdit) {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
+        await setDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
           ...payload,
           dateISO: targetOverrideDateISO,
-        });
+        }, activeMosqueKey);
         setToast('Für morgen gespeichert ✓');
       } else {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
+        await setDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload, activeMosqueKey);
         setPrayerOverride(normalizePrayerOverride(payload));
         setToast('Gespeichert ✓');
       }
