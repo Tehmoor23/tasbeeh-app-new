@@ -51,6 +51,7 @@ const TERMINAL_LOCATIONS = [
   'Rödelheim',
   'Zeilsheim',
 ];
+const MOSQUE_OPTIONS = ['Bait-Us-Sabuh', 'Rödelheim', 'Höchst', 'Nuur Moschee'];
 const TAB_ITEMS = [
   { key: 'tasbeeh', label: 'Dhikr' },
   { key: 'gebetsplan', label: 'Gebetszeiten' },
@@ -319,7 +320,11 @@ function AppContent() {
   const [goalInput, setGoalInput] = useState(String(DEFAULT_GOAL));
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [terminalMode, setTerminalMode] = useState('tanzeem');
+  const [terminalEntryMode, setTerminalEntryMode] = useState('full');
   const [selectedTanzeem, setSelectedTanzeem] = useState('');
+  const [selectedMosque, setSelectedMosque] = useState(MOSQUE_OPTIONS[0]);
+  const [memberIdInput, setMemberIdInput] = useState('');
+  const [mosqueTapCount, setMosqueTapCount] = useState(0);
   const [refreshTick, setRefreshTick] = useState(0);
   const [toast, setToast] = useState('');
   const [statsLoading, setStatsLoading] = useState(false);
@@ -329,6 +334,7 @@ function AppContent() {
   const themePulseAnim = useRef(new Animated.Value(1)).current;
   const terminalLastCountRef = useRef(0);
   const visitorCounterRef = useRef(0);
+  const mosqueTapTimerRef = useRef(null);
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
   const insets = useSafeAreaInsets();
@@ -611,6 +617,92 @@ function AppContent() {
     }
   };
 
+  const normalizeMemberId = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const registrationDocId = (prayerKey, memberId) => `${todayISO}_${prayerKey}_${normalizeMemberId(memberId).replace(/[^a-z0-9_-]/g, '')}`;
+
+  const registerMemberAttendance = async () => {
+    const nowTs = Date.now();
+    if (nowTs - terminalLastCountRef.current < 2000) return;
+    terminalLastCountRef.current = nowTs;
+
+    if (!hasFirebaseConfig()) {
+      Alert.alert('Datenbankfehler', 'Bitte Firebase Konfiguration setzen.');
+      return;
+    }
+    if (!prayerWindow.isActive || !prayerWindow.prayerKey) {
+      setToast('Derzeit kein aktives Gebetszeitfenster');
+      return;
+    }
+    if (!selectedTanzeem) {
+      setToast('Bitte Tanzeem wählen');
+      return;
+    }
+
+    const normalizedId = normalizeMemberId(memberIdInput);
+    if (!normalizedId) {
+      setToast('Bitte ID eingeben oder scannen');
+      return;
+    }
+
+    const prayer = prayerWindow.prayerKey;
+    const mosqueKey = toLocationKey(selectedMosque);
+    const docId = registrationDocId(prayer, normalizedId);
+
+    try {
+      const existing = await getDocData('attendance_registrations', docId);
+      const existingMosques = existing?.mosques || {};
+      if (existingMosques[mosqueKey]) {
+        setToast(`ID bereits für ${selectedMosque} erfasst`);
+        Vibration.vibrate(20);
+        return;
+      }
+
+      await incrementDocCounters('attendance_daily', todayISO, [`byPrayer.${prayer}.tanzeem.${selectedTanzeem}.majlis.${mosqueKey}`]);
+      await setDocData('attendance_registrations', docId, {
+        prayer,
+        date: todayISO,
+        memberId: normalizedId,
+        tanzeem: selectedTanzeem,
+        mosques: { ...existingMosques, [mosqueKey]: true },
+      }, false);
+
+      visitorCounterRef.current += 1;
+      console.log('ATTENDANCE LOG:', {
+        visitorNumber: visitorCounterRef.current,
+        timestamp: new Date().toISOString(),
+        prayer,
+        tanzeem: selectedTanzeem,
+        majlis: mosqueKey,
+        memberId: normalizedId,
+        mode: terminalEntryMode,
+      });
+      setMemberIdInput('');
+      setTerminalMode('tanzeem');
+      setSelectedTanzeem('');
+      setToast(`Gezählt ✓ (${selectedMosque})`);
+      Vibration.vibrate(4);
+    } catch {
+      Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
+      setToast('Datenbankfehler – bitte Internet prüfen');
+    }
+  };
+
+  const onMosqueBadgePress = () => {
+    if (mosqueTapTimerRef.current) clearTimeout(mosqueTapTimerRef.current);
+    setMosqueTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 3) {
+        const currentIndex = MOSQUE_OPTIONS.indexOf(selectedMosque);
+        const nextMosque = MOSQUE_OPTIONS[(currentIndex + 1) % MOSQUE_OPTIONS.length];
+        setSelectedMosque(nextMosque);
+        setToast(`Moschee: ${nextMosque}`);
+        return 0;
+      }
+      return next;
+    });
+    mosqueTapTimerRef.current = setTimeout(() => setMosqueTapCount(0), 900);
+  };
+
   const renderTasbeeh = () => (
     <ScrollView contentContainerStyle={[styles.content, styles.tasbeehContent]} showsVerticalScrollIndicator={false}>
       <View style={styles.headerRow}><View style={styles.titleWrap}><Text style={[styles.title, { color: theme.text }]}>Dhikr</Text><Text style={[styles.titleArabic, { color: theme.muted }]}>ذِكر</Text></View></View>
@@ -662,6 +754,23 @@ function AppContent() {
       </View>
 
       <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center', marginBottom: 8 }]}>{terminalEntryMode === 'qr' ? 'QR-Code Gebetserfassung' : 'Gebetserfassung'}</Text>
+        <Pressable onPress={onMosqueBadgePress} style={styles.hiddenMosqueButton}>
+          <View style={styles.mosqueBadge}>
+            <Text style={styles.mosqueBadgeText}>{selectedMosque}</Text>
+          </View>
+        </Pressable>
+        <View style={styles.modeSwitchRow}>
+          {['full', 'qr'].map((mode) => (
+            <Pressable
+              key={mode}
+              style={({ pressed }) => [[styles.modeSwitchBtn, { backgroundColor: terminalEntryMode === mode ? theme.button : theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
+              onPress={() => { setTerminalEntryMode(mode); setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}
+            >
+              <Text style={{ color: terminalEntryMode === mode ? theme.buttonText : theme.text, fontWeight: '700' }}>{mode === 'full' ? 'Full Mode' : 'QR Mode'}</Text>
+            </Pressable>
+          ))}
+        </View>
         {prayerWindow.isActive ? (
           <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Gebet: {prayerWindow.prayerLabel}</Text>
         ) : (
@@ -693,18 +802,22 @@ function AppContent() {
         </>
       ) : (
         <>
-          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
-          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم اپنی مجلس منتخب کریں</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text, textAlign: 'center' }]}>{terminalEntryMode === 'qr' ? 'QR scannen / ID eingeben' : 'ID eingeben'}</Text>
+          <Text style={[styles.urduText, { color: theme.muted }]}>براہ کرم آئی ڈی درج کریں</Text>
           <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); }}>
             <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Zurück</Text>
           </Pressable>
-          <View style={styles.gridWrap}>
-            {TERMINAL_LOCATIONS.map((loc) => (
-              <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => countAttendance('member', loc)}>
-                <Text style={[styles.gridText, { color: theme.text }]}>{loc}</Text>
-              </Pressable>
-            ))}
-          </View>
+          <TextInput
+            value={memberIdInput}
+            onChangeText={setMemberIdInput}
+            placeholder={terminalEntryMode === 'qr' ? 'QR-Code / Mitglieds-ID' : 'Mitglieds-ID'}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={[styles.goalInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+          />
+          <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={registerMemberAttendance}>
+            <Text style={[styles.saveBtnText, { color: theme.buttonText }]}>Eintragen für {selectedMosque}</Text>
+          </Pressable>
         </>
       ) : (
         <>
@@ -923,6 +1036,11 @@ const styles = StyleSheet.create({
   terminalBannerArabic: { textAlign: 'center', marginTop: 2, fontSize: 16, fontFamily: Platform.select({ ios: 'Geeza Pro', default: 'serif' }) },
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  hiddenMosqueButton: { alignSelf: 'center', marginBottom: 8 },
+  mosqueBadge: { backgroundColor: '#16A34A', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
+  mosqueBadgeText: { color: '#ECFDF5', fontSize: 13, fontWeight: '800', letterSpacing: 0.2 },
+  modeSwitchRow: { flexDirection: 'row', gap: 8, marginBottom: 10 },
+  modeSwitchBtn: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
   noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 5, paddingHorizontal: 12, borderRadius: 999, overflow: 'hidden' },
   noPrayerTitleLight: { backgroundColor: '#FDE68A', color: '#1F2937' },
