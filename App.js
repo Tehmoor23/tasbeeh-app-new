@@ -2051,12 +2051,9 @@ function AppContent() {
       if (cancelled) return;
       setPrayerOverride(baseOverride);
       setPendingPrayerOverride(pendingOverride);
-      if (prayerDayOffset === 0) {
-        setTodayForm(toPrayerForm(baseOverride));
-      } else {
-        const pendingForTomorrow = pendingOverride?.dateISO === tomorrowISO ? pendingOverride : null;
-        setTomorrowForm(pendingForTomorrow ? toPrayerForm(pendingForTomorrow) : createEmptyPrayerForm());
-      }
+      setTodayForm(toPrayerForm(baseOverride));
+      const pendingForTomorrow = pendingOverride?.dateISO === tomorrowISO ? pendingOverride : null;
+      setTomorrowForm(pendingForTomorrow ? toPrayerForm(pendingForTomorrow) : createEmptyPrayerForm());
       setPrayerOverrideReady(true);
       setOverrideLoading(false);
     };
@@ -2125,7 +2122,7 @@ function AppContent() {
       unsubGlobal();
       unsubPending();
     };
-  }, [activeMosqueKey, prayerDayOffset, tomorrowISO]);
+  }, [activeMosqueKey, tomorrowISO]);
 
   useEffect(() => {
     setPrayerDayOffset(0);
@@ -2243,7 +2240,6 @@ function AppContent() {
         setToast('Für morgen gespeichert ✓');
       } else {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, fullPayload);
-        setPrayerOverride(normalizePrayerOverride(fullPayload));
         setToast('Gespeichert ✓');
       }
       setRefreshTick((v) => v + 1);
