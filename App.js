@@ -1823,9 +1823,7 @@ function AppContent() {
     }
     return d;
   }, [refreshTick]);
-  useEffect(() => {
-    setActiveMosqueScope(activeMosqueKey);
-  }, [activeMosqueKey]);
+  setActiveMosqueScope(activeMosqueKey);
   const todayISO = toISO(now);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
   const overrideDisplayDate = useMemo(() => addDays(now, overrideEditDayOffset), [now, overrideEditDayOffset]);
