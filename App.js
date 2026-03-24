@@ -2204,16 +2204,31 @@ function AppContent() {
 
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideEditDayOffset === 1;
+      const editableOverride = normalizePrayerOverride(
+        isTomorrowEdit && pendingPrayerOverride?.dateISO === tomorrowISO
+          ? pendingPrayerOverride
+          : prayerOverride,
+      );
+      const payloadWithMergedManualTimes = {
+        ...payload,
+        manualTimes: {
+          fajr: payload.manualTimes.fajr || editableOverride.manualTimes.fajr || null,
+          sohar: payload.manualTimes.sohar || editableOverride.manualTimes.sohar || null,
+          asr: payload.manualTimes.asr || editableOverride.manualTimes.asr || null,
+          maghrib: payload.manualTimes.maghrib || editableOverride.manualTimes.maghrib || null,
+          ishaa: payload.manualTimes.ishaa || editableOverride.manualTimes.ishaa || null,
+        },
+      };
       if (isTomorrowEdit) {
         await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, {
-          ...payload,
+          ...payloadWithMergedManualTimes,
           dateISO: tomorrowISO,
         });
         setToast('Override für morgen gespeichert ✓');
       } else {
-        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payload);
-        setPrayerOverride(normalizePrayerOverride(payload));
+        await setDocData(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadWithMergedManualTimes);
+        setPrayerOverride(normalizePrayerOverride(payloadWithMergedManualTimes));
         setToast('Override gespeichert ✓');
       }
       setRefreshTick((v) => v + 1);
@@ -2240,17 +2255,22 @@ function AppContent() {
     }
     try {
       setOverrideSaving(true);
-      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1;
+      const isTomorrowEdit = overrideEditDayOffsetRef.current === 1 || overrideEditDayOffset === 1;
+      const editableOverride = normalizePrayerOverride(
+        isTomorrowEdit && pendingPrayerOverride?.dateISO === tomorrowISO
+          ? pendingPrayerOverride
+          : prayerOverride,
+      );
       const payload = {
-        enabled: overrideEnabled,
-        soharAsrTime: overrideSoharAsrTime.trim() || null,
-        maghribIshaaTime: overrideMaghribIshaaTime.trim() || null,
+        enabled: overrideEnabled || editableOverride.enabled,
+        soharAsrTime: overrideSoharAsrTime.trim() || editableOverride.soharAsrTime || null,
+        maghribIshaaTime: overrideMaghribIshaaTime.trim() || editableOverride.maghribIshaaTime || null,
         manualTimes: {
-          fajr: manualEntries.fajr || null,
-          sohar: manualEntries.sohar || null,
-          asr: manualEntries.asr || null,
-          maghrib: manualEntries.maghrib || null,
-          ishaa: manualEntries.ishaa || null,
+          fajr: manualEntries.fajr || editableOverride.manualTimes.fajr || null,
+          sohar: manualEntries.sohar || editableOverride.manualTimes.sohar || null,
+          asr: manualEntries.asr || editableOverride.manualTimes.asr || null,
+          maghrib: manualEntries.maghrib || editableOverride.manualTimes.maghrib || null,
+          ishaa: manualEntries.ishaa || editableOverride.manualTimes.ishaa || null,
         },
         updatedAt: new Date().toISOString(),
       };
