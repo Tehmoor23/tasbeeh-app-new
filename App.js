@@ -836,6 +836,25 @@ const getGermanHour = () => {
   } catch {}
   return new Date().getHours();
 };
+const formatGermanDateTime = (value) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  try {
+    return new Intl.DateTimeFormat('de-DE', {
+      timeZone: 'Europe/Berlin',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).format(date);
+  } catch {
+    return date.toLocaleString('de-DE');
+  }
+};
 const hasFirebaseConfig = () => FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.apiKey && !String(FIREBASE_CONFIG.projectId).includes('YOUR_') && !String(FIREBASE_CONFIG.apiKey).includes('YOUR_');
 const withPressEffect = (style) => ({ pressed }) => [style, pressed && styles.buttonPressed];
 
@@ -3899,6 +3918,20 @@ function AppContent() {
           String(entry?.majlis || '').trim(),
         ].join('||')),
     );
+    const attendanceTimestampByKey = programAttendanceEntries
+      .filter((entry) => String(entry?.idNumber || '') !== 'guest')
+      .reduce((acc, entry) => {
+        const key = [
+          String(entry?.idNumber || ''),
+          String(entry?.tanzeem || '').toLowerCase(),
+          String(entry?.majlis || '').trim(),
+        ].join('||');
+        const timestamp = String(entry?.timestamp || '');
+        const existing = String(acc[key] || '');
+        if (!existing) acc[key] = timestamp;
+        else if (timestamp && new Date(timestamp).getTime() < new Date(existing).getTime()) acc[key] = timestamp;
+        return acc;
+      }, {});
 
     const memberRows = membersDirectory
       .filter((entry) => (normalizedFilter ? entry.tanzeem === normalizedFilter : true))
@@ -3923,6 +3956,7 @@ function AppContent() {
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
           idNumber: row.idNumber,
           present: presentMap.has(key) ? 'Ja' : 'Nein',
+          timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
         };
       });
 
@@ -3939,12 +3973,12 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend'],
-      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.present]),
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'],
+      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.present, row.timestamp]),
     ];
 
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }];
+    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const boldCellStyle = { font: { bold: true } };
@@ -3954,6 +3988,7 @@ function AppContent() {
     if (sheet.B7) sheet.B7.s = boldCellStyle;
     if (sheet.C7) sheet.C7.s = boldCellStyle;
     if (sheet.D7) sheet.D7.s = boldCellStyle;
+    if (sheet.E7) sheet.E7.s = boldCellStyle;
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
@@ -4292,17 +4327,18 @@ function AppContent() {
     prayerSheet['!cols'] = [{ wch: 22 }, { wch: 32 }];
 
     const logRows = [
-      ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'],
+      ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis', 'Zeitstempel'],
       ...dataset.logs.map((row) => [
         formatIsoWithWeekday(row.date),
         STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayer)?.label || row.prayer,
         selectedDetailedMember.idNumber,
         TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—',
         selectedDetailedMember.majlis || '—',
+        formatGermanDateTime(row.timestamp),
       ]),
     ];
     const logsSheet = XLSX.utils.aoa_to_sheet(logRows);
-    logsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
+    logsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 24 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete nach Tage');
