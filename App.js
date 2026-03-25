@@ -6255,9 +6255,6 @@ function AppContent() {
     <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
-        <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
-          <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
-        </Pressable>
         {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
         {qrStatusMessage ? (
           <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
