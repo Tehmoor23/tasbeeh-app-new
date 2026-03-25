@@ -3513,6 +3513,45 @@ function AppContent() {
           davonAtfal: Number(value.byTanzeem.atfal) || 0,
         }));
     })();
+    const prayerOrder = STATS_PRAYER_SEQUENCE.reduce((acc, item, index) => {
+      acc[item.key] = index;
+      return acc;
+    }, {});
+    const prayerLogRows = [];
+    isos.forEach((iso) => {
+      const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
+      Object.entries(byPrayer).forEach(([prayerKey, prayerNode]) => {
+        const memberDetails = prayerNode?.memberDetails || {};
+        Object.entries(memberDetails).forEach(([tanzeemKey, majlisMap]) => {
+          Object.entries(majlisMap || {}).forEach(([locationKey, memberList]) => {
+            const rows = Array.isArray(memberList) ? memberList : [];
+            rows.forEach((entry, index) => {
+              const rawTimestamp = String(entry?.timestamp || '');
+              const parsedTs = rawTimestamp ? new Date(rawTimestamp).getTime() : Number.NaN;
+              prayerLogRows.push({
+                dateISO: String(iso || ''),
+                prayerKey: String(prayerKey || ''),
+                idNumber: String(entry?.idNumber || ''),
+                tanzeem: String(entry?.tanzeem || tanzeemKey || '').toLowerCase(),
+                majlis: String(entry?.majlis || formatMajlisName(locationKey)),
+                timestamp: rawTimestamp,
+                sortTs: Number.isNaN(parsedTs) ? null : parsedTs,
+                seq: index,
+              });
+            });
+          });
+        });
+      });
+    });
+    prayerLogRows.sort((a, b) => {
+      if (a.sortTs !== null && b.sortTs !== null) return a.sortTs - b.sortTs;
+      if (a.dateISO !== b.dateISO) return a.dateISO.localeCompare(b.dateISO);
+      const aPrayer = Object.prototype.hasOwnProperty.call(prayerOrder, a.prayerKey) ? prayerOrder[a.prayerKey] : Number.MAX_SAFE_INTEGER;
+      const bPrayer = Object.prototype.hasOwnProperty.call(prayerOrder, b.prayerKey) ? prayerOrder[b.prayerKey] : Number.MAX_SAFE_INTEGER;
+      if (aPrayer !== bPrayer) return aPrayer - bPrayer;
+      if (a.idNumber !== b.idNumber) return a.idNumber.localeCompare(b.idNumber, 'de-DE', { numeric: true, sensitivity: 'base' });
+      return a.seq - b.seq;
+    });
 
     return {
       rangeMode: targetRange,
@@ -3521,6 +3560,7 @@ function AppContent() {
       dayRows,
       prayerRows,
       topMajlisRows,
+      prayerLogRows,
       totalPrayers,
     };
   }, [selectedStatsDateISO, statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs]);
@@ -3617,9 +3657,25 @@ function AppContent() {
       topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(workbook, topSheet, 'Gebete nach Majlis');
     }
+    if (dataset.prayerLogRows.length) {
+      const protocolRows = [
+        ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'],
+        ...dataset.prayerLogRows.map((row) => [
+          formatIsoWithWeekday(row.dateISO),
+          formatGermanDateTime(row.timestamp),
+          STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayerKey)?.label || row.prayerKey,
+          row.idNumber || '—',
+          TANZEEM_LABELS[row.tanzeem] || row.tanzeem || '—',
+          row.majlis || '—',
+        ]),
+      ];
+      const protocolSheet = XLSX.utils.aoa_to_sheet(protocolRows);
+      protocolSheet['!cols'] = [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
+      XLSX.utils.book_append_sheet(workbook, protocolSheet, 'Gebetsprotokoll');
+    }
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Gebete nach Tage', 'Gebete nach Gebetszeiten', 'Gebete nach Majlis'].forEach((sheetName) => {
+    ['Übersicht', 'Gebete nach Tage', 'Gebete nach Gebetszeiten', 'Gebete nach Majlis', 'Gebetsprotokoll'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws) return;
       const ref = ws['!ref'];
