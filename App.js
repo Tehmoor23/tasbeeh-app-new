@@ -4756,7 +4756,7 @@ function AppContent() {
     const runtimeTimesToday = runtimeContext.timesToday;
     const runtimePrayerWindow = runtimeContext.prayerWindow;
 
-    const runtimeProgramConfig = (programConfigByDate || {})[runtimeISO] || null;
+    let runtimeProgramConfig = (programConfigByDate || {})[runtimeISO] || null;
     let runtimeProgramWindow = { isConfigured: false, isActive: false, label: null };
     if (runtimeProgramConfig && isValidTime(runtimeProgramConfig.startTime) && String(runtimeProgramConfig.name || '').trim()) {
       const startMinutes = Number(runtimeProgramConfig.startTime.slice(0, 2)) * 60 + Number(runtimeProgramConfig.startTime.slice(3));
@@ -4766,6 +4766,23 @@ function AppContent() {
         isActive: nowMinutes >= (startMinutes - 30),
         label: String(runtimeProgramConfig.name || '').trim(),
       };
+    }
+    if (modeType === 'program' && !runtimeProgramWindow.isActive) {
+      try {
+        const remoteProgramConfig = await getDocData(PROGRAM_CONFIG_COLLECTION, runtimeISO);
+        if (remoteProgramConfig && isValidTime(remoteProgramConfig.startTime) && String(remoteProgramConfig.name || '').trim()) {
+          runtimeProgramConfig = remoteProgramConfig;
+          const startMinutes = Number(remoteProgramConfig.startTime.slice(0, 2)) * 60 + Number(remoteProgramConfig.startTime.slice(3));
+          const nowMinutes = runtimeNow.getHours() * 60 + runtimeNow.getMinutes();
+          runtimeProgramWindow = {
+            isConfigured: true,
+            isActive: nowMinutes >= (startMinutes - 30),
+            label: String(remoteProgramConfig.name || '').trim(),
+          };
+        }
+      } catch {
+        // ignore and keep local runtimeProgramWindow fallback
+      }
     }
 
     const forcedPrayerKey = String(options?.forcedPrayerKey || '');
