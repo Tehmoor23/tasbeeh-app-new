@@ -1066,14 +1066,19 @@ async function listGlobalDocIds(collection, pageSize = 300) {
   return ids;
 }
 
-async function findGlobalRegistrationByIdNumber(collection, idNumber) {
+async function findGlobalRegistrationByIdNumber(collection, idNumber, mosqueKey = DEFAULT_MOSQUE_KEY) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const targetIdNumber = String(idNumber || '').trim();
+  const targetMosqueKey = getMosqueOptionByKey(mosqueKey).key;
   if (!targetIdNumber) return null;
   const docIds = await listGlobalDocIds(collection);
   for (const docId of docIds) {
     const registration = await getGlobalDocData(collection, docId);
-    if (String(registration?.idNumber || '').trim() === targetIdNumber) {
+    const registrationMosqueKey = getMosqueOptionByKey(registration?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+    if (
+      String(registration?.idNumber || '').trim() === targetIdNumber
+      && registrationMosqueKey === targetMosqueKey
+    ) {
       return {
         docId,
         registration,
@@ -2645,6 +2650,7 @@ function AppContent() {
       if (!allowed.includes(String(key || ''))) return;
     }
     const next = getMosqueOptionByKey(key).key;
+    setActiveMosqueScope(next);
     setActiveMosqueKey(next);
     await AsyncStorage.setItem(STORAGE_KEYS.activeMosque, next);
     detailedLogsCacheRef.current = {};
@@ -4470,10 +4476,10 @@ function AppContent() {
         setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
         return;
       }
-      const existingIdRegistration = await findGlobalRegistrationByIdNumber(QR_REGISTRATION_COLLECTION, member.idNumber);
+      const existingIdRegistration = await findGlobalRegistrationByIdNumber(QR_REGISTRATION_COLLECTION, member.idNumber, activeMosqueKey);
       if (existingIdRegistration?.registration?.idNumber && String(existingIdRegistration.docId) !== String(browserDeviceId)) {
         setQrStatusTone('negative');
-        setQrStatusMessage('Diese ID ist bereits auf einem anderen Gerät/Browser registriert.');
+        setQrStatusMessage('Diese ID ist in dieser Moschee bereits auf einem anderen Gerät/Browser registriert.');
         return;
       }
       const nextRegistration = {
@@ -4517,6 +4523,7 @@ function AppContent() {
     }
     const payload = decodeQrPayload(encodedPayload);
     if (!payload || payload.type !== 'prayer_attendance') return;
+    const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
     const nowMs = Date.now();
     if (Number(payload.expiresAt) <= nowMs) {
       setQrStatusTone('negative');
@@ -4532,6 +4539,9 @@ function AppContent() {
     setQrStatusTone('neutral');
     setQrSubmitting(true);
     try {
+      if (payloadMosqueKey !== activeMosqueKey) {
+        await onSelectMosque(payloadMosqueKey);
+      }
       const registration = await loadStoredQrRegistration();
       if (!registration?.idNumber) {
         setQrFlowMode('register');
@@ -4599,7 +4609,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [loadStoredQrRegistration, prayerOverrideReady, resolveQrPrayerContext]);
+  }, [activeMosqueKey, loadStoredQrRegistration, onSelectMosque, prayerOverrideReady, resolveQrPrayerContext]);
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
@@ -6209,6 +6219,9 @@ function AppContent() {
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
+        <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
+          <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
+        </Pressable>
         {qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
           <>
             <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(qrLivePrayerWindow.prayerKey, qrLiveTimesToday)}</Text>
