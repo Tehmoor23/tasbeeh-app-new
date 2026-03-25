@@ -1190,15 +1190,17 @@ function renderInlineBoldSegments(text, textStyle, boldStyle) {
 const isWebRuntime = Platform.OS === 'web';
 
 const getQrCycleStart = (timestamp = Date.now()) => Math.floor(timestamp / QR_REFRESH_INTERVAL_MS) * QR_REFRESH_INTERVAL_MS;
+const normalizeQrAttendanceCategory = (value) => (String(value || '').toLowerCase() === 'program' ? 'program' : 'prayer');
 const formatQrCountdown = (seconds) => {
   const safeSeconds = Math.max(0, Number(seconds) || 0);
   const mins = Math.floor(safeSeconds / 60);
   const secs = safeSeconds % 60;
   return `${mins}:${String(secs).padStart(2, '0')}`;
 };
-const createQrPayload = ({ mosqueKey, cycleStart }) => ({
+const createQrPayload = ({ mosqueKey, cycleStart, attendanceCategory = 'prayer' }) => ({
   type: 'prayer_attendance',
   mosqueKey,
+  attendanceCategory: normalizeQrAttendanceCategory(attendanceCategory),
   cycleStart,
   expiresAt: cycleStart + QR_REFRESH_INTERVAL_MS,
   version: 1,
@@ -1217,8 +1219,8 @@ const decodeQrPayload = (value) => {
     return null;
   }
 };
-const buildQrScanUrl = ({ mosqueKey, cycleStart }) => {
-  const payload = createQrPayload({ mosqueKey, cycleStart });
+const buildQrScanUrl = ({ mosqueKey, cycleStart, attendanceCategory = 'prayer' }) => {
+  const payload = createQrPayload({ mosqueKey, cycleStart, attendanceCategory });
   const encodedPayload = encodeQrPayload(payload);
   if (!encodedPayload) return '';
   if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
@@ -1332,6 +1334,7 @@ function AppContent() {
   const [qrRegistrationSearchQuery, setQrRegistrationSearchQuery] = useState('');
   const [isQrQuickIdSearchVisible, setQrQuickIdSearchVisible] = useState(false);
   const [qrSubmitting, setQrSubmitting] = useState(false);
+  const [qrAttendanceCategory, setQrAttendanceCategory] = useState('prayer');
   const [qrCycleStart, setQrCycleStart] = useState(() => getQrCycleStart());
   const [qrCountdownSeconds, setQrCountdownSeconds] = useState(QR_COUNTDOWN_SECONDS);
   const [qrImageUri, setQrImageUri] = useState('');
@@ -1368,7 +1371,10 @@ function AppContent() {
   const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
 
 
-  const qrScanUrl = useMemo(() => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart }), [activeMosqueKey, qrCycleStart]);
+  const qrScanUrl = useMemo(
+    () => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart, attendanceCategory: qrAttendanceCategory }),
+    [activeMosqueKey, qrAttendanceCategory, qrCycleStart],
+  );
   const qrCurrentRegistrationMember = useMemo(() => {
     if (!qrRegistration?.idNumber) return null;
     return MEMBER_DIRECTORY_DATA.find((entry) => String(entry.idNumber) === String(qrRegistration.idNumber)) || null;
@@ -1385,13 +1391,19 @@ function AppContent() {
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem && entry.majlis === qrRegistrationMajlis)
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber), 'de'))
   ), [qrRegistrationMajlis, qrRegistrationTanzeem]);
+  const qrRegistrationTanzeemOptions = useMemo(
+    () => (qrAttendanceCategory === 'program' ? PROGRAM_TANZEEM_OPTIONS : TANZEEM_OPTIONS),
+    [qrAttendanceCategory],
+  );
   const qrRegistrationSearchDigits = String(qrRegistrationSearchQuery || '').replace(/[^0-9]/g, '');
   const qrRegistrationSearchResults = useMemo(() => {
     if (qrRegistrationSearchDigits.length < 4) return [];
+    const allowed = new Set(qrRegistrationTanzeemOptions);
     return MEMBER_DIRECTORY_DATA
+      .filter((entry) => allowed.has(String(entry.tanzeem || '').toLowerCase()))
       .filter((entry) => String(entry.idNumber || '').includes(qrRegistrationSearchDigits))
       .slice(0, 24);
-  }, [qrRegistrationSearchDigits]);
+  }, [qrRegistrationSearchDigits, qrRegistrationTanzeemOptions]);
 
 
 
@@ -2798,6 +2810,21 @@ function AppContent() {
   const qrLiveNow = qrRuntimeContext.now;
   const qrLivePrayerWindow = qrRuntimeContext.prayerWindow;
   const qrLiveTimesToday = qrRuntimeContext.timesToday;
+  const qrLiveProgramWindow = useMemo(() => {
+    const runtimeISO = qrRuntimeContext.iso;
+    const config = (programConfigByDate || {})[runtimeISO] || null;
+    if (!config || !isValidTime(config.startTime) || !String(config.name || '').trim()) {
+      return { isConfigured: false, isActive: false, label: null };
+    }
+    const startMinutes = Number(config.startTime.slice(0, 2)) * 60 + Number(config.startTime.slice(3));
+    const nowMinutes = qrLiveNow.getHours() * 60 + qrLiveNow.getMinutes();
+    return {
+      isConfigured: true,
+      isActive: nowMinutes >= (startMinutes - 30),
+      label: String(config.name || '').trim(),
+      startTime: String(config.startTime || ''),
+    };
+  }, [programConfigByDate, qrLiveNow, qrRuntimeContext.iso]);
   const resolveQrPrayerContext = useCallback(() => ({
     ...qrRuntimeContext,
     prayerKey: qrRuntimeContext.prayerWindow?.prayerKey || null,
@@ -2806,6 +2833,18 @@ function AppContent() {
   }), [qrRuntimeContext]);
   const qrRegisteredGuidance = useMemo(() => {
     if (!qrRegistration?.idNumber) return '';
+    if (qrAttendanceCategory === 'program') {
+      const isAlreadyHandled = Boolean(
+        qrLiveProgramWindow.isActive
+        && qrLastAttendanceDateISO === qrRuntimeContext.iso
+        && qrLastAttendancePrayerKey === 'program'
+        && qrLastAttendanceStatus === 'duplicate',
+      );
+      if (isAlreadyHandled) return 'Sie wurden bereits für das Programm eingetragen.';
+      if (!qrLiveProgramWindow.isConfigured) return 'Aktuell ist kein Programm hinterlegt.';
+      if (!qrLiveProgramWindow.isActive) return `Programm ist noch nicht aktiv. Start: ${qrLiveProgramWindow.startTime || '—'}.`;
+      return 'Bitte den QR-Code noch einmal scannen, um sich für das Programm einzutragen.';
+    }
     const currentContext = resolveQrPrayerContext();
     const currentPrayerKey = currentContext.prayerKey || '';
     const currentPrayerLabel = currentContext.prayerLabel || (currentPrayerKey ? getDisplayPrayerLabel(currentPrayerKey, currentContext.timesToday) : '');
@@ -2830,12 +2869,20 @@ function AppContent() {
     }
     if (currentContext.prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${currentContext.prayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
-  }, [qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrRegistration, resolveQrPrayerContext]);
+  }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveProgramWindow, qrRegistration, qrRuntimeContext.iso, resolveQrPrayerContext]);
 
 
 
   useEffect(() => {
     if (!['counted', 'duplicate'].includes(qrLastAttendanceStatus)) return;
+    if (qrAttendanceCategory === 'program') {
+      const sameProgramDay = qrLastAttendanceDateISO === toISO(qrLiveNow) && qrLastAttendancePrayerKey === 'program';
+      if (!sameProgramDay && qrStatusMessage) {
+        setQrStatusMessage('');
+        setQrStatusTone('neutral');
+      }
+      return;
+    }
     const currentDateISO = toISO(qrLiveNow);
     const currentPrayerKey = qrLivePrayerWindow?.prayerKey || '';
     const isSamePrayerWindow = Boolean(
@@ -2848,7 +2895,7 @@ function AppContent() {
       setQrStatusMessage('');
       setQrStatusTone('neutral');
     }
-  }, [qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
+  }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
   const membersDirectory = MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
 
@@ -4524,6 +4571,7 @@ function AppContent() {
     const payload = decodeQrPayload(encodedPayload);
     if (!payload || payload.type !== 'prayer_attendance') return;
     const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+    const payloadAttendanceCategory = normalizeQrAttendanceCategory(payload?.attendanceCategory || 'prayer');
     const nowMs = Date.now();
     if (Number(payload.expiresAt) <= nowMs) {
       setQrStatusTone('negative');
@@ -4533,7 +4581,8 @@ function AppContent() {
     }
     const qrPrayerContext = resolveQrPrayerContext();
 
-    setAttendanceMode('prayer');
+    setQrAttendanceCategory(payloadAttendanceCategory);
+    setAttendanceMode(payloadAttendanceCategory);
     setQrScanPageVisible(true);
     setQrStatusMessage('');
     setQrStatusTone('neutral');
@@ -4562,7 +4611,7 @@ function AppContent() {
       }
       setQrFlowMode('registered');
 
-      if (!qrPrayerContext.isActive || !qrPrayerContext.prayerKey) {
+      if (payloadAttendanceCategory === 'prayer' && (!qrPrayerContext.isActive || !qrPrayerContext.prayerKey)) {
         setQrLastAttendanceStatus('inactive_prayer');
         setQrLastAttendancePrayerKey('');
         setQrLastAttendanceDateISO(qrPrayerContext.iso);
@@ -4571,7 +4620,7 @@ function AppContent() {
         return;
       }
 
-      const result = await countAttendanceRef.current?.('prayer', 'member', registration.majlis || member.majlis, member, {
+      const result = await countAttendanceRef.current?.(payloadAttendanceCategory, 'member', registration.majlis || member.majlis, member, {
         runtimeContext: qrPrayerContext,
       });
       const activeQrPrayerKey = String(qrPrayerContext.prayerKey || result?.targetKeys?.[0] || '');
@@ -4583,18 +4632,32 @@ function AppContent() {
         setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('negative');
         setQrStatusMessage('Kein aktives Gebetsfenster.');
+      } else if (result?.status === 'inactive_program') {
+        setQrLastAttendanceStatus('inactive_program');
+        setQrLastAttendancePrayerKey('program');
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
+        setQrStatusTone('negative');
+        setQrStatusMessage('Aktuell kein Programm aktiv.');
       } else if (result?.status === 'duplicate') {
         setQrLastAttendanceStatus('duplicate');
-        setQrLastAttendancePrayerKey(activeQrPrayerKey);
+        setQrLastAttendancePrayerKey(payloadAttendanceCategory === 'program' ? 'program' : activeQrPrayerKey);
         setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('positive');
-        setQrStatusMessage(`Sie wurden bereits für das ${activeQrPrayerLabel} Gebet eingetragen.`);
+        setQrStatusMessage(
+          payloadAttendanceCategory === 'program'
+            ? 'Sie wurden bereits für das Programm eingetragen.'
+            : `Sie wurden bereits für das ${activeQrPrayerLabel} Gebet eingetragen.`,
+        );
       } else if (result?.status === 'counted') {
         setQrLastAttendanceStatus('counted');
-        setQrLastAttendancePrayerKey(activeQrPrayerKey);
+        setQrLastAttendancePrayerKey(payloadAttendanceCategory === 'program' ? 'program' : activeQrPrayerKey);
         setQrLastAttendanceDateISO(qrPrayerContext.iso);
         setQrStatusTone('positive');
-        setQrStatusMessage(`Erfolgreiche automatische Eintragung für ${activeQrPrayerLabel}.`);
+        setQrStatusMessage(
+          payloadAttendanceCategory === 'program'
+            ? 'Erfolgreiche automatische Eintragung für das Programm.'
+            : `Erfolgreiche automatische Eintragung für ${activeQrPrayerLabel}.`,
+        );
       } else {
         setQrLastAttendanceStatus('error');
         setQrLastAttendancePrayerKey('');
@@ -4714,7 +4777,7 @@ function AppContent() {
 
     if (modeType === 'program' && !runtimeProgramWindow.isActive) {
       setToast('Aktuell kein Programm vorhanden');
-      return;
+      return { status: 'inactive_program' };
     }
 
     const resolvedMemberTanzeem = kind === 'member' ? String(selectedMember?.tanzeem || '').toLowerCase() : '';
@@ -6218,11 +6281,37 @@ function AppContent() {
   const renderQrPage = () => (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, styles.qrPageCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR-Code Gebetserfassung</Text>
+        <Pressable onPress={() => setQrAttendanceCategory((prev) => (prev === 'prayer' ? 'program' : 'prayer'))} style={withPressEffect(styles.quickSearchLinkWrap)}>
+          <Text style={[styles.quickSearchLinkText, { color: theme.muted }]}>« Kategorie wechseln »</Text>
+        </Pressable>
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>{qrAttendanceCategory === 'program' ? 'QR-Code Programmerfassung' : 'QR-Code Gebetserfassung'}</Text>
         <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
           <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
         </Pressable>
-        {qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
+        {qrAttendanceCategory === 'program' ? (
+          qrLiveProgramWindow.isActive ? (
+            <>
+              <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Programm: {qrLiveProgramWindow.label || 'Programm'}</Text>
+              <Text style={[styles.qrPageHint, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Programmanwesenheit.</Text>
+              <View style={[styles.qrCodeCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                {qrImageUri ? <Image source={{ uri: qrImageUri }} style={styles.qrCodeImage} resizeMode="contain" onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }} /> : <ActivityIndicator size="large" color={theme.text} />}
+                {qrPendingImageUri ? <Image source={{ uri: qrPendingImageUri }} style={styles.qrCodePreloadImage} resizeMode="contain" onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }} /> : null}
+              </View>
+              <View style={[styles.qrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+                <Text style={[styles.qrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Aktuell kein Programm aktiv</Text>
+              {!qrLiveProgramWindow.isConfigured ? (
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Für heute ist noch kein Programm hinterlegt.</Text>
+              ) : (
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Programm startet um {qrLiveProgramWindow.startTime || '—'} ({qrLiveProgramWindow.label || 'Programm'}).</Text>
+              )}
+            </>
+          )
+        ) : qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey ? (
           <>
             <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Gebet: {getDisplayPrayerLabel(qrLivePrayerWindow.prayerKey, qrLiveTimesToday)}</Text>
             <Text style={[styles.qrPageHint, { color: theme.muted }]}>Dieser QR-Code erneuert sich automatisch alle 5 Minuten für die Gebetsanwesenheit.</Text>
@@ -6254,7 +6343,7 @@ function AppContent() {
 
     <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Gebetsanwesenheit</Text>
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>{qrAttendanceCategory === 'program' ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}</Text>
         {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
         {qrStatusMessage ? (
           <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
@@ -6314,7 +6403,7 @@ function AppContent() {
                 <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
                 <View style={styles.tanzeemRow}>
-                  {TANZEEM_OPTIONS.map((tanzeem) => (
+                  {qrRegistrationTanzeemOptions.map((tanzeem) => (
                     <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(''); setQrRegistrationMode('majlis'); }}>
                       <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                     </Pressable>
