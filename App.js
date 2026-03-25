@@ -4610,6 +4610,14 @@ function AppContent() {
         return;
       }
       setQrFlowMode('registered');
+      if (payloadAttendanceCategory === 'prayer' && String(member.tanzeem || '').toLowerCase() === 'kinder') {
+        setQrLastAttendanceStatus('invalid_tanzeem');
+        setQrLastAttendancePrayerKey('');
+        setQrLastAttendanceDateISO(qrPrayerContext.iso);
+        setQrStatusTone('negative');
+        setQrStatusMessage('Kinder können nicht per Gebets-QR eingetragen werden. Bitte den Programm-QR verwenden.');
+        return;
+      }
 
       if (payloadAttendanceCategory === 'prayer' && (!qrPrayerContext.isActive || !qrPrayerContext.prayerKey)) {
         setQrLastAttendanceStatus('inactive_prayer');
