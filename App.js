@@ -1360,6 +1360,7 @@ function AppContent() {
   const [qrPendingImageUri, setQrPendingImageUri] = useState('');
   const [attendanceMode, setAttendanceMode] = useState('prayer');
   const [statsMode, setStatsMode] = useState('prayer');
+  const [countedMemberIdsForSelection, setCountedMemberIdsForSelection] = useState(new Set());
 
   const [isAdminLoginVisible, setAdminLoginVisible] = useState(false);
   const [loginNameInput, setLoginNameInput] = useState('');
@@ -2954,6 +2955,78 @@ function AppContent() {
     if (idSearchQuery) return filteredMemberChoices;
     return memberChoices;
   }, [filteredMemberChoices, idSearchQuery, memberChoices]);
+
+  const countedMemberDocPrefixes = useMemo(() => {
+    if (!selectedTanzeem || !selectedMajlis) return [];
+    const locationKey = toLocationKey(selectedMajlis);
+
+    if (attendanceMode === 'program') {
+      if (!programWindow?.isActive || !programWindow?.label) return [];
+      const programKey = toLocationKey(programWindow.label);
+      return [`${todayISO}_${programKey}_${selectedTanzeem}_${locationKey}_`];
+    }
+
+    if (!prayerWindow?.isActive || !prayerWindow?.prayerKey) return [];
+    const currentPrayerKey = String(prayerWindow.prayerKey || '');
+    if (!currentPrayerKey) return [];
+
+    const targetPrayerKeys = [];
+    if (soharAsrMergedToday && ['sohar', 'asr'].includes(currentPrayerKey)) {
+      targetPrayerKeys.push('sohar', 'asr');
+    } else if (maghribIshaaMergedToday && ['maghrib', 'ishaa'].includes(currentPrayerKey)) {
+      targetPrayerKeys.push('maghrib', 'ishaa');
+    } else {
+      targetPrayerKeys.push(currentPrayerKey);
+    }
+
+    return targetPrayerKeys.map((prayerKey) => `${todayISO}_${prayerKey}_${selectedTanzeem}_${locationKey}_`);
+  }, [
+    attendanceMode,
+    maghribIshaaMergedToday,
+    prayerWindow,
+    programWindow,
+    selectedMajlis,
+    selectedTanzeem,
+    soharAsrMergedToday,
+    todayISO,
+  ]);
+
+  useEffect(() => {
+    if (terminalMode !== 'idSelection' || countedMemberDocPrefixes.length === 0) {
+      setCountedMemberIdsForSelection(new Set());
+      return undefined;
+    }
+
+    let cancelled = false;
+    const targetCollection = attendanceMode === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION;
+
+    const fetchCountedMemberIds = () => {
+      listDocIds(targetCollection)
+        .then((ids) => {
+          if (cancelled) return;
+          const nextSet = new Set();
+          ids.forEach((docId) => {
+            const resolvedDocId = String(docId || '');
+            const matchingPrefix = countedMemberDocPrefixes.find((prefix) => resolvedDocId.startsWith(prefix));
+            if (!matchingPrefix) return;
+            const extractedId = resolvedDocId.slice(matchingPrefix.length).trim();
+            if (!extractedId || extractedId === 'guest') return;
+            nextSet.add(extractedId);
+          });
+          setCountedMemberIdsForSelection(nextSet);
+        })
+        .catch(() => {
+          if (!cancelled) setCountedMemberIdsForSelection(new Set());
+        });
+    };
+
+    fetchCountedMemberIds();
+    const timer = setInterval(fetchCountedMemberIds, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [attendanceMode, countedMemberDocPrefixes, terminalMode]);
 
   const quickSearchDigits = String(quickIdSearchQuery || '').replace(/[^0-9]/g, '');
   const quickSearchResults = useMemo(() => {
@@ -5268,16 +5341,34 @@ function AppContent() {
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine ID-Nummern verfügbar.</Text>
                 ) : (
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
-                    {visibleMemberChoices.map((member) => (
-                      <Pressable
-                        key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                        style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
-                        onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}
-                      >
-                        <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
-                        {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
-                      </Pressable>
-                    ))}
+                    {visibleMemberChoices.map((member) => {
+                      const isAlreadyCounted = countedMemberIdsForSelection.has(String(member.idNumber || ''));
+                      return (
+                        <Pressable
+                          key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
+                          style={({ pressed }) => [[
+                            styles.gridItem,
+                            isTablet && styles.gridItemTablet,
+                            { backgroundColor: theme.card, borderColor: theme.border },
+                            isAlreadyCounted && styles.gridItemCounted,
+                            isAlreadyCounted && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.45)' : 'rgba(209, 213, 219, 0.55)' },
+                          ], pressed && styles.buttonPressed]}
+                          onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}
+                        >
+                          <Text
+                            style={[
+                              styles.gridText,
+                              isTablet && styles.gridTextTablet,
+                              { color: theme.text },
+                              isAlreadyCounted && { color: theme.muted },
+                            ]}
+                          >
+                            {member.idNumber}
+                          </Text>
+                          {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
+                        </Pressable>
+                      );
+                    })}
                   </View>
                 )}
              </>
@@ -7375,6 +7466,7 @@ const styles = StyleSheet.create({
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridItemTablet: { width: '31.8%', paddingVertical: 24 },
+  gridItemCounted: { opacity: 0.72 },
   gridText: { textAlign: 'center', fontWeight: '700' },
   gridTextTablet: { fontSize: 18 },
   gridSubText: { textAlign: 'center', marginTop: 4, fontSize: 11, fontWeight: '500' },
