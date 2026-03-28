@@ -2956,7 +2956,9 @@ function AppContent() {
     return memberChoices;
   }, [filteredMemberChoices, idSearchQuery, memberChoices]);
 
+  const shouldShowCountedIdHint = Boolean(currentAccount);
   const countedMemberDocPrefixes = useMemo(() => {
+    if (!shouldShowCountedIdHint) return [];
     if (!selectedTanzeem || !selectedMajlis) return [];
     const locationKey = toLocationKey(selectedMajlis);
 
@@ -2988,6 +2990,7 @@ function AppContent() {
     selectedMajlis,
     selectedTanzeem,
     soharAsrMergedToday,
+    shouldShowCountedIdHint,
     todayISO,
   ]);
 
@@ -5342,7 +5345,7 @@ function AppContent() {
                 ) : (
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
                     {visibleMemberChoices.map((member) => {
-                      const isAlreadyCounted = countedMemberIdsForSelection.has(String(member.idNumber || ''));
+                      const isAlreadyCounted = shouldShowCountedIdHint && countedMemberIdsForSelection.has(String(member.idNumber || ''));
                       return (
                         <Pressable
                           key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
@@ -5351,7 +5354,7 @@ function AppContent() {
                             isTablet && styles.gridItemTablet,
                             { backgroundColor: theme.card, borderColor: theme.border },
                             isAlreadyCounted && styles.gridItemCounted,
-                            isAlreadyCounted && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.45)' : 'rgba(209, 213, 219, 0.55)' },
+                            isAlreadyCounted && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.24)' : 'rgba(209, 213, 219, 0.26)' },
                           ], pressed && styles.buttonPressed]}
                           onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}
                         >
@@ -7466,7 +7469,7 @@ const styles = StyleSheet.create({
   gridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   gridItem: { width: '48%', borderWidth: 1, borderRadius: 12, paddingVertical: 18, paddingHorizontal: 8 },
   gridItemTablet: { width: '31.8%', paddingVertical: 24 },
-  gridItemCounted: { opacity: 0.72 },
+  gridItemCounted: { opacity: 0.9 },
   gridText: { textAlign: 'center', fontWeight: '700' },
   gridTextTablet: { fontSize: 18 },
   gridSubText: { textAlign: 'center', marginTop: 4, fontSize: 11, fontWeight: '500' },
