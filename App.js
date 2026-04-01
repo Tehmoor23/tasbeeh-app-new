@@ -7065,7 +7065,7 @@ function AppContent() {
                 const isActive = item.docId === selectedProgramStatsOption?.docId;
                 return (
                   <Pressable
-                    key={`program_stats_${item.iso}`}
+                    key={`program_stats_${item.docId}`}
                     onPress={() => {
                       setSelectedProgramStatsDocId(item.docId);
                       setProgramStatsPickerVisible(false);
