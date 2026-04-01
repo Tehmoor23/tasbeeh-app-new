@@ -5984,7 +5984,7 @@ function AppContent() {
           ) : ((isProgramStatsMode || isRegistrationStatsMode) && effectivePermissions.canExportData ? (
             <Pressable
               onPress={isRegistrationStatsMode ? handleExportProgram : handleExportProgram}
-              disabled={isRegistrationStatsMode ? true : (programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0))}
+              disabled={isRegistrationStatsMode ? true : (programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0)))}
               style={[
                 styles.statsExportBtn,
                 {
