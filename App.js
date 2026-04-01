@@ -6642,29 +6642,18 @@ function AppContent() {
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                   <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anmeldungen nach Majlis</Text>
-                  <View style={styles.statsCyclerRow}>
-                    <Pressable
-                      onPress={() => setRegistrationMajlisFilter((prev) => {
-                        const options = ['total', ...(selectedRegistrationStatsOption.advanced?.includeTanzeems || [])];
-                        const idx = options.indexOf(prev);
-                        return options[(idx - 1 + options.length) % options.length];
-                      })}
-                      style={[styles.statsCyclerControl, { borderColor: theme.border, backgroundColor: theme.bg }]}
-                    >
-                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>‹</Text>
-                    </Pressable>
-                    <Text style={[styles.statsCyclerValue, { color: theme.text }]}>
-                      {registrationMajlisFilter === 'total' ? 'Gesamt' : (TANZEEM_LABELS[registrationMajlisFilter] || registrationMajlisFilter)}
-                    </Text>
+                  <View style={styles.statsToggleRow}>
                     <Pressable
                       onPress={() => setRegistrationMajlisFilter((prev) => {
                         const options = ['total', ...(selectedRegistrationStatsOption.advanced?.includeTanzeems || [])];
                         const idx = options.indexOf(prev);
                         return options[(idx + 1) % options.length];
                       })}
-                      style={[styles.statsCyclerControl, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                      style={[styles.statsToggleBtn, { borderColor: theme.button, backgroundColor: theme.button }]}
                     >
-                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>›</Text>
+                      <Text style={[styles.statsToggleBtnText, { color: theme.buttonText }]}>
+                        {registrationMajlisFilter === 'total' ? 'Gesamt' : (TANZEEM_LABELS[registrationMajlisFilter] || registrationMajlisFilter)}
+                      </Text>
                     </Pressable>
                   </View>
                   {(() => {
