@@ -1321,9 +1321,11 @@ function AppContent() {
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
   const [selectedProgramStatsDocId, setSelectedProgramStatsDocId] = useState('');
+  const [selectedRegistrationStatsDocId, setSelectedRegistrationStatsDocId] = useState('');
   const [programStatsDocIds, setProgramStatsDocIds] = useState([]);
   const [programStatsEntrySampleByDocId, setProgramStatsEntrySampleByDocId] = useState({});
   const [programStatsNamesByDocId, setProgramStatsNamesByDocId] = useState({});
+  const [registrationStatsNamesByDocId, setRegistrationStatsNamesByDocId] = useState({});
   const [selectedStatsWeekStartISO, setSelectedStatsWeekStartISO] = useState('');
   const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
   const [isStatsWeekModalVisible, setStatsWeekModalVisible] = useState(false);
@@ -2020,6 +2022,28 @@ function AppContent() {
     }
     return availableProgramStatsOptions[0] || null;
   }, [availableProgramStatsOptions, selectedProgramStatsDocId]);
+  const availableRegistrationStatsOptions = useMemo(() => (
+    availableProgramStatsOptions
+      .filter((item) => Boolean(String(registrationStatsNamesByDocId[item.docId] || '').trim()))
+      .map((item) => ({
+        ...item,
+        programName: String(registrationStatsNamesByDocId[item.docId] || item.programName || '').trim(),
+        label: `${(() => {
+          const dateObj = parseISO(item.iso);
+          if (!dateObj) return item.iso;
+          const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '');
+          const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+          return `${weekday}, ${datePart}`;
+        })()} · ${String(registrationStatsNamesByDocId[item.docId] || item.programName || '').trim()}`,
+      }))
+  ), [availableProgramStatsOptions, registrationStatsNamesByDocId]);
+  const selectedRegistrationStatsOption = useMemo(() => {
+    if (selectedRegistrationStatsDocId) {
+      const selected = availableRegistrationStatsOptions.find((item) => item.docId === selectedRegistrationStatsDocId);
+      if (selected) return selected;
+    }
+    return availableRegistrationStatsOptions[0] || null;
+  }, [availableRegistrationStatsOptions, selectedRegistrationStatsDocId]);
   const selectedProgramConfigDateISO = String(selectedProgramStatsOption?.iso || '');
   const selectedProgramConfig = selectedProgramConfigDateISO
     ? (programConfigByDate[selectedProgramConfigDateISO] || null)
@@ -3394,9 +3418,11 @@ function AppContent() {
     };
   }, [activeTab, todayISO, activeMosqueKey]);
 
+  const selectedProgramLikeStatsOption = statsMode === 'registration' ? selectedRegistrationStatsOption : selectedProgramStatsOption;
+
   useEffect(() => {
-    if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
-    const selectedDocId = String(selectedProgramStatsOption?.docId || '');
+    if (activeTab !== 'stats' || !['program', 'registration'].includes(statsMode)) return undefined;
+    const selectedDocId = String(selectedProgramLikeStatsOption?.docId || '');
     if (!selectedDocId) {
       setProgramStats(null);
       return undefined;
@@ -3424,11 +3450,11 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, selectedProgramStatsOption, activeMosqueKey]);
+  }, [activeTab, statsMode, selectedProgramLikeStatsOption, activeMosqueKey]);
 
   useEffect(() => {
-    if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
-    const selectedDocId = String(selectedProgramStatsOption?.docId || '');
+    if (activeTab !== 'stats' || !['program', 'registration'].includes(statsMode)) return undefined;
+    const selectedDocId = String(selectedProgramLikeStatsOption?.docId || '');
     if (!selectedDocId) {
       setProgramAttendanceEntries([]);
       return undefined;
@@ -3456,7 +3482,7 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, selectedProgramStatsOption, activeMosqueKey]);
+  }, [activeTab, statsMode, selectedProgramLikeStatsOption, activeMosqueKey]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'program') return;
@@ -3524,17 +3550,34 @@ function AppContent() {
   }, [activeTab, statsMode, availableProgramStatsOptions, selectedProgramStatsDocId, todayISO]);
 
   useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'registration') return;
+    if (!availableRegistrationStatsOptions.length) {
+      setSelectedRegistrationStatsDocId('');
+      return;
+    }
+    if (selectedRegistrationStatsDocId && availableRegistrationStatsOptions.some((item) => item.docId === selectedRegistrationStatsDocId)) return;
+    const todayCandidate = availableRegistrationStatsOptions.find((item) => item.iso === todayISO);
+    if (todayCandidate?.docId) {
+      setSelectedRegistrationStatsDocId(todayCandidate.docId);
+      return;
+    }
+    setSelectedRegistrationStatsDocId(availableRegistrationStatsOptions[0].docId);
+  }, [activeTab, statsMode, availableRegistrationStatsOptions, selectedRegistrationStatsDocId, todayISO]);
+
+  useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'program') return;
     const sampleEntries = Object.entries(programStatsEntrySampleByDocId || {});
     if (!sampleEntries.length) {
       setProgramStatsNamesByDocId({});
+      setRegistrationStatsNamesByDocId({});
       return;
     }
     let cancelled = false;
     Promise.all(sampleEntries.map(async ([docId, entryDocId]) => {
       const row = await getDocData(PROGRAM_ATTENDANCE_COLLECTION, entryDocId).catch(() => null);
       const name = String(row?.programName || '').trim();
-      return [docId, name];
+      const registrationName = String(row?.registrationName || '').trim();
+      return [docId, name, registrationName];
     }))
       .then((rows) => {
         if (cancelled) return;
@@ -3542,10 +3585,19 @@ function AppContent() {
           if (name) acc[docId] = name;
           return acc;
         }, {});
+        const registrationMap = rows.reduce((acc, [docId, name, registrationName]) => {
+          const regName = String(registrationName || '').trim();
+          if (regName) acc[docId] = regName;
+          return acc;
+        }, {});
         setProgramStatsNamesByDocId(nextMap);
+        setRegistrationStatsNamesByDocId(registrationMap);
       })
       .catch(() => {
-        if (!cancelled) setProgramStatsNamesByDocId({});
+        if (!cancelled) {
+          setProgramStatsNamesByDocId({});
+          setRegistrationStatsNamesByDocId({});
+        }
       });
     return () => { cancelled = true; };
   }, [activeTab, statsMode, programStatsEntrySampleByDocId, activeMosqueKey]);
@@ -5876,6 +5928,8 @@ function AppContent() {
                       const result = await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember);
                       setPendingRegistrationMember(null);
                       if (result?.status === 'counted') setToast('Angemeldet');
+                      else if (result?.status === 'duplicate') setToast('Bereits angemeldet');
+                      else if (result?.status === 'error') setToast('Anmeldung fehlgeschlagen');
                     }}
                     style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: '#16A34A' }], pressed && styles.buttonPressed]}
                   >
@@ -5937,6 +5991,15 @@ function AppContent() {
       ? germanWeekdayDateLong(selectedStatsDateObj)
       : germanWeekdayDateLong(now);
     const isProgramStatsMode = statsMode === 'program';
+    const isRegistrationStatsMode = statsMode === 'registration';
+    const isProgramLikeStatsMode = isProgramStatsMode || isRegistrationStatsMode;
+    const activeProgramLikeStatsOption = isRegistrationStatsMode ? selectedRegistrationStatsOption : selectedProgramStatsOption;
+    const activeProgramLikeLabel = (() => {
+      const name = String(activeProgramLikeStatsOption?.programName || '').trim();
+      if (!name) return '—';
+      const iso = String(activeProgramLikeStatsOption?.iso || '');
+      return iso === todayISO ? `${name} (heute)` : `${name} (${formatIsoWithWeekday(iso)})`;
+    })();
     const tanzeemProgramTotals = {
       ansar: Number(programStats?.byTanzeem?.ansar) || 0,
       khuddam: Number(programStats?.byTanzeem?.khuddam) || 0,
@@ -6071,15 +6134,20 @@ function AppContent() {
     return (
       <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
         <View style={[styles.statsHeaderCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => setStatsMode(isProgramStatsMode ? 'prayer' : 'program')}>
-            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: theme.text }]}>{isProgramStatsMode ? '<< Programmstatistik >>' : '<< Gebetsstatistik >>'}</Text>
+          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => {
+            const next = statsMode === 'prayer' ? 'program' : (statsMode === 'program' ? 'registration' : 'prayer');
+            setStatsMode(next);
+          }}>
+            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: theme.text }]}>
+              {statsMode === 'prayer' ? '<< Gebetsstatistik >>' : (statsMode === 'program' ? '<< Programmstatistik >>' : '<< Anmeldungen >>')}
+            </Text>
           </Pressable>
           <Text style={[styles.statsHeaderTitle, { color: theme.text }]}>Statistik</Text>
           <Text style={[styles.statsHeaderDate, { color: theme.muted }]}>{statsHeaderDate}</Text>
           <Text style={[styles.statsHeaderSubline, { color: theme.muted }]}>Local Amarat Frankfurt</Text>
           <View style={[styles.statsHeaderLocationChip, { backgroundColor: theme.chipBg }]}><Text style={[styles.statsHeaderLocationChipText, { color: theme.chipText }]}>{activeMosque.label}</Text></View>
           <View style={[styles.statsHeaderDivider, { backgroundColor: theme.border }]} />
-          {!isProgramStatsMode && effectivePermissions.canExportData ? (
+          {!isProgramLikeStatsMode && effectivePermissions.canExportData ? (
             <Pressable
               onPress={() => setStatsExportModalVisible(true)}
               disabled={!hasStatsExportData || statsExporting}
@@ -6094,7 +6162,7 @@ function AppContent() {
             >
               <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{statsExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
             </Pressable>
-          ) : (isProgramStatsMode && effectivePermissions.canExportData ? (
+          ) : (isProgramLikeStatsMode && effectivePermissions.canExportData ? (
             <Pressable
               onPress={handleExportProgram}
               disabled={programExporting || (!programStats?.total && !Object.values(programStats?.byMajlis || {}).some((v) => (Number(v) || 0) > 0))}
@@ -6112,39 +6180,45 @@ function AppContent() {
           ) : null)}
         </View>
 
-        {isProgramStatsMode ? (
+        {isProgramLikeStatsMode ? (
+          !currentAccount && isRegistrationStatsMode ? (
+            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={[styles.noteText, { color: theme.muted }]}>Anmeldungsstatistik ist nur für eingeloggte Benutzer sichtbar.</Text>
+            </View>
+          ) : (
           <>
             <Pressable
               onPress={() => {
-                if (!availableProgramStatsOptions.length) return;
+                const options = isRegistrationStatsMode ? availableRegistrationStatsOptions : availableProgramStatsOptions;
+                if (!options.length) return;
                 setProgramStatsPickerVisible(true);
               }}
-              disabled={!availableProgramStatsOptions.length}
+              disabled={!(isRegistrationStatsMode ? availableRegistrationStatsOptions.length : availableProgramStatsOptions.length)}
               style={[
                 styles.statsCalendarBtn,
                 {
                   borderColor: theme.border,
                   backgroundColor: theme.bg,
-                  opacity: availableProgramStatsOptions.length ? 1 : 0.6,
+                  opacity: (isRegistrationStatsMode ? availableRegistrationStatsOptions.length : availableProgramStatsOptions.length) ? 1 : 0.6,
                 },
               ]}
             >
               <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>
-                {selectedProgramConfigDateISO
-                  ? `Programm auswählen · ${selectedProgramLabel}`
+                {activeProgramLikeStatsOption?.iso
+                  ? `${isRegistrationStatsMode ? 'Anmeldung auswählen' : 'Programm auswählen'} · ${activeProgramLikeLabel}`
                   : 'Programm auswählen · Keine Programmdaten'}
               </Text>
             </Pressable>
 
-            {!selectedProgramConfigDateISO ? (
+            {!activeProgramLikeStatsOption?.iso ? (
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
               </View>
             ) : (
               <>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm</Text>
-                  <Text style={[styles.statsBigValue, { color: theme.text }]}>{selectedProgramLabel}</Text>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{isRegistrationStatsMode ? 'Anmeldung' : 'Programm'}</Text>
+                  <Text style={[styles.statsBigValue, { color: theme.text }]}>{activeProgramLikeLabel}</Text>
                 </View>
 
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -6207,6 +6281,7 @@ function AppContent() {
               </>
             )}
           </>
+          )
         ) : (
           <>
             {(() => {
@@ -7468,21 +7543,22 @@ function AppContent() {
         <View style={styles.privacyModalBackdrop}>
           <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
             <View style={styles.privacyModalHeader}>
-              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Programm auswählen</Text>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>{statsMode === 'registration' ? 'Anmeldung auswählen' : 'Programm auswählen'}</Text>
               <Pressable onPress={() => setProgramStatsPickerVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
                 <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
               </Pressable>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
-              {availableProgramStatsOptions.length === 0 ? (
+              {(statsMode === 'registration' ? availableRegistrationStatsOptions.length : availableProgramStatsOptions.length) === 0 ? (
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Programmdaten verfügbar.</Text>
-              ) : availableProgramStatsOptions.map((item) => {
-                const isActive = item.docId === selectedProgramStatsOption?.docId;
+              ) : (statsMode === 'registration' ? availableRegistrationStatsOptions : availableProgramStatsOptions).map((item) => {
+                const isActive = item.docId === (statsMode === 'registration' ? selectedRegistrationStatsOption?.docId : selectedProgramStatsOption?.docId);
                 return (
                   <Pressable
                     key={`program_stats_${item.docId}`}
                     onPress={() => {
-                      setSelectedProgramStatsDocId(item.docId);
+                      if (statsMode === 'registration') setSelectedRegistrationStatsDocId(item.docId);
+                      else setSelectedProgramStatsDocId(item.docId);
                       setProgramStatsPickerVisible(false);
                     }}
                     style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
