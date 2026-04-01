@@ -3279,9 +3279,14 @@ function AppContent() {
           .map((id) => String(id || ''))
           .filter((id) => /^\d{4}-\d{2}-\d{2}_/.test(id))
           .map((id) => {
-            const parts = id.split('_');
-            if (parts.length < 3) return '';
-            return parts.slice(0, -1).join('_');
+            if (id.includes('_program_guest_')) return '';
+            const memberPattern = /^(\d{4}-\d{2}-\d{2})_(.+)_(ansar|khuddam|atfal|kinder)_.+_[^_]+$/;
+            const match = id.match(memberPattern);
+            if (!match) return '';
+            const iso = String(match[1] || '');
+            const programKey = String(match[2] || '');
+            if (!iso || !programKey) return '';
+            return `${iso}_${programKey}`;
           })
           .filter(Boolean);
         const mergedIds = Array.from(new Set([
