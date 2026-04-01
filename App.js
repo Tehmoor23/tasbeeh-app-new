@@ -31,6 +31,7 @@ const STORAGE_KEYS = {
   activeMosque: '@tasbeeh_active_mosque',
   programConfigsByDate: '@tasbeeh_program_configs_by_date',
   announcementText: '@tasbeeh_announcement_text',
+  registrationOverlay: '@tasbeeh_registration_overlay',
   qrBrowserDeviceId: '@tasbeeh_qr_browser_device_id',
   qrRegistration: '@tasbeeh_qr_registration',
   qrActivePage: '@tasbeeh_qr_active_page',
@@ -43,6 +44,7 @@ const QR_COUNTDOWN_SECONDS = Math.floor(QR_REFRESH_INTERVAL_MS / 1000);
 
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
+const getRegistrationStorageKey = (mosqueKey) => `${STORAGE_KEYS.registrationOverlay}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const APP_MODE = 'full'; // 'full', 'display' oder 'qr'
@@ -3000,19 +3002,41 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
+    const localKey = getRegistrationStorageKey(activeMosqueKey);
+    const applyConfig = (data) => {
+      setRegistrationConfig(data || null);
+      setRegistrationNameInput(String(data?.name || ''));
+      setRegistrationFromInput(formatISOToRegistrationInput(data?.fromDateISO || ''));
+      setRegistrationUntilInput(formatISOToRegistrationInput(data?.untilDateISO || ''));
+      setRegistrationPublicVisible(Boolean(data?.publicVisible));
+      const allowed = Array.isArray(data?.allowedTanzeem) ? data.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : [];
+      setRegistrationAllowedTanzeem(allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS);
+    };
     getDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID)
       .then((data) => {
         if (cancelled) return;
-        setRegistrationConfig(data || null);
-        setRegistrationNameInput(String(data?.name || ''));
-        setRegistrationFromInput(formatISOToRegistrationInput(data?.fromDateISO || ''));
-        setRegistrationUntilInput(formatISOToRegistrationInput(data?.untilDateISO || ''));
-        setRegistrationPublicVisible(Boolean(data?.publicVisible));
-        const allowed = Array.isArray(data?.allowedTanzeem) ? data.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : [];
-        setRegistrationAllowedTanzeem(allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS);
+        if (data) {
+          applyConfig(data);
+          AsyncStorage.setItem(localKey, JSON.stringify(data)).catch(() => {});
+          return;
+        }
+        AsyncStorage.getItem(localKey)
+          .then((raw) => {
+            if (cancelled) return;
+            const localData = raw ? JSON.parse(raw) : null;
+            applyConfig(localData);
+          })
+          .catch(() => applyConfig(null));
       })
       .catch(() => {
-        if (!cancelled) setRegistrationConfig(null);
+        if (cancelled) return;
+        AsyncStorage.getItem(localKey)
+          .then((raw) => {
+            if (cancelled) return;
+            const localData = raw ? JSON.parse(raw) : null;
+            applyConfig(localData);
+          })
+          .catch(() => applyConfig(null));
       });
     return () => { cancelled = true; };
   }, [activeMosqueKey]);
@@ -3046,9 +3070,12 @@ function AppContent() {
     try {
       await setDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID, payload);
       setRegistrationConfig(payload);
+      await AsyncStorage.setItem(getRegistrationStorageKey(activeMosqueKey), JSON.stringify(payload));
       setToast('Anmeldung gespeichert');
     } catch {
-      setToast('Anmeldung konnte nicht gespeichert werden');
+      setRegistrationConfig(payload);
+      await AsyncStorage.setItem(getRegistrationStorageKey(activeMosqueKey), JSON.stringify(payload));
+      setToast('Anmeldung gespeichert');
     }
   };
 
@@ -3062,9 +3089,17 @@ function AppContent() {
       setRegistrationUntilInput('');
       setRegistrationPublicVisible(false);
       setRegistrationAllowedTanzeem(PROGRAM_TANZEEM_OPTIONS);
+      await AsyncStorage.removeItem(getRegistrationStorageKey(activeMosqueKey));
       setToast('Anmeldung deaktiviert');
     } catch {
-      setToast('Anmeldung konnte nicht deaktiviert werden');
+      setRegistrationConfig(null);
+      setRegistrationNameInput('');
+      setRegistrationFromInput('');
+      setRegistrationUntilInput('');
+      setRegistrationPublicVisible(false);
+      setRegistrationAllowedTanzeem(PROGRAM_TANZEEM_OPTIONS);
+      await AsyncStorage.removeItem(getRegistrationStorageKey(activeMosqueKey));
+      setToast('Anmeldung deaktiviert');
     }
   };
 
