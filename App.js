@@ -1594,16 +1594,17 @@ function AppContent() {
       const hasStoredLocalPassword = Boolean(existing?.localPassword);
       const hasStoredLocalPasswordHash = Boolean(existing?.localPasswordHash);
       const passwordHash = hasStoredLocalPasswordHash ? await hashLocalPassword(password, docId) : '';
+      const hasAnyStoredLocalSecret = hasStoredLocalPassword || hasStoredLocalPasswordHash;
       const matchesStoredPassword = hasStoredLocalPasswordHash
         ? String(existing.localPasswordHash) === String(passwordHash)
         : (hasStoredLocalPassword ? String(existing.localPassword) === String(password) : false);
-      const allowDefaultSuperAdminPassword = !existing || (!hasStoredLocalPassword && fallbackAccount?.isSuperAdmin);
+      const allowDefaultSuperAdminPassword = Boolean(fallbackAccount?.isSuperAdmin) && !hasAnyStoredLocalSecret;
       const matchesLocalPassword = matchesStoredPassword
         || (allowDefaultSuperAdminPassword && isDefaultSuperAdmin);
       if (!matchesLocalPassword) return false;
       if (!fallbackAccount?.active) return false;
 
-      if (existing && !existing.isSuperAdmin && hasStoredLocalPassword && !hasStoredLocalPasswordHash) {
+      if (existing && hasStoredLocalPassword && !hasStoredLocalPasswordHash) {
         const migratedHash = await hashLocalPassword(password, docId);
         await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
           ...existing,
@@ -1616,14 +1617,18 @@ function AppContent() {
       }
 
       if (!existing && isDefaultSuperAdmin) {
+        const defaultHash = await hashLocalPassword(SUPER_ADMIN_DEFAULT_PASSWORD, docId);
         await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
           ...fallbackAccount,
           authEmail: buildAccountAuthEmail(SUPER_ADMIN_NAME),
           authUid: null,
-          localPassword: SUPER_ADMIN_DEFAULT_PASSWORD,
+          localPassword: null,
+          localPasswordHash: defaultHash,
           createdAt: new Date().toISOString(),
           createdBy: 'bootstrap-local',
         }).catch(() => {});
+        fallbackAccount.localPassword = null;
+        fallbackAccount.localPasswordHash = defaultHash;
       }
       const preferredMosqueKey = resolveAccountMosquePreference(fallbackAccount);
       if (preferredMosqueKey) {
@@ -1707,18 +1712,18 @@ function AppContent() {
       } else {
         const docId = normalizeAccountNameKey(currentAccount?.nameKey || currentAccount?.name || '');
         if (!docId) throw new Error('missing-account');
-        const nextHash = currentAccount?.isSuperAdmin ? null : await hashLocalPassword(nextPassword, docId);
+        const nextHash = await hashLocalPassword(nextPassword, docId);
         await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
           ...(currentAccount || {}),
           nameKey: docId,
-          localPassword: currentAccount?.isSuperAdmin ? nextPassword : null,
+          localPassword: null,
           localPasswordHash: nextHash,
           updatedAt: new Date().toISOString(),
         });
         setCurrentAccount((prev) => (prev ? {
           ...prev,
-          localPassword: prev?.isSuperAdmin ? nextPassword : null,
-          localPasswordHash: prev?.isSuperAdmin ? (prev?.localPasswordHash || null) : nextHash,
+          localPassword: null,
+          localPasswordHash: nextHash,
         } : prev));
       }
 
