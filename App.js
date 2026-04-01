@@ -313,6 +313,10 @@ const ANNOUNCEMENT_DOC_ID = 'current';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_DAILY_COLLECTION_LEGACY = 'attendance_programm_daily';
+const REGISTRATION_CONFIG_COLLECTION = 'registration_overlay_config';
+const REGISTRATION_CONFIG_DOC_ID = 'current';
+const REGISTRATION_ATTENDANCE_COLLECTION = 'attendance_registration_entries';
+const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
@@ -1388,6 +1392,15 @@ function AppContent() {
 
   const [programNameInput, setProgramNameInput] = useState('');
   const [programStartInput, setProgramStartInput] = useState('');
+  const [registrationNameInput, setRegistrationNameInput] = useState('');
+  const [registrationFromInput, setRegistrationFromInput] = useState('');
+  const [registrationUntilInput, setRegistrationUntilInput] = useState('');
+  const [registrationEnabled, setRegistrationEnabled] = useState(false);
+  const [registrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
+  const [registrationPublicVisible, setRegistrationPublicVisible] = useState(false);
+  const [registrationAllowedTanzeem, setRegistrationAllowedTanzeem] = useState(PROGRAM_TANZEEM_OPTIONS);
+  const [registrationConfig, setRegistrationConfig] = useState(null);
+  const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
   const [announcementInput, setAnnouncementInput] = useState('');
   const [programConfigByDate, setProgramConfigByDate] = useState({});
   const [programStats, setProgramStats] = useState(null);
@@ -2020,6 +2033,48 @@ function AppContent() {
     const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
     return `${name} (${weekday}, ${datePart})`;
   }, [selectedProgramStatsOption, selectedProgramConfig, selectedProgramConfigDateISO, todayISO]);
+  const registrationWindow = useMemo(() => {
+    const cfg = registrationConfig || null;
+    const name = String(cfg?.name || '').trim();
+    const fromISO = String(cfg?.fromDateISO || '');
+    const untilISO = String(cfg?.untilDateISO || '');
+    const enabled = Boolean(cfg?.enabled);
+    const isConfigured = Boolean(name && fromISO && untilISO);
+    if (!isConfigured) {
+      return {
+        isConfigured: false,
+        isEnabled: false,
+        isActive: false,
+        isVisibleForCurrentUser: false,
+        label: '',
+        fromISO: '',
+        untilISO: '',
+        allowedTanzeem: PROGRAM_TANZEEM_OPTIONS,
+      };
+    }
+    const isActive = enabled && todayISO >= fromISO && todayISO <= untilISO;
+    const allowed = Array.isArray(cfg?.allowedTanzeem) ? cfg.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : [];
+    const isPublic = Boolean(cfg?.publicVisible);
+    return {
+      isConfigured: true,
+      isEnabled: enabled,
+      isActive,
+      isPublic,
+      isVisibleForCurrentUser: isPublic || Boolean(currentAccount),
+      label: name,
+      fromISO,
+      untilISO,
+      allowedTanzeem: allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS,
+    };
+  }, [registrationConfig, todayISO, currentAccount]);
+  useEffect(() => {
+    if (attendanceMode !== 'registration') return;
+    if (selectedTanzeem && !registrationWindow.allowedTanzeem.includes(selectedTanzeem)) {
+      setSelectedTanzeem('');
+      setSelectedMajlis('');
+      setTerminalMode('tanzeem');
+    }
+  }, [attendanceMode, registrationWindow.allowedTanzeem, selectedTanzeem]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
   const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
@@ -2925,6 +2980,93 @@ function AppContent() {
     setToast('Programm für heute entfernt');
   };
 
+  const normalizeRegistrationDateInput = (value) => String(value || '').trim().replace(/\s+/g, '');
+  const parseRegistrationInputToISO = (value, fallbackYear = now.getFullYear()) => {
+    const input = normalizeRegistrationDateInput(value);
+    const match = input.match(/^(\d{2})\.(\d{2})(?:\.(\d{4}))?$/);
+    if (!match) return '';
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3] || fallbackYear);
+    if (!day || !month || !year) return '';
+    const dateObj = new Date(year, month - 1, day);
+    if (Number.isNaN(dateObj.getTime())) return '';
+    if (dateObj.getDate() !== day || dateObj.getMonth() !== (month - 1) || dateObj.getFullYear() !== year) return '';
+    return toISO(dateObj);
+  };
+  const formatISOToRegistrationInput = (iso) => {
+    const dateObj = parseISO(String(iso || ''));
+    if (!dateObj) return '';
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    return `${day}.${month}`;
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    getDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID)
+      .then((data) => {
+        if (cancelled) return;
+        setRegistrationConfig(data || null);
+        setRegistrationNameInput(String(data?.name || ''));
+        setRegistrationFromInput(formatISOToRegistrationInput(data?.fromDateISO || ''));
+        setRegistrationUntilInput(formatISOToRegistrationInput(data?.untilDateISO || ''));
+        setRegistrationEnabled(Boolean(data?.enabled));
+        setRegistrationPublicVisible(Boolean(data?.publicVisible));
+        const allowed = Array.isArray(data?.allowedTanzeem) ? data.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : [];
+        setRegistrationAllowedTanzeem(allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS);
+      })
+      .catch(() => {
+        if (!cancelled) setRegistrationConfig(null);
+      });
+    return () => { cancelled = true; };
+  }, [activeMosqueKey]);
+
+  const saveRegistrationConfig = async () => {
+    if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
+    const name = String(registrationNameInput || '').trim();
+    const fromISO = parseRegistrationInputToISO(registrationFromInput);
+    const untilISO = parseRegistrationInputToISO(registrationUntilInput);
+    if (!name || !fromISO || !untilISO) {
+      setToast('Bitte Name sowie gültige Daten (TT.MM) eingeben');
+      return;
+    }
+    if (fromISO > untilISO) {
+      setToast('Von-Datum muss vor Bis-Datum liegen');
+      return;
+    }
+    const allowed = registrationAllowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key));
+    if (!allowed.length) {
+      setToast('Mindestens ein Tanzeem muss ausgewählt sein');
+      return;
+    }
+    const payload = {
+      name,
+      fromDateISO: fromISO,
+      untilDateISO: untilISO,
+      enabled: Boolean(registrationEnabled),
+      publicVisible: Boolean(registrationPublicVisible),
+      allowedTanzeem: allowed,
+      updatedAt: new Date().toISOString(),
+    };
+    await setDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID, payload);
+    setRegistrationConfig(payload);
+    setToast('Anmeldung gespeichert');
+  };
+
+  const clearRegistrationConfig = async () => {
+    if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
+    await deleteDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID);
+    setRegistrationConfig(null);
+    setRegistrationNameInput('');
+    setRegistrationFromInput('');
+    setRegistrationUntilInput('');
+    setRegistrationEnabled(false);
+    setRegistrationPublicVisible(false);
+    setRegistrationAllowedTanzeem(PROGRAM_TANZEEM_OPTIONS);
+    setToast('Anmeldung deaktiviert');
+  };
+
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
   const qrRuntimeContext = useMemo(() => getRuntimePrayerContext(prayerOverride, availableDates), [availableDates, prayerOverride, qrCountdownSeconds]);
   const qrLiveNow = qrRuntimeContext.now;
@@ -3067,6 +3209,11 @@ function AppContent() {
       const programKey = toLocationKey(programWindow.label);
       return [`${todayISO}_${programKey}_${selectedTanzeem}_${locationKey}_`];
     }
+    if (attendanceMode === 'registration') {
+      if (!registrationWindow?.isActive || !registrationWindow?.label) return [];
+      const registrationKey = toLocationKey(registrationWindow.label);
+      return [`${todayISO}_${registrationKey}_${selectedTanzeem}_${locationKey}_`];
+    }
 
     if (!prayerWindow?.isActive || !prayerWindow?.prayerKey) return [];
     const currentPrayerKey = String(prayerWindow.prayerKey || '');
@@ -3087,6 +3234,7 @@ function AppContent() {
     maghribIshaaMergedToday,
     prayerWindow,
     programWindow,
+    registrationWindow,
     selectedMajlis,
     selectedTanzeem,
     soharAsrMergedToday,
@@ -3101,7 +3249,9 @@ function AppContent() {
     }
 
     let cancelled = false;
-    const targetCollection = attendanceMode === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION;
+    const targetCollection = attendanceMode === 'program'
+      ? PROGRAM_ATTENDANCE_COLLECTION
+      : (attendanceMode === 'registration' ? REGISTRATION_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION);
 
     const fetchCountedMemberIds = () => {
       listDocIds(targetCollection)
@@ -5153,6 +5303,17 @@ function AppContent() {
         // ignore and keep local runtimeProgramWindow fallback
       }
     }
+    const runtimeRegistrationWindow = (() => {
+      const cfg = registrationConfig || null;
+      const name = String(cfg?.name || '').trim();
+      const fromISO = String(cfg?.fromDateISO || '');
+      const untilISO = String(cfg?.untilDateISO || '');
+      const enabled = Boolean(cfg?.enabled);
+      const isConfigured = Boolean(name && fromISO && untilISO);
+      const isActive = isConfigured && enabled && runtimeISO >= fromISO && runtimeISO <= untilISO;
+      const allowed = Array.isArray(cfg?.allowedTanzeem) ? cfg.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : PROGRAM_TANZEEM_OPTIONS;
+      return { isConfigured, isActive, label: name, allowedTanzeem: allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS };
+    })();
 
     const forcedPrayerKey = String(options?.forcedPrayerKey || '');
     if (modeType === 'prayer' && !forcedPrayerKey && (!runtimePrayerWindow.isActive || !runtimePrayerWindow.prayerKey)) {
@@ -5165,6 +5326,10 @@ function AppContent() {
       setToast('Aktuell kein Programm vorhanden');
       return { status: 'inactive_program' };
     }
+    if (modeType === 'registration' && !runtimeRegistrationWindow.isActive) {
+      setToast('Anmeldung ist aktuell nicht geöffnet');
+      return { status: 'inactive_registration' };
+    }
 
     const resolvedMemberTanzeem = kind === 'member' ? String(selectedMember?.tanzeem || '').toLowerCase() : '';
     const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
@@ -5174,6 +5339,8 @@ function AppContent() {
 
     if (modeType === 'program') {
       targetKeys.push(toLocationKey(runtimeProgramWindow.label || 'programm'));
+    } else if (modeType === 'registration') {
+      targetKeys.push(toLocationKey(runtimeRegistrationWindow.label || 'anmeldung'));
     } else {
       const prayer = forcedPrayerKey || runtimePrayerWindow.prayerKey;
       const runtimeSoharAsrMerged = isValidTime(runtimeTimesToday.sohar) && runtimeTimesToday.sohar === runtimeTimesToday.asr;
@@ -5189,7 +5356,7 @@ function AppContent() {
 
     const paths = [];
     targetKeys.forEach((targetKey) => {
-      if (modeType === 'program') {
+      if (modeType === 'program' || modeType === 'registration') {
         if (kind === 'guest') {
           paths.push('guestTotal');
           paths.push('total');
@@ -5206,14 +5373,14 @@ function AppContent() {
     });
 
     try {
-      const programKey = modeType === 'program' ? targetKeys[0] : null;
+      const programKey = (modeType === 'program' || modeType === 'registration') ? targetKeys[0] : null;
 
       if (kind === 'member' && selectedMember?.idNumber) {
         const duplicateChecks = await Promise.all(targetKeys.map((targetKey) => {
-          const memberEntryId = modeType === 'program'
+          const memberEntryId = (modeType === 'program' || modeType === 'registration')
             ? `${runtimeISO}_${programKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
             : `${runtimeISO}_${targetKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
-          return getDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION, memberEntryId);
+          return getDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : (modeType === 'registration' ? REGISTRATION_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION), memberEntryId);
         }));
 
         if (duplicateChecks.some(Boolean)) {
@@ -5228,19 +5395,23 @@ function AppContent() {
 
       if (modeType === 'program') {
         await incrementDocCounters(PROGRAM_DAILY_COLLECTION, `${runtimeISO}_${programKey}`, paths);
+      } else if (modeType === 'registration') {
+        await incrementDocCounters(REGISTRATION_DAILY_COLLECTION, `${runtimeISO}_${programKey}`, paths);
       } else {
         await incrementDocCounters('attendance_daily', runtimeISO, paths);
       }
 
       if (kind === 'member' && selectedMember?.idNumber) {
         await Promise.all(targetKeys.map((targetKey) => {
-          const memberEntryId = modeType === 'program'
+          const memberEntryId = (modeType === 'program' || modeType === 'registration')
             ? `${runtimeISO}_${programKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
             : `${runtimeISO}_${targetKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
-          return setDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION, memberEntryId, {
+          return setDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : (modeType === 'registration' ? REGISTRATION_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION), memberEntryId, {
             type: modeType,
             date: runtimeISO,
-            ...(modeType === 'program' ? { programName: runtimeProgramWindow.label } : { prayer: targetKey }),
+            ...(modeType === 'program'
+              ? { programName: runtimeProgramWindow.label }
+              : (modeType === 'registration' ? { registrationName: runtimeRegistrationWindow.label } : { prayer: targetKey })),
             majlis: resolvedLocationName,
             tanzeem: effectiveTanzeem,
             idNumber: String(selectedMember.idNumber),
@@ -5268,6 +5439,16 @@ function AppContent() {
             type: 'program',
             date: runtimeISO,
             programName: runtimeProgramWindow.label,
+            tanzeem: 'guest',
+            majlis: resolvedLocationName,
+            idNumber: 'guest',
+            timestamp: new Date().toISOString(),
+          });
+        } else if (modeType === 'registration') {
+          await setDocData(REGISTRATION_ATTENDANCE_COLLECTION, guestEntryId, {
+            type: 'registration',
+            date: runtimeISO,
+            registrationName: runtimeRegistrationWindow.label,
             tanzeem: 'guest',
             majlis: resolvedLocationName,
             idNumber: 'guest',
@@ -5356,17 +5537,46 @@ function AppContent() {
 
   const renderTerminal = () => {
     const isPrayerMode = attendanceMode === 'prayer';
-    const hasActiveAttendanceWindow = isPrayerMode ? prayerWindow.isActive : programWindow.isActive;
-    const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : 'Programmanwesenheit';
+    const isProgramMode = attendanceMode === 'program';
+    const isRegistrationMode = attendanceMode === 'registration';
+    const registrationAllowedTanzeem = registrationWindow.allowedTanzeem || PROGRAM_TANZEEM_OPTIONS;
+    const hasActiveAttendanceWindow = isPrayerMode
+      ? prayerWindow.isActive
+      : (isProgramMode ? programWindow.isActive : (registrationWindow.isActive && registrationWindow.isVisibleForCurrentUser));
+    const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : (isProgramMode ? 'Programmanwesenheit' : 'Anmeldung');
+    const modeUrduTitle = isPrayerMode ? 'نماز حاضری' : (isProgramMode ? 'پروگرام حاضری' : 'اندراج برائے رجسٹریشن');
+    const handleTerminalMemberPick = (member) => {
+      if (isRegistrationMode) {
+        setPendingRegistrationMember(member);
+        return;
+      }
+      countAttendance(attendanceMode, 'member', member.majlis, member);
+    };
+    const visibleQuickSearchResults = isRegistrationMode
+      ? quickSearchResults.filter((member) => registrationAllowedTanzeem.includes(String(member?.tanzeem || '').toLowerCase()))
+      : quickSearchResults;
 
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
         <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
-          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(isPrayerMode ? 'program' : 'prayer'); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
-            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isPrayerMode ? '<< Gebetsanwesenheit >>' : '<< Programmanwesenheit >>'}</Text>
+          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => {
+            const next = isPrayerMode ? 'program' : (isProgramMode ? 'registration' : 'prayer');
+            if (next === 'registration' && !registrationWindow.isConfigured) {
+              setToast('Anmeldung ist nicht konfiguriert');
+              return;
+            }
+            setAttendanceMode(next);
+            setPendingRegistrationMember(null);
+            setTerminalMode('tanzeem');
+            setSelectedTanzeem('');
+            setSelectedMajlis('');
+          }}>
+            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>
+              {isPrayerMode ? '<< Gebetsanwesenheit >>' : (isProgramMode ? '<< Programmanwesenheit >>' : '<< Anmeldung >>')}
+            </Text>
           </Pressable>
           <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
-          <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>{isPrayerMode ? 'نماز حاضری' : 'پروگرام حاضری'}</Text>
+          <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>{modeUrduTitle}</Text>
           <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
         </View>
 
@@ -5386,7 +5596,7 @@ function AppContent() {
                 </View>
               </>
             )
-          ) : (
+          ) : isProgramMode ? (
             programWindow.isActive ? (
               <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Programm: {programWindow.label}</Text>
             ) : (
@@ -5403,6 +5613,25 @@ function AppContent() {
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Für heute ist kein Programm geplant.</Text>
                 )}
               </>
+            )
+          ) : (
+            registrationWindow.isVisibleForCurrentUser ? (
+              registrationWindow.isActive ? (
+                <Text style={[styles.currentPrayerText, { color: theme.text }]}>{`Anmeldung für: ${registrationWindow.label}`}</Text>
+              ) : (
+                <>
+                  <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Anmeldung aktuell geschlossen</Text>
+                  {registrationWindow.isConfigured ? (
+                    <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>
+                      {`Zeitraum: ${formatISOToRegistrationInput(registrationWindow.fromISO)} – ${formatISOToRegistrationInput(registrationWindow.untilISO)}`}
+                    </Text>
+                  ) : (
+                    <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Keine Anmeldung konfiguriert.</Text>
+                  )}
+                </>
+              )
+            ) : (
+              <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Anmeldung ist nur für eingeloggte Benutzer sichtbar.</Text>
             )
           )}
         </View>
@@ -5428,14 +5657,14 @@ function AppContent() {
                 />
                 {quickSearchDigits.length < 4 ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Bitte mindestens 4 Ziffern eingeben.</Text>
-                ) : quickSearchResults.length === 0 ? (
+                ) : visibleQuickSearchResults.length === 0 ? (
                   <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 8 }]}>Keine passende ID gefunden.</Text>
                 ) : (
                   <View style={styles.quickSearchResultsWrap}>
-                    {quickSearchResults.map((member) => (
+                    {visibleQuickSearchResults.map((member) => (
                       <Pressable
                         key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                        onPress={() => countAttendance(attendanceMode, 'member', member.majlis, member)}
+                        onPress={() => handleTerminalMemberPick(member)}
                         style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
                       >
                         <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
@@ -5454,22 +5683,24 @@ function AppContent() {
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
             <View style={styles.tanzeemRow}>
-              {(isPrayerMode ? TANZEEM_OPTIONS : PROGRAM_TANZEEM_OPTIONS).map((tanzeem) => (
+              {(isPrayerMode ? TANZEEM_OPTIONS : (isProgramMode ? PROGRAM_TANZEEM_OPTIONS : registrationAllowedTanzeem)).map((tanzeem) => (
                 <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
                   <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                 </Pressable>
               ))}
             </View>
-            <View style={styles.guestButtonRow}>
-              <View style={styles.guestButtonSpacer} />
-              <Pressable
-                onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
-              >
-                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Gast</Text>
-              </Pressable>
-              <View style={styles.guestButtonSpacer} />
-            </View>
+            {!isRegistrationMode ? (
+              <View style={styles.guestButtonRow}>
+                <View style={styles.guestButtonSpacer} />
+                <Pressable
+                  onPress={() => countAttendance(attendanceMode, 'guest')}
+                  style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
+                >
+                  <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Gast</Text>
+                </Pressable>
+                <View style={styles.guestButtonSpacer} />
+              </View>
+            ) : null}
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
               <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
             </Pressable>
@@ -5490,16 +5721,18 @@ function AppContent() {
                 </Pressable>
               ))}
             </View>
-            <View style={styles.guestButtonRow}>
-              <View style={styles.guestButtonSpacer} />
-              <Pressable
-                onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: isDarkMode ? '#FFFFFF' : '#000000' }], pressed && styles.buttonPressed]}
-              >
-                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: isDarkMode ? '#000000' : '#FFFFFF' }]}>Gast</Text>
-              </Pressable>
-              <View style={styles.guestButtonSpacer} />
-            </View>
+            {!isRegistrationMode ? (
+              <View style={styles.guestButtonRow}>
+                <View style={styles.guestButtonSpacer} />
+                <Pressable
+                  onPress={() => countAttendance(attendanceMode, 'guest')}
+                  style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: isDarkMode ? '#FFFFFF' : '#000000' }], pressed && styles.buttonPressed]}
+                >
+                  <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: isDarkMode ? '#000000' : '#FFFFFF' }]}>Gast</Text>
+                </Pressable>
+                <View style={styles.guestButtonSpacer} />
+              </View>
+            ) : null}
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
               <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
             </Pressable>
@@ -5549,7 +5782,7 @@ function AppContent() {
                             isAlreadyCounted && styles.gridItemCounted,
                             isAlreadyCounted && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.24)' : 'rgba(209, 213, 219, 0.26)' },
                           ], pressed && styles.buttonPressed]}
-                          onPress={() => countAttendance(attendanceMode, 'member', selectedMajlis, member)}
+                          onPress={() => handleTerminalMemberPick(member)}
                         >
                           <Text
                             style={[
@@ -5569,23 +5802,54 @@ function AppContent() {
                 )}
              </>
             ) : null}
-            <View style={styles.guestButtonRow}>
-              <View style={styles.guestButtonSpacer} />
-              <Pressable
-                onPress={() => countAttendance(attendanceMode, 'guest')}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: isDarkMode ? '#FFFFFF' : theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
-              >
-                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: isDarkMode ? '#000000' : theme.buttonText }]}>Gast</Text>
-              </Pressable>
-              <View style={styles.guestButtonSpacer} />
-            </View>
+            {isRegistrationMode ? (
+              pendingRegistrationMember ? (
+                <View style={styles.guestButtonRow}>
+                  <View style={styles.guestButtonSpacer} />
+                  <Pressable
+                    onPress={async () => {
+                      const result = await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember);
+                      setPendingRegistrationMember(null);
+                      if (result?.status === 'counted') setToast('Angemeldet');
+                    }}
+                    style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: '#16A34A' }], pressed && styles.buttonPressed]}
+                  >
+                    <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: '#FFFFFF' }]}>Anmelden</Text>
+                  </Pressable>
+                  <View style={styles.guestButtonSpacer} />
+                </View>
+              ) : null
+            ) : (
+              <View style={styles.guestButtonRow}>
+                <View style={styles.guestButtonSpacer} />
+                <Pressable
+                  onPress={() => countAttendance(attendanceMode, 'guest')}
+                  style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, styles.guestButton, { backgroundColor: isDarkMode ? '#FFFFFF' : theme.button }, !isDarkMode && styles.guestButtonLightOutline], pressed && styles.buttonPressed]}
+                >
+                  <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: isDarkMode ? '#000000' : theme.buttonText }]}>Gast</Text>
+                </Pressable>
+                <View style={styles.guestButtonSpacer} />
+              </View>
+            )}
           </>
         )) : null}
 
         {!hasActiveAttendanceWindow ? (
           <>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isPrayerMode ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).' : 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'}</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>{isPrayerMode ? 'حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔' : 'پروگرام حاضری صرف فعال پروگرام کے دوران درج کی جا سکتی ہے۔'}</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>
+              {isPrayerMode
+                ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).'
+                : (isProgramMode
+                  ? 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'
+                  : 'Anmeldung ist nur im festgelegten Zeitraum verfügbar.')}
+            </Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>
+              {isPrayerMode
+                ? 'حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔'
+                : (isProgramMode
+                  ? 'پروگرام حاضری صرف فعال پروگرام کے دوران درج کی جا سکتی ہے۔'
+                  : 'رجسٹریشن صرف مقررہ مدت کے دوران دستیاب ہے۔')}
+            </Text>
           </>
         ) : null}
 
@@ -6592,6 +6856,49 @@ function AppContent() {
         </Pressable>
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearProgramForToday}>
           <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Programm deaktivieren</Text>
+        </Pressable>
+      </View>
+
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Anmeldung</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Zeitraum konfigurieren (TT.MM)</Text>
+        <View style={styles.mergeInputWrap}>
+          <TextInput value={registrationNameInput} onChangeText={setRegistrationNameInput} placeholder="Name (z. B. Jalsa Anmeldung)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationFromInput} onChangeText={setRegistrationFromInput} placeholder="Von (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationUntilInput} onChangeText={setRegistrationUntilInput} placeholder="Bis (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+        </View>
+        <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Overlay aktivieren</Text><Switch value={registrationEnabled} onValueChange={setRegistrationEnabled} /></View>
+        <Pressable onPress={() => setRegistrationAdvancedVisible((prev) => !prev)} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{registrationAdvancedVisible ? 'Erweiterte Einstellungen ▲' : 'Erweiterte Einstellungen ▼'}</Text>
+        </Pressable>
+        {registrationAdvancedVisible ? (
+          <>
+            <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Öffentlich anzeigen</Text><Switch value={registrationPublicVisible} onValueChange={setRegistrationPublicVisible} /></View>
+            <Text style={[styles.noteText, { color: theme.muted }]}>Tanzeem auswählen (mind. 1)</Text>
+            <View style={styles.statsToggleRow}>
+              {PROGRAM_TANZEEM_OPTIONS.map((key) => {
+                const isOn = registrationAllowedTanzeem.includes(key);
+                return (
+                  <Pressable
+                    key={`registration_tanzeem_${key}`}
+                    onPress={() => setRegistrationAllowedTanzeem((prev) => {
+                      if (prev.includes(key)) return prev.length > 1 ? prev.filter((item) => item !== key) : prev;
+                      return [...prev, key];
+                    })}
+                    style={[styles.statsToggleBtn, { borderColor: isOn ? theme.button : theme.border, backgroundColor: isOn ? theme.button : theme.bg }]}
+                  >
+                    <Text style={[styles.statsToggleBtnText, { color: isOn ? theme.buttonText : theme.text }]}>{TANZEEM_LABELS[key]}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </>
+        ) : null}
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveRegistrationConfig}>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Anmeldung speichern</Text>
+        </Pressable>
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearRegistrationConfig}>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Anmeldung deaktivieren</Text>
         </Pressable>
       </View>
 
