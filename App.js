@@ -5442,11 +5442,13 @@ function AppContent() {
             ? `${runtimeISO}_${programKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`
             : `${runtimeISO}_${targetKey}_${effectiveTanzeem}_${locationKey}_${String(selectedMember.idNumber)}`;
           return setDocData(modeType === 'program' ? PROGRAM_ATTENDANCE_COLLECTION : (modeType === 'registration' ? REGISTRATION_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION), memberEntryId, {
-            type: modeType,
+            type: modeType === 'registration' ? 'program' : modeType,
             date: runtimeISO,
             ...(modeType === 'program'
               ? { programName: runtimeProgramWindow.label }
-              : (modeType === 'registration' ? { registrationName: runtimeRegistrationWindow.label } : { prayer: targetKey })),
+              : (modeType === 'registration'
+                ? { programName: runtimeRegistrationWindow.label, registrationName: runtimeRegistrationWindow.label }
+                : { prayer: targetKey })),
             majlis: resolvedLocationName,
             tanzeem: effectiveTanzeem,
             idNumber: String(selectedMember.idNumber),
@@ -5481,8 +5483,9 @@ function AppContent() {
           });
         } else if (modeType === 'registration') {
           await setDocData(REGISTRATION_ATTENDANCE_COLLECTION, guestEntryId, {
-            type: 'registration',
+            type: 'program',
             date: runtimeISO,
+            programName: runtimeRegistrationWindow.label,
             registrationName: runtimeRegistrationWindow.label,
             tanzeem: 'guest',
             majlis: resolvedLocationName,
@@ -5582,6 +5585,10 @@ function AppContent() {
     const modeUrduTitle = isPrayerMode ? 'نماز حاضری' : (isProgramMode ? 'پروگرام حاضری' : 'اندراج برائے رجسٹریشن');
     const handleTerminalMemberPick = (member) => {
       if (isRegistrationMode) {
+        setSelectedTanzeem(String(member?.tanzeem || '').toLowerCase());
+        setSelectedMajlis(String(member?.majlis || ''));
+        setTerminalMode('idSelection');
+        setQuickIdSearchVisible(false);
         setPendingRegistrationMember(member);
         return;
       }
