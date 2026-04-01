@@ -1464,7 +1464,6 @@ function AppContent() {
   const [registrationNameInput, setRegistrationNameInput] = useState('');
   const [registrationStartDateInput, setRegistrationStartDateInput] = useState('');
   const [registrationEndDateInput, setRegistrationEndDateInput] = useState('');
-  const [registrationDisabledInput, setRegistrationDisabledInput] = useState(false);
   const [registrationIsPublicInput, setRegistrationIsPublicInput] = useState(false);
   const [registrationIncludedTanzeemsInput, setRegistrationIncludedTanzeemsInput] = useState([...REGISTRATION_TANZEEM_OPTIONS]);
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
@@ -3045,7 +3044,6 @@ function AppContent() {
       setRegistrationNameInput('');
       setRegistrationStartDateInput('');
       setRegistrationEndDateInput('');
-      setRegistrationDisabledInput(false);
       setRegistrationIsPublicInput(false);
       setRegistrationIncludedTanzeemsInput([...REGISTRATION_TANZEEM_OPTIONS]);
       return;
@@ -3053,7 +3051,6 @@ function AppContent() {
     setRegistrationNameInput(activeRegistrationConfig.name || '');
     setRegistrationStartDateInput(activeRegistrationConfig.startDate || '');
     setRegistrationEndDateInput(activeRegistrationConfig.endDate || '');
-    setRegistrationDisabledInput(Boolean(activeRegistrationConfig.disabled));
     setRegistrationIsPublicInput(Boolean(activeRegistrationConfig.advanced?.isPublic));
     setRegistrationIncludedTanzeemsInput(activeRegistrationConfig.advanced?.includeTanzeems?.length
       ? activeRegistrationConfig.advanced.includeTanzeems
@@ -3118,7 +3115,7 @@ function AppContent() {
       name,
       startDate,
       endDate,
-      disabled: registrationDisabledInput,
+      disabled: false,
       updatedAt: new Date().toISOString(),
       advanced: {
         isPublic: registrationIsPublicInput,
@@ -4507,25 +4504,125 @@ function AppContent() {
     const option = selectedRegistrationStatsOption;
     if (!option?.id) { setToast('Keine Anmeldungsdaten zum Export verfügbar'); return; }
     const activeTanzeems = option.advanced?.includeTanzeems || [];
+
+    const registeredTotals = membersDirectory
+      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
+      .reduce((acc, entry) => {
+        const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+        acc.total += 1;
+        if (Object.prototype.hasOwnProperty.call(acc, tanzeem)) acc[tanzeem] += 1;
+        return acc;
+      }, { total: 0, ansar: 0, khuddam: 0, atfal: 0, kinder: 0 });
+
+    const formatRatioWithPercent = (present, registered) => {
+      const safePresent = Number(present) || 0;
+      const safeRegistered = Number(registered) || 0;
+      if (safeRegistered <= 0) return `${safePresent}/${safeRegistered} (0%)`;
+      const percentRaw = (safePresent / safeRegistered) * 100;
+      const percentRounded = Math.round(percentRaw * 10) / 10;
+      const percentLabel = Number.isInteger(percentRounded)
+        ? `${percentRounded}`
+        : String(percentRounded).replace('.', ',');
+      return `${safePresent}/${safeRegistered} (${percentLabel}%)`;
+    };
+
+    const majlisAttendanceRows = (() => {
+      const buildCountsForFilter = (filterKey) => {
+        const registeredByMajlis = membersDirectory
+          .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
+          .filter((entry) => (filterKey === 'total' ? true : String(entry?.tanzeem || '').toLowerCase() === filterKey))
+          .reduce((acc, entry) => {
+            const majlis = String(entry?.majlis || '').trim();
+            if (!majlis) return acc;
+            acc[majlis] = (acc[majlis] || 0) + 1;
+            return acc;
+          }, {});
+
+        const presentByMajlis = registrationAttendanceEntries
+          .filter((entry) => {
+            const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+            if (!activeTanzeems.includes(tanzeem)) return false;
+            return filterKey === 'total' ? true : tanzeem === filterKey;
+          })
+          .reduce((acc, entry) => {
+            const majlis = String(entry?.majlis || '').trim();
+            if (!majlis) return acc;
+            acc[majlis] = (acc[majlis] || 0) + 1;
+            return acc;
+          }, {});
+
+        return { registeredByMajlis, presentByMajlis };
+      };
+
+      const totalCounts = buildCountsForFilter('total');
+      const ansarCounts = buildCountsForFilter('ansar');
+      const khuddamCounts = buildCountsForFilter('khuddam');
+      const atfalCounts = buildCountsForFilter('atfal');
+      const kinderCounts = buildCountsForFilter('kinder');
+
+      const allMajlises = Array.from(new Set([
+        ...Object.keys(totalCounts.registeredByMajlis),
+        ...Object.keys(totalCounts.presentByMajlis),
+        ...Object.keys(ansarCounts.registeredByMajlis),
+        ...Object.keys(ansarCounts.presentByMajlis),
+        ...Object.keys(khuddamCounts.registeredByMajlis),
+        ...Object.keys(khuddamCounts.presentByMajlis),
+        ...Object.keys(atfalCounts.registeredByMajlis),
+        ...Object.keys(atfalCounts.presentByMajlis),
+        ...Object.keys(kinderCounts.registeredByMajlis),
+        ...Object.keys(kinderCounts.presentByMajlis),
+      ]));
+
+      return allMajlises
+        .map((majlis) => ({
+          majlis,
+          totalPresent: Number(totalCounts.presentByMajlis[majlis]) || 0,
+          totalRegistered: Number(totalCounts.registeredByMajlis[majlis]) || 0,
+          ansarPresent: Number(ansarCounts.presentByMajlis[majlis]) || 0,
+          ansarRegistered: Number(ansarCounts.registeredByMajlis[majlis]) || 0,
+          khuddamPresent: Number(khuddamCounts.presentByMajlis[majlis]) || 0,
+          khuddamRegistered: Number(khuddamCounts.registeredByMajlis[majlis]) || 0,
+          atfalPresent: Number(atfalCounts.presentByMajlis[majlis]) || 0,
+          atfalRegistered: Number(atfalCounts.registeredByMajlis[majlis]) || 0,
+          kinderPresent: Number(kinderCounts.presentByMajlis[majlis]) || 0,
+          kinderRegistered: Number(kinderCounts.registeredByMajlis[majlis]) || 0,
+        }))
+        .sort((a, b) => (b.totalPresent - a.totalPresent) || a.majlis.localeCompare(b.majlis));
+    })();
+
+    if ((Number(registrationStats?.total) || 0) <= 0 && majlisAttendanceRows.length === 0) {
+      setToast('Keine Anmeldungsdaten zum Export verfügbar');
+      return;
+    }
+
     const workbook = XLSX.utils.book_new();
-    const rows = [
+    const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
       ['Zeitraum', `${option.startDate} bis ${option.endDate}`],
-      ['Gesamtanmeldungen', Number(registrationStats?.total) || 0],
-      [],
-      ['Tanzeem', 'Anmeldungen'],
-      ...activeTanzeems.map((key) => [TANZEEM_LABELS[key] || key, Number(registrationStats?.byTanzeem?.[key]) || 0]),
-      [],
-      ['Majlis', 'Anmeldungen'],
-      ...Object.entries(registrationStats?.byMajlis || {}).map(([majlis, total]) => [formatMajlisName(majlis), Number(total) || 0]),
-      [],
-      ['ID', 'Tanzeem', 'Majlis', 'Zeitstempel'],
-      ...registrationAttendanceEntries.map((entry) => [String(entry?.idNumber || ''), TANZEEM_LABELS[String(entry?.tanzeem || '').toLowerCase()] || entry?.tanzeem || '', String(entry?.majlis || ''), formatGermanDateTime(entry?.timestamp)]),
+      ['Gesamtanmeldungen', formatRatioWithPercent(Number(registrationStats?.total) || 0, registeredTotals.total)],
+      ...activeTanzeems.map((key) => [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])]),
     ];
-    const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 24 }, { wch: 30 }, { wch: 24 }, { wch: 24 }];
-    XLSX.utils.book_append_sheet(workbook, sheet, 'Anmeldungen');
+    const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
+    overviewSheet['!cols'] = [{ wch: 24 }, { wch: 36 }];
+
+    const majlisAttendanceSheetRows = [
+      ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal', 'Kinder'],
+      ...majlisAttendanceRows.map((row) => [
+        row.majlis,
+        formatRatioWithPercent(row.totalPresent, row.totalRegistered),
+        formatRatioWithPercent(row.ansarPresent, row.ansarRegistered),
+        formatRatioWithPercent(row.khuddamPresent, row.khuddamRegistered),
+        formatRatioWithPercent(row.atfalPresent, row.atfalRegistered),
+        formatRatioWithPercent(row.kinderPresent, row.kinderRegistered),
+      ]),
+    ];
+    const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
+    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }];
+
+    XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
+    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anmeldungen');
+
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const fileName = `Anmeldung_Stats_${toLocationKey(option.name || 'anmeldung')}_${option.startDate}_${option.endDate}.xlsx`;
     if (Platform.OS === 'web') {
@@ -4550,7 +4647,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungsdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, registrationAttendanceEntries, registrationStats, selectedRegistrationStatsOption]);
+  }, [activeMosque.label, membersDirectory, registrationAttendanceEntries, registrationStats, selectedRegistrationStatsOption]);
 
   const handleExportRegistration = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -4792,9 +4889,13 @@ function AppContent() {
   const detailedIdChoices = useMemo(() => {
     if (!detailedFlowTanzeem || !detailedFlowMajlis) return [];
     const query = detailedIdSearchQuery.trim();
-    const activeProgramName = String(selectedProgramStatsOption?.programName || selectedProgramConfig?.name || '').trim();
-    const programPresentIds = new Set(
-      programAttendanceEntries
+    const isProgramDetailedMode = statsMode === 'program';
+    const activeItemName = isProgramDetailedMode
+      ? String(selectedProgramStatsOption?.programName || selectedProgramConfig?.name || '').trim()
+      : String(selectedRegistrationStatsOption?.name || '').trim();
+    const attendanceEntries = isProgramDetailedMode ? programAttendanceEntries : registrationAttendanceEntries;
+    const presentIds = new Set(
+      attendanceEntries
         .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === detailedFlowTanzeem)
         .filter((entry) => String(entry?.majlis || '').trim() === detailedFlowMajlis)
         .map((entry) => String(entry?.idNumber || '').trim())
@@ -4806,11 +4907,11 @@ function AppContent() {
       .filter((entry) => (!query || String(entry.idNumber).includes(query)))
       .map((entry) => ({
         ...entry,
-        isPresentInActiveProgram: Boolean(programPresentIds.has(String(entry.idNumber))),
-        hasActiveProgram: Boolean(activeProgramName),
+        isPresentInActiveFlow: Boolean(presentIds.has(String(entry.idNumber))),
+        hasActiveFlow: Boolean(activeItemName),
       }))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
-  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, selectedProgramConfig, selectedProgramStatsOption, programAttendanceEntries]);
+  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, selectedProgramConfig, selectedProgramStatsOption, selectedRegistrationStatsOption, programAttendanceEntries, registrationAttendanceEntries, statsMode]);
 
   const detailedCurrentWeekIsos = useMemo(() => {
     const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
@@ -5667,7 +5768,7 @@ function AppContent() {
 
       visitorCounterRef.current += 1;
       Vibration.vibrate(4);
-      setToast(modeType === 'registration' ? 'Angemeldet' : 'Gezählt ✓');
+      setToast(modeType === 'registration' ? `Angemeldet für ${registrationWindow.config?.name || 'Anmeldung'}` : 'Gezählt ✓');
       setQuickIdSearchQuery('');
       setTerminalMode('tanzeem');
       setSelectedTanzeem('');
@@ -5842,6 +5943,7 @@ function AppContent() {
                         key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
                         onPress={() => {
                           if (isRegistrationMode) {
+                            setQuickIdSearchVisible(false);
                             setPendingRegistrationMember(member);
                             setTerminalMode('registrationConfirm');
                             return;
@@ -6045,9 +6147,11 @@ function AppContent() {
 
         <View style={styles.privacyNoticeWrap}>
           <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
-          <Pressable onPress={() => setQrPageVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
-            <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>QR-Code anzeigen</Text>
-          </Pressable>
+          {!isRegistrationMode ? (
+            <Pressable onPress={() => setQrPageVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
+              <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>QR-Code anzeigen</Text>
+            </Pressable>
+          ) : null}
           <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
@@ -6399,6 +6503,40 @@ function AppContent() {
                     ))}
                   </View>
                 </View>
+                <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anmeldungen nach Majlis</Text>
+                  {Object.keys(registrationStats?.byMajlis || {}).length === 0 ? (
+                    <Text style={[styles.noteText, { color: theme.muted }]}>Keine Anmeldungsdaten verfügbar</Text>
+                  ) : (
+                    (() => {
+                      const rows = Object.entries(registrationStats?.byMajlis || {})
+                        .map(([majlisKey, total]) => ({
+                          majlis: formatMajlisName(majlisKey),
+                          present: Number(total) || 0,
+                          total: Number(total) || 0,
+                        }))
+                        .sort((a, b) => (b.present - a.present) || a.majlis.localeCompare(b.majlis));
+                      const maxTop = Math.max(1, ...rows.map((row) => Number(row.present) || 0));
+                      return rows.map((row) => (
+                        <View key={row.majlis} style={styles.majlisBarRow}>
+                          <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{row.majlis}</Text>
+                          <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                            <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(row.present) || 0) / maxTop) * 100}%` }]} />
+                          </View>
+                          <Text numberOfLines={1} style={[styles.majlisBarValue, { color: theme.text }]}>{`${row.present}/${row.total}`}</Text>
+                        </View>
+                      ));
+                    })()
+                  )}
+                </View>
+                {effectivePermissions.canViewIdStats ? (
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
+                    <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); setDetailedFlowTanzeem(''); setDetailedFlowMajlis(''); setDetailedIdSearchQuery(''); setDetailedIdOverviewVisible(true); }} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                      <Text style={[styles.statsDetailOpenBtnText, { color: theme.text }]}>Übersicht öffnen</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
               </>
             )}
           </>
@@ -7127,10 +7265,9 @@ function AppContent() {
           <TextInput value={registrationStartDateInput} onChangeText={setRegistrationStartDateInput} placeholder="Von (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
           <TextInput value={registrationEndDateInput} onChangeText={setRegistrationEndDateInput} placeholder="Bis (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
-        <View style={styles.mergeSwitchWrap}>
-          <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Anmeldung deaktivieren</Text>
-          <Switch value={registrationDisabledInput} onValueChange={setRegistrationDisabledInput} />
-        </View>
+        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearRegistrationConfig}>
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Anmeldung deaktivieren</Text>
+        </Pressable>
         <Pressable onPress={() => setRegistrationAdvancedVisible((prev) => !prev)} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
           <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Erweiterte Einstellungen</Text>
         </Pressable>
@@ -7716,13 +7853,13 @@ function AppContent() {
             >
               {!selectedDetailedMember ? (
                 <>
-                  {statsMode === 'program' ? (
+                  {statsMode === 'program' || statsMode === 'registration' ? (
                     <Pressable
-                      onPress={handleExportProgramDetailedIds}
-                      disabled={detailedProgramExporting || !effectivePermissions.canExportData}
-                      style={[styles.statsExportBtn, { borderColor: theme.border, backgroundColor: (detailedProgramExporting || !effectivePermissions.canExportData) ? theme.border : theme.bg, opacity: (detailedProgramExporting || !effectivePermissions.canExportData) ? 0.7 : 1 }]}
+                      onPress={statsMode === 'program' ? handleExportProgramDetailedIds : handleExportRegistration}
+                      disabled={(statsMode === 'program' ? detailedProgramExporting : registrationExporting) || !effectivePermissions.canExportData}
+                      style={[styles.statsExportBtn, { borderColor: theme.border, backgroundColor: ((statsMode === 'program' ? detailedProgramExporting : registrationExporting) || !effectivePermissions.canExportData) ? theme.border : theme.bg, opacity: ((statsMode === 'program' ? detailedProgramExporting : registrationExporting) || !effectivePermissions.canExportData) ? 0.7 : 1 }]}
                     >
-                      <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{detailedProgramExporting ? 'Export läuft…' : 'Daten exportieren'}</Text>
+                      <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{(statsMode === 'program' ? detailedProgramExporting : registrationExporting) ? 'Export läuft…' : 'Daten exportieren'}</Text>
                     </Pressable>
                   ) : null}
 
@@ -7731,7 +7868,7 @@ function AppContent() {
                     <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID Suche</Text>
                   </View>
                   <View style={styles.statsToggleRow}>
-                    {(statsMode === 'program' ? PROGRAM_TANZEEM_OPTIONS : TANZEEM_OPTIONS).map((key) => {
+                    {(statsMode === 'program' ? PROGRAM_TANZEEM_OPTIONS : (statsMode === 'registration' ? REGISTRATION_TANZEEM_OPTIONS : TANZEEM_OPTIONS)).map((key) => {
                       const isActive = detailedFlowTanzeem === key;
                       return (
                         <Pressable
@@ -7779,7 +7916,7 @@ function AppContent() {
                     {detailedIdChoices.map((member) => (
                       <Pressable
                         key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
-                        onPress={statsMode === 'program' ? undefined : () => {
+                        onPress={statsMode === 'program' || statsMode === 'registration' ? undefined : () => {
                           setSelectedDetailedMember(member);
                           setDetailedGraphRange('currentWeek');
                           setDetailedPrayerRange('currentWeek');
@@ -7790,7 +7927,7 @@ function AppContent() {
                         }}
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
                       >
-                        {statsMode === 'program' ? (
+                        {statsMode === 'program' || statsMode === 'registration' ? (
                           <Text style={{ color: theme.text, fontWeight: '700' }}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}`}</Text>
                         ) : (
                           <>
@@ -7798,11 +7935,11 @@ function AppContent() {
                             <Text style={{ color: theme.muted, fontSize: 12 }}>{`${TANZEEM_LABELS[member.tanzeem]} · ${member.majlis}`}</Text>
                           </>
                         )}
-                        {statsMode === 'program' ? (
-                          <Text style={{ color: member.hasActiveProgram ? (member.isPresentInActiveProgram ? '#16A34A' : '#DC2626') : theme.muted, fontSize: 12, marginTop: 4 }}>
-                            {member.hasActiveProgram
-                              ? (member.isPresentInActiveProgram ? '● anwesend' : '● nicht anwesend')
-                              : 'Kein aktives Programm konfiguriert'}
+                        {statsMode === 'program' || statsMode === 'registration' ? (
+                          <Text style={{ color: member.hasActiveFlow ? (member.isPresentInActiveFlow ? '#16A34A' : '#DC2626') : theme.muted, fontSize: 12, marginTop: 4 }}>
+                            {member.hasActiveFlow
+                              ? (member.isPresentInActiveFlow ? '● anwesend' : '● nicht anwesend')
+                              : (statsMode === 'program' ? 'Kein aktives Programm konfiguriert' : 'Keine aktive Anmeldung ausgewählt')}
                           </Text>
                         ) : null}
                       </Pressable>
