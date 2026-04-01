@@ -3125,9 +3125,14 @@ function AppContent() {
         includeTanzeems,
       },
     }, docId);
-    setRegistrationConfigById((prev) => ({ ...prev, [docId]: payload }));
-    await setDocData(REGISTRATION_CONFIG_COLLECTION, docId, payload);
-    setToast('Anmeldung gespeichert');
+    try {
+      setRegistrationConfigById((prev) => ({ ...prev, [docId]: payload }));
+      await setDocData(REGISTRATION_CONFIG_COLLECTION, docId, payload);
+      setToast('Anmeldung gespeichert');
+    } catch (error) {
+      console.error('saveRegistrationConfig failed', error);
+      setToast('Anmeldung konnte nicht gespeichert werden');
+    }
   };
 
   const clearRegistrationConfig = async () => {
@@ -5586,6 +5591,17 @@ function AppContent() {
       if (modeType === 'program') {
         await incrementDocCounters(PROGRAM_DAILY_COLLECTION, `${runtimeISO}_${programKey}`, paths);
       } else if (modeType === 'registration') {
+        const existingRegistrationDaily = await getDocData(REGISTRATION_DAILY_COLLECTION, registrationKey).catch(() => null);
+        if (!existingRegistrationDaily) {
+          await setDocData(REGISTRATION_DAILY_COLLECTION, registrationKey, {
+            registrationId: registrationKey,
+            registrationName: String(registrationWindow.config?.name || ''),
+            total: 0,
+            byTanzeem: {},
+            byMajlis: {},
+            createdAt: new Date().toISOString(),
+          });
+        }
         await incrementDocCounters(REGISTRATION_DAILY_COLLECTION, registrationKey, paths);
       } else {
         await incrementDocCounters('attendance_daily', runtimeISO, paths);
