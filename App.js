@@ -317,8 +317,8 @@ const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_DAILY_COLLECTION_LEGACY = 'attendance_programm_daily';
 const REGISTRATION_CONFIG_COLLECTION = 'program_configs';
 const REGISTRATION_CONFIG_DOC_ID = 'registration_overlay';
-const REGISTRATION_ATTENDANCE_COLLECTION = 'attendance_registration_entries';
-const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
+const REGISTRATION_ATTENDANCE_COLLECTION = 'attendance_program_entries';
+const REGISTRATION_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
@@ -5774,13 +5774,23 @@ function AppContent() {
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
-            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>
+              {pendingRegistrationMember && isRegistrationMode
+                ? `${pendingRegistrationMember.majlis} · ${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || ''} · ${pendingRegistrationMember.idNumber}`
+                : `${selectedMajlis} · ${TANZEEM_LABELS[selectedTanzeem] || ''}`}
+            </Text>
+            <Pressable
+              style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+              onPress={() => {
+                setPendingRegistrationMember(null);
+                setTerminalMode('majlis');
+              }}
+            >
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
-            {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-            {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
-            {memberChoices.length > 0 ? (
+            {isRegistrationMode && pendingRegistrationMember ? null : (membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null)}
+            {isRegistrationMode && pendingRegistrationMember ? null : (!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null)}
+            {!isRegistrationMode || !pendingRegistrationMember ? (memberChoices.length > 0 ? (
               <>
                 <TextInput
                   value={idSearchQuery}
@@ -5834,7 +5844,7 @@ function AppContent() {
                   </View>
                 )}
              </>
-            ) : null}
+            ) : null) : null}
             {isRegistrationMode ? (
               pendingRegistrationMember ? (
                 <View style={styles.guestButtonRow}>
