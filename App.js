@@ -5339,6 +5339,13 @@ function AppContent() {
         // ignore and keep local runtimeProgramWindow fallback
       }
     }
+    if (String(options?.forcedProgramLabel || '').trim()) {
+      runtimeProgramWindow = {
+        isConfigured: true,
+        isActive: true,
+        label: String(options.forcedProgramLabel).trim(),
+      };
+    }
     const runtimeRegistrationWindow = (() => {
       const cfg = registrationConfig || null;
       const name = String(cfg?.name || '').trim();
@@ -5514,6 +5521,14 @@ function AppContent() {
       setSelectedMajlis('');
       return { status: 'counted', targetKeys };
     } catch {
+      if (modeType === 'registration' && !options?.__registrationRetry) {
+        return countAttendance('program', kind, locationName, selectedMember, {
+          ...options,
+          __registrationRetry: true,
+          runtimeContext,
+          forcedProgramLabel: runtimeRegistrationWindow.label,
+        });
+      }
       Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
       setToast('Datenbankfehler – bitte Internet prüfen');
       return { status: 'error' };
