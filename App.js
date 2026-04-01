@@ -313,8 +313,8 @@ const ANNOUNCEMENT_DOC_ID = 'current';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
 const PROGRAM_DAILY_COLLECTION_LEGACY = 'attendance_programm_daily';
-const REGISTRATION_CONFIG_COLLECTION = 'registration_overlay_config';
-const REGISTRATION_CONFIG_DOC_ID = 'current';
+const REGISTRATION_CONFIG_COLLECTION = 'program_configs';
+const REGISTRATION_CONFIG_DOC_ID = 'registration_overlay';
 const REGISTRATION_ATTENDANCE_COLLECTION = 'attendance_registration_entries';
 const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
@@ -1395,7 +1395,6 @@ function AppContent() {
   const [registrationNameInput, setRegistrationNameInput] = useState('');
   const [registrationFromInput, setRegistrationFromInput] = useState('');
   const [registrationUntilInput, setRegistrationUntilInput] = useState('');
-  const [registrationEnabled, setRegistrationEnabled] = useState(false);
   const [registrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [registrationPublicVisible, setRegistrationPublicVisible] = useState(false);
   const [registrationAllowedTanzeem, setRegistrationAllowedTanzeem] = useState(PROGRAM_TANZEEM_OPTIONS);
@@ -2038,12 +2037,10 @@ function AppContent() {
     const name = String(cfg?.name || '').trim();
     const fromISO = String(cfg?.fromDateISO || '');
     const untilISO = String(cfg?.untilDateISO || '');
-    const enabled = Boolean(cfg?.enabled);
     const isConfigured = Boolean(name && fromISO && untilISO);
     if (!isConfigured) {
       return {
         isConfigured: false,
-        isEnabled: false,
         isActive: false,
         isVisibleForCurrentUser: false,
         label: '',
@@ -2052,12 +2049,11 @@ function AppContent() {
         allowedTanzeem: PROGRAM_TANZEEM_OPTIONS,
       };
     }
-    const isActive = enabled && todayISO >= fromISO && todayISO <= untilISO;
+    const isActive = todayISO >= fromISO && todayISO <= untilISO;
     const allowed = Array.isArray(cfg?.allowedTanzeem) ? cfg.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : [];
     const isPublic = Boolean(cfg?.publicVisible);
     return {
       isConfigured: true,
-      isEnabled: enabled,
       isActive,
       isPublic,
       isVisibleForCurrentUser: isPublic || Boolean(currentAccount),
@@ -3011,7 +3007,6 @@ function AppContent() {
         setRegistrationNameInput(String(data?.name || ''));
         setRegistrationFromInput(formatISOToRegistrationInput(data?.fromDateISO || ''));
         setRegistrationUntilInput(formatISOToRegistrationInput(data?.untilDateISO || ''));
-        setRegistrationEnabled(Boolean(data?.enabled));
         setRegistrationPublicVisible(Boolean(data?.publicVisible));
         const allowed = Array.isArray(data?.allowedTanzeem) ? data.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : [];
         setRegistrationAllowedTanzeem(allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS);
@@ -3044,7 +3039,6 @@ function AppContent() {
       name,
       fromDateISO: fromISO,
       untilDateISO: untilISO,
-      enabled: Boolean(registrationEnabled),
       publicVisible: Boolean(registrationPublicVisible),
       allowedTanzeem: allowed,
       updatedAt: new Date().toISOString(),
@@ -3066,7 +3060,6 @@ function AppContent() {
       setRegistrationNameInput('');
       setRegistrationFromInput('');
       setRegistrationUntilInput('');
-      setRegistrationEnabled(false);
       setRegistrationPublicVisible(false);
       setRegistrationAllowedTanzeem(PROGRAM_TANZEEM_OPTIONS);
       setToast('Anmeldung deaktiviert');
@@ -5316,9 +5309,8 @@ function AppContent() {
       const name = String(cfg?.name || '').trim();
       const fromISO = String(cfg?.fromDateISO || '');
       const untilISO = String(cfg?.untilDateISO || '');
-      const enabled = Boolean(cfg?.enabled);
       const isConfigured = Boolean(name && fromISO && untilISO);
-      const isActive = isConfigured && enabled && runtimeISO >= fromISO && runtimeISO <= untilISO;
+      const isActive = isConfigured && runtimeISO >= fromISO && runtimeISO <= untilISO;
       const allowed = Array.isArray(cfg?.allowedTanzeem) ? cfg.allowedTanzeem.filter((key) => PROGRAM_TANZEEM_OPTIONS.includes(key)) : PROGRAM_TANZEEM_OPTIONS;
       return { isConfigured, isActive, label: name, allowedTanzeem: allowed.length ? allowed : PROGRAM_TANZEEM_OPTIONS };
     })();
@@ -6873,7 +6865,6 @@ function AppContent() {
           <TextInput value={registrationFromInput} onChangeText={setRegistrationFromInput} placeholder="Von (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
           <TextInput value={registrationUntilInput} onChangeText={setRegistrationUntilInput} placeholder="Bis (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
-        <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Anmeldung aktivieren</Text><Switch value={registrationEnabled} onValueChange={setRegistrationEnabled} /></View>
         <Pressable onPress={() => setRegistrationAdvancedVisible((prev) => !prev)} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
           <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{registrationAdvancedVisible ? 'Erweiterte Einstellungen ▲' : 'Erweiterte Einstellungen ▼'}</Text>
         </Pressable>
