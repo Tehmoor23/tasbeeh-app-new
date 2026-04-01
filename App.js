@@ -1461,6 +1461,7 @@ function AppContent() {
   const [registrationConfigById, setRegistrationConfigById] = useState({});
   const [registrationStats, setRegistrationStats] = useState(null);
   const [selectedRegistrationStatsConfigId, setSelectedRegistrationStatsConfigId] = useState('');
+  const [registrationMajlisFilter, setRegistrationMajlisFilter] = useState('total');
   const [registrationNameInput, setRegistrationNameInput] = useState('');
   const [registrationStartDateInput, setRegistrationStartDateInput] = useState('');
   const [registrationEndDateInput, setRegistrationEndDateInput] = useState('');
@@ -3639,11 +3640,24 @@ function AppContent() {
     if (activeTab !== 'stats' || statsMode !== 'registration') return;
     if (!availableRegistrationStatsOptions.length) {
       setSelectedRegistrationStatsConfigId('');
+      setRegistrationMajlisFilter('total');
       return;
     }
     if (selectedRegistrationStatsConfigId && availableRegistrationStatsOptions.some((item) => item.id === selectedRegistrationStatsConfigId)) return;
     setSelectedRegistrationStatsConfigId(availableRegistrationStatsOptions[0].id);
+    setRegistrationMajlisFilter('total');
   }, [activeTab, statsMode, availableRegistrationStatsOptions, selectedRegistrationStatsConfigId]);
+
+  useEffect(() => {
+    if (statsMode !== 'registration') return;
+    const allowed = selectedRegistrationStatsOption?.advanced?.includeTanzeems || [];
+    if (!allowed.length) return;
+    if (detailedFlowTanzeem && !allowed.includes(detailedFlowTanzeem)) {
+      setDetailedFlowTanzeem('');
+      setDetailedFlowMajlis('');
+      setDetailedIdSearchQuery('');
+    }
+  }, [statsMode, selectedRegistrationStatsOption, detailedFlowTanzeem]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
@@ -4302,6 +4316,7 @@ function AppContent() {
 
   const writeProgramWorkbook = useCallback(async () => {
     const dateLabel = formatIsoWithWeekday(selectedProgramConfigDateISO || todayISO);
+    const activeTanzeems = [...PROGRAM_TANZEEM_OPTIONS];
     const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
@@ -4361,38 +4376,37 @@ function AppContent() {
       };
 
       const totalCounts = buildCountsForFilter('total');
-      const ansarCounts = buildCountsForFilter('ansar');
-      const khuddamCounts = buildCountsForFilter('khuddam');
-      const atfalCounts = buildCountsForFilter('atfal');
-      const kinderCounts = buildCountsForFilter('kinder');
+      const tanzeemCounts = activeTanzeems.reduce((acc, key) => {
+        acc[key] = buildCountsForFilter(key);
+        return acc;
+      }, {});
 
       const allMajlises = Array.from(new Set([
         ...Object.keys(totalCounts.registeredByMajlis),
         ...Object.keys(totalCounts.presentByMajlis),
-        ...Object.keys(ansarCounts.registeredByMajlis),
-        ...Object.keys(ansarCounts.presentByMajlis),
-        ...Object.keys(khuddamCounts.registeredByMajlis),
-        ...Object.keys(khuddamCounts.presentByMajlis),
-        ...Object.keys(atfalCounts.registeredByMajlis),
-        ...Object.keys(atfalCounts.presentByMajlis),
-        ...Object.keys(kinderCounts.registeredByMajlis),
-        ...Object.keys(kinderCounts.presentByMajlis),
+        ...Object.values(tanzeemCounts).flatMap((node) => ([
+          ...Object.keys(node.registeredByMajlis),
+          ...Object.keys(node.presentByMajlis),
+        ])),
       ]));
 
       return allMajlises
-        .map((majlis) => ({
-          majlis,
-          totalPresent: Number(totalCounts.presentByMajlis[majlis]) || 0,
-          totalRegistered: Number(totalCounts.registeredByMajlis[majlis]) || 0,
-          ansarPresent: Number(ansarCounts.presentByMajlis[majlis]) || 0,
-          ansarRegistered: Number(ansarCounts.registeredByMajlis[majlis]) || 0,
-          khuddamPresent: Number(khuddamCounts.presentByMajlis[majlis]) || 0,
-          khuddamRegistered: Number(khuddamCounts.registeredByMajlis[majlis]) || 0,
-          atfalPresent: Number(atfalCounts.presentByMajlis[majlis]) || 0,
-          atfalRegistered: Number(atfalCounts.registeredByMajlis[majlis]) || 0,
-          kinderPresent: Number(kinderCounts.presentByMajlis[majlis]) || 0,
-          kinderRegistered: Number(kinderCounts.registeredByMajlis[majlis]) || 0,
-        }))
+        .map((majlis) => {
+          const byTanzeem = activeTanzeems.reduce((acc, key) => {
+            const one = tanzeemCounts[key] || { presentByMajlis: {}, registeredByMajlis: {} };
+            acc[key] = {
+              present: Number(one.presentByMajlis[majlis]) || 0,
+              registered: Number(one.registeredByMajlis[majlis]) || 0,
+            };
+            return acc;
+          }, {});
+          return {
+            majlis,
+            totalPresent: Number(totalCounts.presentByMajlis[majlis]) || 0,
+            totalRegistered: Number(totalCounts.registeredByMajlis[majlis]) || 0,
+            byTanzeem,
+          };
+        })
         .sort((a, b) => (b.totalPresent - a.totalPresent) || a.majlis.localeCompare(b.majlis));
     })();
 
@@ -4419,18 +4433,15 @@ function AppContent() {
     overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
 
     const majlisAttendanceSheetRows = [
-      ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal', 'Kinder'],
+      ['Majlis', 'Gesamt', ...activeTanzeems.map((key) => TANZEEM_LABELS[key] || key)],
       ...majlisAttendanceRows.map((row) => [
         row.majlis,
         formatRatioWithPercent(row.totalPresent, row.totalRegistered),
-        formatRatioWithPercent(row.ansarPresent, row.ansarRegistered),
-        formatRatioWithPercent(row.khuddamPresent, row.khuddamRegistered),
-        formatRatioWithPercent(row.atfalPresent, row.atfalRegistered),
-        formatRatioWithPercent(row.kinderPresent, row.kinderRegistered),
+        ...activeTanzeems.map((key) => formatRatioWithPercent(row.byTanzeem?.[key]?.present, row.byTanzeem?.[key]?.registered)),
       ]),
     ];
     const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
-    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }];
+    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, ...Array.from({ length: 1 + activeTanzeems.length }, () => ({ wch: 24 }))];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anwesenheit');
@@ -4555,38 +4566,37 @@ function AppContent() {
       };
 
       const totalCounts = buildCountsForFilter('total');
-      const ansarCounts = buildCountsForFilter('ansar');
-      const khuddamCounts = buildCountsForFilter('khuddam');
-      const atfalCounts = buildCountsForFilter('atfal');
-      const kinderCounts = buildCountsForFilter('kinder');
+      const tanzeemCounts = activeTanzeems.reduce((acc, key) => {
+        acc[key] = buildCountsForFilter(key);
+        return acc;
+      }, {});
 
       const allMajlises = Array.from(new Set([
         ...Object.keys(totalCounts.registeredByMajlis),
         ...Object.keys(totalCounts.presentByMajlis),
-        ...Object.keys(ansarCounts.registeredByMajlis),
-        ...Object.keys(ansarCounts.presentByMajlis),
-        ...Object.keys(khuddamCounts.registeredByMajlis),
-        ...Object.keys(khuddamCounts.presentByMajlis),
-        ...Object.keys(atfalCounts.registeredByMajlis),
-        ...Object.keys(atfalCounts.presentByMajlis),
-        ...Object.keys(kinderCounts.registeredByMajlis),
-        ...Object.keys(kinderCounts.presentByMajlis),
+        ...Object.values(tanzeemCounts).flatMap((node) => ([
+          ...Object.keys(node.registeredByMajlis),
+          ...Object.keys(node.presentByMajlis),
+        ])),
       ]));
 
       return allMajlises
-        .map((majlis) => ({
-          majlis,
-          totalPresent: Number(totalCounts.presentByMajlis[majlis]) || 0,
-          totalRegistered: Number(totalCounts.registeredByMajlis[majlis]) || 0,
-          ansarPresent: Number(ansarCounts.presentByMajlis[majlis]) || 0,
-          ansarRegistered: Number(ansarCounts.registeredByMajlis[majlis]) || 0,
-          khuddamPresent: Number(khuddamCounts.presentByMajlis[majlis]) || 0,
-          khuddamRegistered: Number(khuddamCounts.registeredByMajlis[majlis]) || 0,
-          atfalPresent: Number(atfalCounts.presentByMajlis[majlis]) || 0,
-          atfalRegistered: Number(atfalCounts.registeredByMajlis[majlis]) || 0,
-          kinderPresent: Number(kinderCounts.presentByMajlis[majlis]) || 0,
-          kinderRegistered: Number(kinderCounts.registeredByMajlis[majlis]) || 0,
-        }))
+        .map((majlis) => {
+          const byTanzeem = activeTanzeems.reduce((acc, key) => {
+            const one = tanzeemCounts[key] || { presentByMajlis: {}, registeredByMajlis: {} };
+            acc[key] = {
+              present: Number(one.presentByMajlis[majlis]) || 0,
+              registered: Number(one.registeredByMajlis[majlis]) || 0,
+            };
+            return acc;
+          }, {});
+          return {
+            majlis,
+            totalPresent: Number(totalCounts.presentByMajlis[majlis]) || 0,
+            totalRegistered: Number(totalCounts.registeredByMajlis[majlis]) || 0,
+            byTanzeem,
+          };
+        })
         .sort((a, b) => (b.totalPresent - a.totalPresent) || a.majlis.localeCompare(b.majlis));
     })();
 
@@ -4607,18 +4617,15 @@ function AppContent() {
     overviewSheet['!cols'] = [{ wch: 24 }, { wch: 36 }];
 
     const majlisAttendanceSheetRows = [
-      ['Majlis', 'Gesamt', 'Ansar', 'Khuddam', 'Atfal', 'Kinder'],
+      ['Majlis', 'Gesamt', ...activeTanzeems.map((key) => TANZEEM_LABELS[key] || key)],
       ...majlisAttendanceRows.map((row) => [
         row.majlis,
         formatRatioWithPercent(row.totalPresent, row.totalRegistered),
-        formatRatioWithPercent(row.ansarPresent, row.ansarRegistered),
-        formatRatioWithPercent(row.khuddamPresent, row.khuddamRegistered),
-        formatRatioWithPercent(row.atfalPresent, row.atfalRegistered),
-        formatRatioWithPercent(row.kinderPresent, row.kinderRegistered),
+        ...activeTanzeems.map((key) => formatRatioWithPercent(row.byTanzeem?.[key]?.present, row.byTanzeem?.[key]?.registered)),
       ]),
     ];
     const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
-    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }, { wch: 24 }];
+    majlisAttendanceSheet['!cols'] = [{ wch: 28 }, ...Array.from({ length: 1 + activeTanzeems.length }, () => ({ wch: 24 }))];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anmeldungen');
@@ -6505,29 +6512,70 @@ function AppContent() {
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                   <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anmeldungen nach Majlis</Text>
-                  {Object.keys(registrationStats?.byMajlis || {}).length === 0 ? (
-                    <Text style={[styles.noteText, { color: theme.muted }]}>Keine Anmeldungsdaten verfügbar</Text>
-                  ) : (
-                    (() => {
-                      const rows = Object.entries(registrationStats?.byMajlis || {})
-                        .map(([majlisKey, total]) => ({
-                          majlis: formatMajlisName(majlisKey),
-                          present: Number(total) || 0,
-                          total: Number(total) || 0,
-                        }))
-                        .sort((a, b) => (b.present - a.present) || a.majlis.localeCompare(b.majlis));
-                      const maxTop = Math.max(1, ...rows.map((row) => Number(row.present) || 0));
-                      return rows.map((row) => (
-                        <View key={row.majlis} style={styles.majlisBarRow}>
-                          <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{row.majlis}</Text>
-                          <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
-                            <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(row.present) || 0) / maxTop) * 100}%` }]} />
-                          </View>
-                          <Text numberOfLines={1} style={[styles.majlisBarValue, { color: theme.text }]}>{`${row.present}/${row.total}`}</Text>
+                  <View style={styles.statsToggleRow}>
+                    {['total', ...(selectedRegistrationStatsOption.advanced?.includeTanzeems || [])].map((key) => {
+                      const isActive = registrationMajlisFilter === key;
+                      return (
+                        <Pressable
+                          key={`registration_majlis_filter_${key}`}
+                          onPress={() => setRegistrationMajlisFilter(key)}
+                          style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
+                        >
+                          <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{key === 'total' ? 'Gesamt' : (TANZEEM_LABELS[key] || key)}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  {(() => {
+                    const filterKey = registrationMajlisFilter;
+                    const allowedTanzeems = selectedRegistrationStatsOption.advanced?.includeTanzeems || [];
+                    const includeAllAllowed = filterKey === 'total';
+                    const registeredByMajlis = membersDirectory
+                      .filter((entry) => {
+                        const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+                        if (!allowedTanzeems.includes(tanzeem)) return false;
+                        return includeAllAllowed ? true : tanzeem === filterKey;
+                      })
+                      .reduce((acc, entry) => {
+                        const majlis = String(entry?.majlis || '').trim();
+                        if (!majlis) return acc;
+                        acc[majlis] = (acc[majlis] || 0) + 1;
+                        return acc;
+                      }, {});
+                    const presentByMajlis = registrationAttendanceEntries
+                      .filter((entry) => {
+                        const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+                        if (!allowedTanzeems.includes(tanzeem)) return false;
+                        return includeAllAllowed ? true : tanzeem === filterKey;
+                      })
+                      .reduce((acc, entry) => {
+                        const majlis = String(entry?.majlis || '').trim();
+                        if (!majlis) return acc;
+                        acc[majlis] = (acc[majlis] || 0) + 1;
+                        return acc;
+                      }, {});
+                    const rows = Array.from(new Set([...Object.keys(registeredByMajlis), ...Object.keys(presentByMajlis)]))
+                      .map((majlis) => ({
+                        majlis,
+                        label: formatMajlisName(majlis),
+                        present: Number(presentByMajlis[majlis]) || 0,
+                        total: Number(registeredByMajlis[majlis]) || 0,
+                      }))
+                      .sort((a, b) => (b.present - a.present) || a.label.localeCompare(b.label));
+                    if (!rows.length) {
+                      return <Text style={[styles.noteText, { color: theme.muted }]}>Keine Anmeldungsdaten verfügbar</Text>;
+                    }
+                    const maxTop = Math.max(1, ...rows.map((row) => Number(row.present) || 0));
+                    return rows.map((row) => (
+                      <View key={`${row.majlis}_${filterKey}`} style={styles.majlisBarRow}>
+                        <Text style={[styles.majlisBarLabel, { color: theme.text }]} numberOfLines={1}>{row.label}</Text>
+                        <View style={[styles.majlisBarTrack, { backgroundColor: theme.border }]}>
+                          <View style={[styles.majlisBarFill, { backgroundColor: theme.button, width: `${((Number(row.present) || 0) / maxTop) * 100}%` }]} />
                         </View>
-                      ));
-                    })()
-                  )}
+                        <Text numberOfLines={1} style={[styles.majlisBarValue, { color: theme.text }]}>{`${row.present}/${row.total}`}</Text>
+                      </View>
+                    ));
+                  })()}
                 </View>
                 {effectivePermissions.canViewIdStats ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -7268,9 +7316,6 @@ function AppContent() {
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearRegistrationConfig}>
           <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Anmeldung deaktivieren</Text>
         </Pressable>
-        <Pressable onPress={() => setRegistrationAdvancedVisible((prev) => !prev)} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
-          <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Erweiterte Einstellungen</Text>
-        </Pressable>
         {isRegistrationAdvancedVisible ? (
           <>
             <View style={styles.mergeSwitchWrap}>
@@ -7299,6 +7344,9 @@ function AppContent() {
         ) : null}
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveRegistrationConfig}>
           <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Anmeldung speichern</Text>
+        </Pressable>
+        <Pressable onPress={() => setRegistrationAdvancedVisible((prev) => !prev)} style={[styles.privacyNoticeLinkWrap, { alignSelf: 'center', marginTop: 6 }]}>
+          <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Erweiterte Einstellungen</Text>
         </Pressable>
       </View>
 
@@ -7868,7 +7916,11 @@ function AppContent() {
                     <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID Suche</Text>
                   </View>
                   <View style={styles.statsToggleRow}>
-                    {(statsMode === 'program' ? PROGRAM_TANZEEM_OPTIONS : (statsMode === 'registration' ? REGISTRATION_TANZEEM_OPTIONS : TANZEEM_OPTIONS)).map((key) => {
+                    {(statsMode === 'program'
+                      ? PROGRAM_TANZEEM_OPTIONS
+                      : (statsMode === 'registration'
+                        ? (selectedRegistrationStatsOption?.advanced?.includeTanzeems || [])
+                        : TANZEEM_OPTIONS)).map((key) => {
                       const isActive = detailedFlowTanzeem === key;
                       return (
                         <Pressable
