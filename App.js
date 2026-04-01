@@ -1320,6 +1320,7 @@ function AppContent() {
   const [isStatsWeekModalVisible, setStatsWeekModalVisible] = useState(false);
   const [isDetailedCalendarVisible, setDetailedCalendarVisible] = useState(false);
   const [isDetailedWeekPickerVisible, setDetailedWeekPickerVisible] = useState(false);
+  const [isProgramStatsPickerVisible, setProgramStatsPickerVisible] = useState(false);
   const [availableStatsDates, setAvailableStatsDates] = useState([]);
   const [prayerOverride, setPrayerOverride] = useState(normalizePrayerOverride(null));
   const [pendingPrayerOverride, setPendingPrayerOverride] = useState(null);
@@ -1950,6 +1951,28 @@ function AppContent() {
     const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
     return `${name} (${weekday}, ${datePart})`;
   }, [selectedProgramConfig, selectedProgramConfigDateISO, todayISO]);
+  const availableProgramStatsOptions = useMemo(() => (
+    availableProgramStatsDates
+      .map((iso) => {
+        const config = programConfigByDate?.[iso] || null;
+        const programName = String(config?.name || '').trim();
+        if (!programName) return null;
+        const dateObj = parseISO(iso);
+        const dateLabel = dateObj
+          ? (() => {
+            const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '');
+            const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+            return `${weekday}, ${datePart}`;
+          })()
+          : iso;
+        return {
+          iso,
+          programName,
+          label: `${dateLabel} · ${programName}`,
+        };
+      })
+      .filter(Boolean)
+  ), [availableProgramStatsDates, programConfigByDate]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
   const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
@@ -5636,35 +5659,39 @@ function AppContent() {
         </View>
 
         {isProgramStatsMode ? (
-          !selectedProgramConfigDateISO ? (
-            <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
-            </View>
-          ) : (
-            <>
-              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <View style={styles.statsCardHeaderRow}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm auswählen</Text>
-                  <Pressable
-                    onPress={() => {
-                      if (!availableProgramStatsDates.length) return;
-                      const idx = availableProgramStatsDates.indexOf(selectedProgramConfigDateISO);
-                      const safeIdx = idx >= 0 ? idx : 0;
-                      setSelectedProgramStatsDateISO(availableProgramStatsDates[(safeIdx + 1) % availableProgramStatsDates.length]);
-                    }}
-                    style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}
-                  >
-                    <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>
-                      {selectedProgramConfigDateISO ? `<< ${formatIsoWithWeekday(selectedProgramConfigDateISO)} >>` : '—'}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
+          <>
+            <Pressable
+              onPress={() => {
+                if (!availableProgramStatsOptions.length) return;
+                setProgramStatsPickerVisible(true);
+              }}
+              disabled={!availableProgramStatsOptions.length}
+              style={[
+                styles.statsCalendarBtn,
+                {
+                  borderColor: theme.border,
+                  backgroundColor: theme.bg,
+                  opacity: availableProgramStatsOptions.length ? 1 : 0.6,
+                },
+              ]}
+            >
+              <Text style={[styles.statsCalendarBtnText, { color: theme.text }]}>
+                {selectedProgramConfigDateISO
+                  ? `Programm auswählen · ${selectedProgramLabel}`
+                  : 'Programm auswählen · Keine Programmdaten'}
+              </Text>
+            </Pressable>
 
+            {!selectedProgramConfigDateISO ? (
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm</Text>
-                <Text style={[styles.statsBigValue, { color: theme.text }]}>{selectedProgramLabel}</Text>
+                <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
               </View>
+            ) : (
+              <>
+                <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm</Text>
+                  <Text style={[styles.statsBigValue, { color: theme.text }]}>{selectedProgramLabel}</Text>
+                </View>
 
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Programmanwesenheit</Text>
@@ -5723,8 +5750,9 @@ function AppContent() {
                 </Pressable>
               </View>
               ) : null}
-            </>
-          )
+              </>
+            )}
+          </>
         ) : (
           <>
             {(() => {
@@ -6937,6 +6965,38 @@ function AppContent() {
               <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
             </Pressable>
           </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isProgramStatsPickerVisible} animationType="slide" transparent onRequestClose={() => setProgramStatsPickerVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <SafeAreaView style={[styles.privacyModalCard, { backgroundColor: theme.bg }]}>
+            <View style={styles.privacyModalHeader}>
+              <Text style={[styles.privacyModalTitle, { color: theme.text }]}>Programm auswählen</Text>
+              <Pressable onPress={() => setProgramStatsPickerVisible(false)} style={withPressEffect(styles.privacyModalCloseBtn)}>
+                <Text style={[styles.privacyModalCloseText, { color: theme.muted }]}>Schließen</Text>
+              </Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.statsCalendarBody}>
+              {availableProgramStatsOptions.length === 0 ? (
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Programmdaten verfügbar.</Text>
+              ) : availableProgramStatsOptions.map((item) => {
+                const isActive = item.iso === selectedProgramConfigDateISO;
+                return (
+                  <Pressable
+                    key={`program_stats_${item.iso}`}
+                    onPress={() => {
+                      setSelectedProgramStatsDateISO(item.iso);
+                      setProgramStatsPickerVisible(false);
+                    }}
+                    style={[styles.statsCalendarItem, { borderColor: theme.border, backgroundColor: isActive ? theme.button : theme.card }]}
+                  >
+                    <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{item.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </SafeAreaView>
         </View>
       </Modal>
 
