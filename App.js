@@ -731,11 +731,36 @@ function MiniLineChart({ labels, series, theme, isDarkMode, xAxisTitle = 'Zeitac
 const pad = (n) => String(n).padStart(2, '0');
 const toISO = (date) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const parseISO = (iso) => (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? null : new Date(`${iso}T00:00:00`));
+const normalizeRegistrationShortDate = (value) => {
+  const raw = String(value || '').trim();
+  const germanMatch = raw.match(/^(\d{1,2})[.\-/](\d{1,2})$/);
+  if (germanMatch) {
+    const day = Number(germanMatch[1]);
+    const month = Number(germanMatch[2]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) return `${pad(day)}.${pad(month)}`;
+  }
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const day = Number(isoMatch[3]);
+    const month = Number(isoMatch[2]);
+    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) return `${pad(day)}.${pad(month)}`;
+  }
+  return '';
+};
+const registrationShortDateToKey = (value) => {
+  const normalized = normalizeRegistrationShortDate(value);
+  if (!normalized) return null;
+  const [dayRaw, monthRaw] = normalized.split('.');
+  const day = Number(dayRaw);
+  const month = Number(monthRaw);
+  if (!Number.isFinite(day) || !Number.isFinite(month)) return null;
+  return (month * 100) + day;
+};
 const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
   const id = String(data?.id || fallbackDocId || '').trim();
   const name = String(data?.name || '').trim();
-  const startDate = String(data?.startDate || '').trim();
-  const endDate = String(data?.endDate || '').trim();
+  const startDate = normalizeRegistrationShortDate(data?.startDate || '');
+  const endDate = normalizeRegistrationShortDate(data?.endDate || '');
   const includeTanzeems = Array.isArray(data?.advanced?.includeTanzeems)
     ? data.advanced.includeTanzeems
     : (Array.isArray(data?.includeTanzeems) ? data.includeTanzeems : REGISTRATION_TANZEEM_OPTIONS);
@@ -758,8 +783,13 @@ const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
 const getRegistrationWindowState = (config, todayISO) => {
   if (!config || !config.startDate || !config.endDate) return { hasRange: false, isOpen: false, isUpcoming: false, isPast: false };
   if (config.disabled) return { hasRange: true, isOpen: false, isUpcoming: false, isPast: true };
-  if (todayISO < config.startDate) return { hasRange: true, isOpen: false, isUpcoming: true, isPast: false };
-  if (todayISO > config.endDate) return { hasRange: true, isOpen: false, isUpcoming: false, isPast: true };
+  const todayShort = normalizeRegistrationShortDate(todayISO);
+  const todayKey = registrationShortDateToKey(todayShort);
+  const startKey = registrationShortDateToKey(config.startDate);
+  const endKey = registrationShortDateToKey(config.endDate);
+  if (todayKey === null || startKey === null || endKey === null) return { hasRange: false, isOpen: false, isUpcoming: false, isPast: false };
+  if (todayKey < startKey) return { hasRange: true, isOpen: false, isUpcoming: true, isPast: false };
+  if (todayKey > endKey) return { hasRange: true, isOpen: false, isUpcoming: false, isPast: true };
   return { hasRange: true, isOpen: true, isUpcoming: false, isPast: false };
 };
 const applyForcedTestDate = (date) => {
@@ -3067,12 +3097,14 @@ function AppContent() {
   const saveRegistrationConfig = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
     const name = String(registrationNameInput || '').trim();
-    const startDate = String(registrationStartDateInput || '').trim();
-    const endDate = String(registrationEndDateInput || '').trim();
+    const startDate = normalizeRegistrationShortDate(registrationStartDateInput || '');
+    const endDate = normalizeRegistrationShortDate(registrationEndDateInput || '');
+    const startDateKey = registrationShortDateToKey(startDate);
+    const endDateKey = registrationShortDateToKey(endDate);
     const includeTanzeems = registrationIncludedTanzeemsInput
       .map((entry) => String(entry || '').toLowerCase())
       .filter((entry, index, arr) => REGISTRATION_TANZEEM_OPTIONS.includes(entry) && arr.indexOf(entry) === index);
-    if (!name || !parseISO(startDate) || !parseISO(endDate) || startDate > endDate) {
+    if (!name || startDateKey === null || endDateKey === null || startDateKey > endDateKey) {
       setToast('Bitte Name und gültigen Zeitraum eingeben');
       return;
     }
@@ -3080,7 +3112,7 @@ function AppContent() {
       setToast('Mindestens eine Tanzeem auswählen');
       return;
     }
-    const docId = `${startDate}_${endDate}_${toLocationKey(name)}`;
+    const docId = `${startDate.replace('.', '-')}_${endDate.replace('.', '-')}_${toLocationKey(name)}`;
     const payload = normalizeRegistrationConfig({
       id: docId,
       name,
@@ -7076,8 +7108,8 @@ function AppContent() {
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Anmeldung</Text>
         <View style={styles.mergeInputWrap}>
           <TextInput value={registrationNameInput} onChangeText={setRegistrationNameInput} placeholder="Name der Anmeldung (z. B. Wahl 2026)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-          <TextInput value={registrationStartDateInput} onChangeText={setRegistrationStartDateInput} placeholder="Von (YYYY-MM-DD)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
-          <TextInput value={registrationEndDateInput} onChangeText={setRegistrationEndDateInput} placeholder="Bis (YYYY-MM-DD)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationStartDateInput} onChangeText={setRegistrationStartDateInput} placeholder="Von (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationEndDateInput} onChangeText={setRegistrationEndDateInput} placeholder="Bis (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
         <View style={styles.mergeSwitchWrap}>
           <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Anmeldung deaktivieren</Text>
@@ -7114,9 +7146,6 @@ function AppContent() {
         ) : null}
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveRegistrationConfig}>
           <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Anmeldung speichern</Text>
-        </Pressable>
-        <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearRegistrationConfig}>
-          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Anmeldung deaktivieren</Text>
         </Pressable>
       </View>
 
