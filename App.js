@@ -3271,12 +3271,23 @@ function AppContent() {
     Promise.all([
       listDocIds(PROGRAM_DAILY_COLLECTION).catch(() => []),
       listDocIds(PROGRAM_DAILY_COLLECTION_LEGACY).catch(() => []),
+      listDocIds(PROGRAM_ATTENDANCE_COLLECTION).catch(() => []),
     ])
-      .then(([primaryIds, legacyIds]) => {
+      .then(([primaryIds, legacyIds, entryIds]) => {
         if (cancelled) return;
+        const inferredDailyDocIds = entryIds
+          .map((id) => String(id || ''))
+          .filter((id) => /^\d{4}-\d{2}-\d{2}_/.test(id))
+          .map((id) => {
+            const parts = id.split('_');
+            if (parts.length < 3) return '';
+            return parts.slice(0, -1).join('_');
+          })
+          .filter(Boolean);
         const mergedIds = Array.from(new Set([
           ...primaryIds.map((id) => String(id || '')),
           ...legacyIds.map((id) => String(id || '')),
+          ...inferredDailyDocIds,
         ]));
         setProgramStatsDocIds(
           mergedIds
