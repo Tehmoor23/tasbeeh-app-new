@@ -1378,6 +1378,7 @@ function AppContent() {
   const [isDetailedExportModalVisible, setDetailedExportModalVisible] = useState(false);
   const [detailedExporting, setDetailedExporting] = useState(false);
   const [detailedProgramExporting, setDetailedProgramExporting] = useState(false);
+  const [detailedRegistrationExporting, setDetailedRegistrationExporting] = useState(false);
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
@@ -4821,6 +4822,135 @@ function AppContent() {
     }
   }, [detailedFlowTanzeem, detailedProgramExporting, effectivePermissions.canExportData, writeProgramDetailedIdWorkbook]);
 
+  const writeRegistrationDetailedIdWorkbook = useCallback(async (filterTanzeem = '') => {
+    const option = selectedRegistrationStatsOption;
+    if (!option?.id) { setToast('Keine Anmeldung ausgewählt'); return; }
+    const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).format(new Date());
+    const allowedTanzeems = option.advanced?.includeTanzeems || [];
+    const normalizedFilter = allowedTanzeems.includes(String(filterTanzeem || '').toLowerCase())
+      ? String(filterTanzeem || '').toLowerCase()
+      : '';
+    const tanzeemOrder = normalizedFilter ? [normalizedFilter] : allowedTanzeems;
+    const majlisOrderMap = PROGRAM_EXPORT_MAJLIS_ORDER.reduce((acc, name, index) => {
+      acc[String(name || '').trim().toLowerCase()] = index;
+      return acc;
+    }, {});
+    const presentMap = new Set(
+      registrationAttendanceEntries
+        .map((entry) => [
+          String(entry?.idNumber || ''),
+          String(entry?.tanzeem || '').toLowerCase(),
+          String(entry?.majlis || '').trim(),
+        ].join('||')),
+    );
+    const attendanceTimestampByKey = registrationAttendanceEntries
+      .reduce((acc, entry) => {
+        const key = [
+          String(entry?.idNumber || ''),
+          String(entry?.tanzeem || '').toLowerCase(),
+          String(entry?.majlis || '').trim(),
+        ].join('||');
+        const timestamp = String(entry?.timestamp || '');
+        const existing = String(acc[key] || '');
+        if (!existing) acc[key] = timestamp;
+        else if (timestamp && new Date(timestamp).getTime() < new Date(existing).getTime()) acc[key] = timestamp;
+        return acc;
+      }, {});
+
+    const memberRows = membersDirectory
+      .filter((entry) => allowedTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
+      .filter((entry) => (normalizedFilter ? entry.tanzeem === normalizedFilter : true))
+      .map((entry) => ({
+        idNumber: String(entry?.idNumber || '').trim(),
+        tanzeem: String(entry?.tanzeem || '').toLowerCase(),
+        majlis: String(entry?.majlis || '').trim(),
+      }))
+      .sort((a, b) => {
+        const tA = tanzeemOrder.indexOf(a.tanzeem);
+        const tB = tanzeemOrder.indexOf(b.tanzeem);
+        if (tA !== tB) return tA - tB;
+        const mA = Object.prototype.hasOwnProperty.call(majlisOrderMap, a.majlis.toLowerCase()) ? majlisOrderMap[a.majlis.toLowerCase()] : Number.MAX_SAFE_INTEGER;
+        const mB = Object.prototype.hasOwnProperty.call(majlisOrderMap, b.majlis.toLowerCase()) ? majlisOrderMap[b.majlis.toLowerCase()] : Number.MAX_SAFE_INTEGER;
+        if (mA !== mB) return mA - mB;
+        return a.idNumber.localeCompare(b.idNumber, 'de-DE', { numeric: true, sensitivity: 'base' });
+      })
+      .map((row) => {
+        const key = [row.idNumber, row.tanzeem, row.majlis].join('||');
+        return {
+          majlis: row.majlis,
+          tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
+          idNumber: row.idNumber,
+          registered: presentMap.has(key) ? 'Ja' : 'Nein',
+          timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
+        };
+      });
+
+    if (!memberRows.length) {
+      setToast('Keine Mitgliedsdaten zum Export verfügbar');
+      return;
+    }
+
+    const workbook = XLSX.utils.book_new();
+    const rows = [
+      ['Moschee', activeMosque.label],
+      ['Anmeldung', option.name || '—'],
+      ['Zeitraum', `${option.startDate} bis ${option.endDate}`],
+      ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
+      ['Export Zeitstempel', exportTimestamp],
+      [],
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Angemeldet', 'Zeitstempel'],
+      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.registered, row.timestamp]),
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(rows);
+    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+    XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
+
+    const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+    const fileName = `Anmeldung_ID_Uebersicht_${toLocationKey(option.name || 'anmeldung')}_${option.startDate}_${option.endDate}.xlsx`;
+    if (Platform.OS === 'web') {
+      if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
+      const binary = globalThis.atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+      return;
+    }
+    const cacheDir = String(FileSystem.cacheDirectory || '');
+    if (!cacheDir) throw new Error('Dateisystem nicht verfügbar (cacheDirectory fehlt)');
+    const fileUri = `${cacheDir}${fileName}`;
+    await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+    await Sharing.shareAsync(fileUri, {
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      dialogTitle: 'Anmeldungs-ID-Übersicht exportieren',
+      UTI: 'org.openxmlformats.spreadsheetml.sheet',
+    });
+  }, [activeMosque.label, membersDirectory, registrationAttendanceEntries, selectedRegistrationStatsOption]);
+
+  const handleExportRegistrationDetailedIds = useCallback(async () => {
+    if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
+    if (detailedRegistrationExporting) return;
+    setDetailedRegistrationExporting(true);
+    try {
+      await writeRegistrationDetailedIdWorkbook(detailedFlowTanzeem);
+    } catch (error) {
+      const message = String(error?.message || '').trim();
+      setToast(message ? `Export fehlgeschlagen: ${message}` : 'Export fehlgeschlagen');
+      console.error('Registration detailed export failed', error);
+    } finally {
+      setDetailedRegistrationExporting(false);
+    }
+  }, [detailedFlowTanzeem, detailedRegistrationExporting, effectivePermissions.canExportData, writeRegistrationDetailedIdWorkbook]);
+
   function formatMajlisName(locationKey) {
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
@@ -6512,19 +6642,30 @@ function AppContent() {
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                   <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anmeldungen nach Majlis</Text>
-                  <View style={styles.statsToggleRow}>
-                    {['total', ...(selectedRegistrationStatsOption.advanced?.includeTanzeems || [])].map((key) => {
-                      const isActive = registrationMajlisFilter === key;
-                      return (
-                        <Pressable
-                          key={`registration_majlis_filter_${key}`}
-                          onPress={() => setRegistrationMajlisFilter(key)}
-                          style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
-                        >
-                          <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{key === 'total' ? 'Gesamt' : (TANZEEM_LABELS[key] || key)}</Text>
-                        </Pressable>
-                      );
-                    })}
+                  <View style={styles.statsCyclerRow}>
+                    <Pressable
+                      onPress={() => setRegistrationMajlisFilter((prev) => {
+                        const options = ['total', ...(selectedRegistrationStatsOption.advanced?.includeTanzeems || [])];
+                        const idx = options.indexOf(prev);
+                        return options[(idx - 1 + options.length) % options.length];
+                      })}
+                      style={[styles.statsCyclerControl, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                    >
+                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>‹</Text>
+                    </Pressable>
+                    <Text style={[styles.statsCyclerValue, { color: theme.text }]}>
+                      {registrationMajlisFilter === 'total' ? 'Gesamt' : (TANZEEM_LABELS[registrationMajlisFilter] || registrationMajlisFilter)}
+                    </Text>
+                    <Pressable
+                      onPress={() => setRegistrationMajlisFilter((prev) => {
+                        const options = ['total', ...(selectedRegistrationStatsOption.advanced?.includeTanzeems || [])];
+                        const idx = options.indexOf(prev);
+                        return options[(idx + 1) % options.length];
+                      })}
+                      style={[styles.statsCyclerControl, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                    >
+                      <Text style={[styles.statsCyclerArrow, { color: theme.text }]}>›</Text>
+                    </Pressable>
                   </View>
                   {(() => {
                     const filterKey = registrationMajlisFilter;
@@ -7903,11 +8044,11 @@ function AppContent() {
                 <>
                   {statsMode === 'program' || statsMode === 'registration' ? (
                     <Pressable
-                      onPress={statsMode === 'program' ? handleExportProgramDetailedIds : handleExportRegistration}
-                      disabled={(statsMode === 'program' ? detailedProgramExporting : registrationExporting) || !effectivePermissions.canExportData}
-                      style={[styles.statsExportBtn, { borderColor: theme.border, backgroundColor: ((statsMode === 'program' ? detailedProgramExporting : registrationExporting) || !effectivePermissions.canExportData) ? theme.border : theme.bg, opacity: ((statsMode === 'program' ? detailedProgramExporting : registrationExporting) || !effectivePermissions.canExportData) ? 0.7 : 1 }]}
+                      onPress={statsMode === 'program' ? handleExportProgramDetailedIds : handleExportRegistrationDetailedIds}
+                      disabled={(statsMode === 'program' ? detailedProgramExporting : detailedRegistrationExporting) || !effectivePermissions.canExportData}
+                      style={[styles.statsExportBtn, { borderColor: theme.border, backgroundColor: ((statsMode === 'program' ? detailedProgramExporting : detailedRegistrationExporting) || !effectivePermissions.canExportData) ? theme.border : theme.bg, opacity: ((statsMode === 'program' ? detailedProgramExporting : detailedRegistrationExporting) || !effectivePermissions.canExportData) ? 0.7 : 1 }]}
                     >
-                      <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{(statsMode === 'program' ? detailedProgramExporting : registrationExporting) ? 'Export läuft…' : 'Daten exportieren'}</Text>
+                      <Text style={[styles.statsExportBtnText, { color: theme.text }]}>{(statsMode === 'program' ? detailedProgramExporting : detailedRegistrationExporting) ? 'Export läuft…' : 'Daten exportieren'}</Text>
                     </Pressable>
                   ) : null}
 
@@ -7990,7 +8131,7 @@ function AppContent() {
                         {statsMode === 'program' || statsMode === 'registration' ? (
                           <Text style={{ color: member.hasActiveFlow ? (member.isPresentInActiveFlow ? '#16A34A' : '#DC2626') : theme.muted, fontSize: 12, marginTop: 4 }}>
                             {member.hasActiveFlow
-                              ? (member.isPresentInActiveFlow ? '● anwesend' : '● nicht anwesend')
+                              ? (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet')
                               : (statsMode === 'program' ? 'Kein aktives Programm konfiguriert' : 'Keine aktive Anmeldung ausgewählt')}
                           </Text>
                         ) : null}
