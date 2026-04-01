@@ -3049,22 +3049,30 @@ function AppContent() {
       allowedTanzeem: allowed,
       updatedAt: new Date().toISOString(),
     };
-    await setDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID, payload);
-    setRegistrationConfig(payload);
-    setToast('Anmeldung gespeichert');
+    try {
+      await setDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID, payload);
+      setRegistrationConfig(payload);
+      setToast('Anmeldung gespeichert');
+    } catch {
+      setToast('Anmeldung konnte nicht gespeichert werden');
+    }
   };
 
   const clearRegistrationConfig = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
-    await deleteDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID);
-    setRegistrationConfig(null);
-    setRegistrationNameInput('');
-    setRegistrationFromInput('');
-    setRegistrationUntilInput('');
-    setRegistrationEnabled(false);
-    setRegistrationPublicVisible(false);
-    setRegistrationAllowedTanzeem(PROGRAM_TANZEEM_OPTIONS);
-    setToast('Anmeldung deaktiviert');
+    try {
+      await deleteDocData(REGISTRATION_CONFIG_COLLECTION, REGISTRATION_CONFIG_DOC_ID);
+      setRegistrationConfig(null);
+      setRegistrationNameInput('');
+      setRegistrationFromInput('');
+      setRegistrationUntilInput('');
+      setRegistrationEnabled(false);
+      setRegistrationPublicVisible(false);
+      setRegistrationAllowedTanzeem(PROGRAM_TANZEEM_OPTIONS);
+      setToast('Anmeldung deaktiviert');
+    } catch {
+      setToast('Anmeldung konnte nicht deaktiviert werden');
+    }
   };
 
   const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
@@ -5560,11 +5568,9 @@ function AppContent() {
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
         <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
           <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => {
-            const next = isPrayerMode ? 'program' : (isProgramMode ? 'registration' : 'prayer');
-            if (next === 'registration' && !registrationWindow.isConfigured) {
-              setToast('Anmeldung ist nicht konfiguriert');
-              return;
-            }
+            const next = isPrayerMode
+              ? 'program'
+              : (isProgramMode ? (registrationWindow.isConfigured ? 'registration' : 'prayer') : 'prayer');
             setAttendanceMode(next);
             setPendingRegistrationMember(null);
             setTerminalMode('tanzeem');
@@ -6867,7 +6873,7 @@ function AppContent() {
           <TextInput value={registrationFromInput} onChangeText={setRegistrationFromInput} placeholder="Von (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
           <TextInput value={registrationUntilInput} onChangeText={setRegistrationUntilInput} placeholder="Bis (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
-        <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Overlay aktivieren</Text><Switch value={registrationEnabled} onValueChange={setRegistrationEnabled} /></View>
+        <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Anmeldung aktivieren</Text><Switch value={registrationEnabled} onValueChange={setRegistrationEnabled} /></View>
         <Pressable onPress={() => setRegistrationAdvancedVisible((prev) => !prev)} style={[styles.statsCardMiniSwitch, { alignSelf: 'flex-start', borderColor: theme.border, backgroundColor: theme.bg }]}>
           <Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>{registrationAdvancedVisible ? 'Erweiterte Einstellungen ▲' : 'Erweiterte Einstellungen ▼'}</Text>
         </Pressable>
