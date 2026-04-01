@@ -5504,7 +5504,10 @@ function AppContent() {
             type: modeType === 'registration' ? 'program' : modeType,
             date: runtimeISO,
             ...(modeType === 'program'
-              ? { programName: runtimeProgramWindow.label }
+              ? {
+                programName: runtimeProgramWindow.label,
+                ...(String(options?.forcedRegistrationName || '').trim() ? { registrationName: String(options.forcedRegistrationName).trim() } : {}),
+              }
               : (modeType === 'registration'
                 ? { programName: runtimeRegistrationWindow.label, registrationName: runtimeRegistrationWindow.label }
                 : { prayer: targetKey })),
@@ -5579,6 +5582,7 @@ function AppContent() {
           __registrationRetry: true,
           runtimeContext,
           forcedProgramLabel: runtimeRegistrationWindow.label,
+          forcedRegistrationName: runtimeRegistrationWindow.label,
         });
       }
       Alert.alert('Datenbankfehler', 'Bitte Internet prüfen');
