@@ -312,6 +312,7 @@ const ANNOUNCEMENT_COLLECTION = 'prayer_announcements';
 const ANNOUNCEMENT_DOC_ID = 'current';
 const PROGRAM_ATTENDANCE_COLLECTION = 'attendance_program_entries';
 const PROGRAM_DAILY_COLLECTION = 'attendance_program_daily';
+const PROGRAM_DAILY_COLLECTION_LEGACY = 'attendance_programm_daily';
 const PROGRAM_CONFIG_COLLECTION = 'program_configs';
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
@@ -3211,8 +3212,12 @@ function AppContent() {
     let cancelled = false;
 
     const fetchProgramStats = () => {
-      getDocData(PROGRAM_DAILY_COLLECTION, selectedDocId)
-        .then((data) => {
+      Promise.all([
+        getDocData(PROGRAM_DAILY_COLLECTION, selectedDocId).catch(() => null),
+        getDocData(PROGRAM_DAILY_COLLECTION_LEGACY, selectedDocId).catch(() => null),
+      ])
+        .then(([primaryData, legacyData]) => {
+          const data = primaryData || legacyData || null;
           if (!cancelled) setProgramStats(data || null);
         })
         .catch(() => {
@@ -3263,12 +3268,18 @@ function AppContent() {
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'program') return;
     let cancelled = false;
-    listDocIds(PROGRAM_DAILY_COLLECTION)
-      .then((ids) => {
+    Promise.all([
+      listDocIds(PROGRAM_DAILY_COLLECTION).catch(() => []),
+      listDocIds(PROGRAM_DAILY_COLLECTION_LEGACY).catch(() => []),
+    ])
+      .then(([primaryIds, legacyIds]) => {
         if (cancelled) return;
+        const mergedIds = Array.from(new Set([
+          ...primaryIds.map((id) => String(id || '')),
+          ...legacyIds.map((id) => String(id || '')),
+        ]));
         setProgramStatsDocIds(
-          ids
-            .map((id) => String(id || ''))
+          mergedIds
             .filter((id) => /^\d{4}-\d{2}-\d{2}_.+/.test(id)),
         );
       })
