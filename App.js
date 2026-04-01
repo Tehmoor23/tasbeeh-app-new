@@ -1316,6 +1316,8 @@ function AppContent() {
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
   const [selectedProgramStatsDocId, setSelectedProgramStatsDocId] = useState('');
   const [programStatsDocIds, setProgramStatsDocIds] = useState([]);
+  const [programStatsEntrySampleByDocId, setProgramStatsEntrySampleByDocId] = useState({});
+  const [programStatsNamesByDocId, setProgramStatsNamesByDocId] = useState({});
   const [selectedStatsWeekStartISO, setSelectedStatsWeekStartISO] = useState('');
   const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
   const [isStatsWeekModalVisible, setStatsWeekModalVisible] = useState(false);
@@ -1958,7 +1960,7 @@ function AppContent() {
           docId: raw,
           iso: String(match[1]),
           programKey: String(match[2] || ''),
-          programName: normalizeProgramNameFromKey(match[2] || ''),
+          programName: String(programStatsNamesByDocId[raw] || '').trim() || normalizeProgramNameFromKey(match[2] || ''),
           source: 'stats',
         };
       })
@@ -1990,7 +1992,7 @@ function AppContent() {
           label: `${dateLabel} · ${entry.programName}`,
         };
       });
-  }, [programStatsDocIds, availableProgramConfigOptions]);
+  }, [programStatsDocIds, availableProgramConfigOptions, programStatsNamesByDocId]);
 
   const selectedProgramStatsOption = useMemo(() => {
     if (selectedProgramStatsDocId) {
@@ -3275,7 +3277,7 @@ function AppContent() {
     ])
       .then(([primaryIds, legacyIds, entryIds]) => {
         if (cancelled) return;
-        const inferredDailyDocIds = entryIds
+        const inferredPairs = entryIds
           .map((id) => String(id || ''))
           .filter((id) => /^\d{4}-\d{2}-\d{2}_/.test(id))
           .map((id) => {
@@ -3286,21 +3288,31 @@ function AppContent() {
             const iso = String(match[1] || '');
             const programKey = String(match[2] || '');
             if (!iso || !programKey) return '';
-            return `${iso}_${programKey}`;
+            return { docId: `${iso}_${programKey}`, entryDocId: id };
           })
           .filter(Boolean);
+        const inferredDailyDocIds = inferredPairs.map((item) => item.docId);
+        const sampleByDocId = inferredPairs.reduce((acc, item) => {
+          if (!item?.docId || !item?.entryDocId) return acc;
+          if (!acc[item.docId]) acc[item.docId] = item.entryDocId;
+          return acc;
+        }, {});
         const mergedIds = Array.from(new Set([
           ...primaryIds.map((id) => String(id || '')),
           ...legacyIds.map((id) => String(id || '')),
           ...inferredDailyDocIds,
         ]));
+        setProgramStatsEntrySampleByDocId(sampleByDocId);
         setProgramStatsDocIds(
           mergedIds
             .filter((id) => /^\d{4}-\d{2}-\d{2}_.+/.test(id)),
         );
       })
       .catch(() => {
-        if (!cancelled) setProgramStatsDocIds([]);
+        if (!cancelled) {
+          setProgramStatsEntrySampleByDocId({});
+          setProgramStatsDocIds([]);
+        }
       });
     return () => { cancelled = true; };
   }, [activeTab, statsMode, activeMosqueKey]);
@@ -3319,6 +3331,33 @@ function AppContent() {
     }
     setSelectedProgramStatsDocId(availableProgramStatsOptions[0].docId);
   }, [activeTab, statsMode, availableProgramStatsOptions, selectedProgramStatsDocId, todayISO]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'program') return;
+    const sampleEntries = Object.entries(programStatsEntrySampleByDocId || {});
+    if (!sampleEntries.length) {
+      setProgramStatsNamesByDocId({});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(sampleEntries.map(async ([docId, entryDocId]) => {
+      const row = await getDocData(PROGRAM_ATTENDANCE_COLLECTION, entryDocId).catch(() => null);
+      const name = String(row?.programName || '').trim();
+      return [docId, name];
+    }))
+      .then((rows) => {
+        if (cancelled) return;
+        const nextMap = rows.reduce((acc, [docId, name]) => {
+          if (name) acc[docId] = name;
+          return acc;
+        }, {});
+        setProgramStatsNamesByDocId(nextMap);
+      })
+      .catch(() => {
+        if (!cancelled) setProgramStatsNamesByDocId({});
+      });
+    return () => { cancelled = true; };
+  }, [activeTab, statsMode, programStatsEntrySampleByDocId, activeMosqueKey]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
