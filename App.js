@@ -1313,6 +1313,8 @@ function AppContent() {
   const [weeklyAttendanceDocs, setWeeklyAttendanceDocs] = useState({});
   const [weeklyStatsLoading, setWeeklyStatsLoading] = useState(false);
   const [selectedStatsDateISO, setSelectedStatsDateISO] = useState('');
+  const [selectedProgramStatsDateISO, setSelectedProgramStatsDateISO] = useState('');
+  const [availableProgramStatsDates, setAvailableProgramStatsDates] = useState([]);
   const [selectedStatsWeekStartISO, setSelectedStatsWeekStartISO] = useState('');
   const [isStatsCalendarVisible, setStatsCalendarVisible] = useState(false);
   const [isStatsWeekModalVisible, setStatsWeekModalVisible] = useState(false);
@@ -1900,6 +1902,24 @@ function AppContent() {
     setSelectedStatsWeekStartISO(toISO(startOfWeekMonday(now)));
   }, [now, selectedStatsWeekStartISO]);
   const programConfigToday = programConfigByDate[todayISO] || null;
+  const availableProgramConfigDates = useMemo(() => (
+    Object.entries(programConfigByDate || {})
+      .filter(([iso, config]) => /^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
+        && isValidTime(config?.startTime)
+        && Boolean(String(config?.name || '').trim()))
+      .map(([iso]) => String(iso))
+      .sort((a, b) => b.localeCompare(a))
+  ), [programConfigByDate]);
+  const selectedProgramConfigDateISO = useMemo(() => {
+    if (selectedProgramStatsDateISO && availableProgramConfigDates.includes(selectedProgramStatsDateISO)) {
+      return selectedProgramStatsDateISO;
+    }
+    if (availableProgramConfigDates.includes(todayISO)) return todayISO;
+    return availableProgramConfigDates[0] || '';
+  }, [availableProgramConfigDates, selectedProgramStatsDateISO, todayISO]);
+  const selectedProgramConfig = selectedProgramConfigDateISO
+    ? (programConfigByDate[selectedProgramConfigDateISO] || null)
+    : null;
   const programWindow = useMemo(() => {
     if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
       return { isConfigured: false, isActive: false, label: null, minutesUntilOpen: null };
@@ -1920,6 +1940,16 @@ function AppContent() {
       minutesUntilStart: Math.max(0, startMinutes - nowMinutes),
     };
   }, [now, programConfigToday]);
+  const selectedProgramLabel = useMemo(() => {
+    const name = String(selectedProgramConfig?.name || '').trim();
+    if (!name) return '—';
+    if (selectedProgramConfigDateISO === todayISO) return `${name} (heute)`;
+    const dateObj = parseISO(selectedProgramConfigDateISO || '');
+    if (!dateObj) return name;
+    const weekday = new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '');
+    const datePart = new Intl.DateTimeFormat('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(dateObj);
+    return `${name} (${weekday}, ${datePart})`;
+  }, [selectedProgramConfig, selectedProgramConfigDateISO, todayISO]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
   const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
@@ -3110,7 +3140,7 @@ function AppContent() {
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
-    const programName = String(programConfigToday?.name || '').trim();
+    const programName = String(selectedProgramConfig?.name || '').trim();
     if (!programName) {
       setProgramStats(null);
       return undefined;
@@ -3118,7 +3148,7 @@ function AppContent() {
 
     let cancelled = false;
     const programKey = toLocationKey(programName);
-    const docId = `${todayISO}_${programKey}`;
+    const docId = `${selectedProgramConfigDateISO}_${programKey}`;
 
     const fetchProgramStats = () => {
       getDocData(PROGRAM_DAILY_COLLECTION, docId)
@@ -3136,11 +3166,11 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, todayISO, programConfigToday, activeMosqueKey]);
+  }, [activeTab, statsMode, selectedProgramConfigDateISO, selectedProgramConfig, activeMosqueKey]);
 
   useEffect(() => {
     if (activeTab !== 'stats' || statsMode !== 'program') return undefined;
-    const programName = String(programConfigToday?.name || '').trim();
+    const programName = String(selectedProgramConfig?.name || '').trim();
     if (!programName) {
       setProgramAttendanceEntries([]);
       return undefined;
@@ -3148,7 +3178,7 @@ function AppContent() {
 
     let cancelled = false;
     const programKey = toLocationKey(programName);
-    const idPrefix = `${todayISO}_${programKey}_`;
+    const idPrefix = `${selectedProgramConfigDateISO}_${programKey}_`;
 
     const fetchProgramEntries = () => {
       listDocIds(PROGRAM_ATTENDANCE_COLLECTION)
@@ -3169,7 +3199,22 @@ function AppContent() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [activeTab, statsMode, todayISO, programConfigToday, activeMosqueKey]);
+  }, [activeTab, statsMode, selectedProgramConfigDateISO, selectedProgramConfig, activeMosqueKey]);
+
+  useEffect(() => {
+    if (activeTab !== 'stats' || statsMode !== 'program') return;
+    setAvailableProgramStatsDates(availableProgramConfigDates);
+    if (!availableProgramConfigDates.length) {
+      setSelectedProgramStatsDateISO('');
+      return;
+    }
+    if (selectedProgramStatsDateISO && availableProgramConfigDates.includes(selectedProgramStatsDateISO)) return;
+    if (availableProgramConfigDates.includes(todayISO)) {
+      setSelectedProgramStatsDateISO(todayISO);
+      return;
+    }
+    setSelectedProgramStatsDateISO(availableProgramConfigDates[0]);
+  }, [activeTab, statsMode, availableProgramConfigDates, selectedProgramStatsDateISO, todayISO]);
 
   const statsPrayerKey = prayerWindow.isActive ? prayerWindow.prayerKey : nextPrayer;
 
@@ -3827,7 +3872,7 @@ function AppContent() {
   }, [effectivePermissions.canExportData, statsExporting, writeStatsWorkbook]);
 
   const writeProgramWorkbook = useCallback(async () => {
-    const dateLabel = formatIsoWithWeekday(todayISO);
+    const dateLabel = formatIsoWithWeekday(selectedProgramConfigDateISO || todayISO);
     const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
@@ -3931,7 +3976,7 @@ function AppContent() {
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Datum', dateLabel],
-      ['Programm', programWindow.label || '—'],
+      ['Programm', String(selectedProgramConfig?.name || '').trim() || '—'],
       ['Export Zeitstempel', exportTimestamp],
       [],
       ['Gesamt Programmanwesenheit', formatRatioWithPercent(total, registeredTotals.total)],
@@ -4009,7 +4054,7 @@ function AppContent() {
       dialogTitle: 'Programmdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, programWindow.label, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, selectedProgramConfig, selectedProgramConfigDateISO, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -4027,11 +4072,11 @@ function AppContent() {
   }, [effectivePermissions.canExportData, programExporting, writeProgramWorkbook]);
 
   const writeProgramDetailedIdWorkbook = useCallback(async (filterTanzeem = '') => {
-    const dateLabel = formatIsoWithWeekday(todayISO);
+    const dateLabel = formatIsoWithWeekday(selectedProgramConfigDateISO || todayISO);
     const exportTimestamp = new Intl.DateTimeFormat('de-DE', {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
-    const activeProgramName = String(programConfigToday?.name || '').trim();
+    const activeProgramName = String(selectedProgramConfig?.name || '').trim();
     const normalizedFilter = PROGRAM_TANZEEM_OPTIONS.includes(String(filterTanzeem || '').toLowerCase())
       ? String(filterTanzeem || '').toLowerCase()
       : '';
@@ -4161,7 +4206,7 @@ function AppContent() {
       dialogTitle: 'Programm-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programConfigToday, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, selectedProgramConfig, selectedProgramConfigDateISO, todayISO]);
 
   const handleExportProgramDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -4253,7 +4298,7 @@ function AppContent() {
   const detailedIdChoices = useMemo(() => {
     if (!detailedFlowTanzeem || !detailedFlowMajlis) return [];
     const query = detailedIdSearchQuery.trim();
-    const activeProgramName = String(programConfigToday?.name || '').trim();
+    const activeProgramName = String(selectedProgramConfig?.name || '').trim();
     const programPresentIds = new Set(
       programAttendanceEntries
         .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === detailedFlowTanzeem)
@@ -4271,7 +4316,7 @@ function AppContent() {
         hasActiveProgram: Boolean(activeProgramName),
       }))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
-  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, programConfigToday, programAttendanceEntries]);
+  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, selectedProgramConfig, programAttendanceEntries]);
 
   const detailedCurrentWeekIsos = useMemo(() => {
     const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
@@ -5591,19 +5636,38 @@ function AppContent() {
         </View>
 
         {isProgramStatsMode ? (
-          !programWindow.isConfigured ? (
+          !selectedProgramConfigDateISO ? (
             <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[styles.noteText, { color: theme.muted }]}>Keine Programmdaten verfügbar</Text>
             </View>
           ) : (
             <>
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm heute</Text>
-                <Text style={[styles.statsBigValue, { color: theme.text }]}>{programWindow.label}</Text>
+                <View style={styles.statsCardHeaderRow}>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm auswählen</Text>
+                  <Pressable
+                    onPress={() => {
+                      if (!availableProgramStatsDates.length) return;
+                      const idx = availableProgramStatsDates.indexOf(selectedProgramConfigDateISO);
+                      const safeIdx = idx >= 0 ? idx : 0;
+                      setSelectedProgramStatsDateISO(availableProgramStatsDates[(safeIdx + 1) % availableProgramStatsDates.length]);
+                    }}
+                    style={[styles.statsCardMiniSwitch, !isTablet && styles.statsCardMiniSwitchMobile, { borderColor: theme.border, backgroundColor: theme.bg }]}
+                  >
+                    <Text numberOfLines={1} style={[styles.statsCardMiniSwitchText, !isTablet && styles.statsCardMiniSwitchTextMobile, { color: theme.text }]}>
+                      {selectedProgramConfigDateISO ? `<< ${formatIsoWithWeekday(selectedProgramConfigDateISO)} >>` : '—'}
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
 
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Programmanwesenheit heute</Text>
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Programm</Text>
+                <Text style={[styles.statsBigValue, { color: theme.text }]}>{selectedProgramLabel}</Text>
+              </View>
+
+              <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamt Programmanwesenheit</Text>
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{programTotal}</Text>
               </View>
 
@@ -6986,8 +7050,8 @@ function AppContent() {
                       </Pressable>
                     ))}
                     {detailedIdChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted }]}>Keine IDs gefunden.</Text> : null}
-                    {statsMode === 'program' && !String(programConfigToday?.name || '').trim() ? (
-                      <Text style={[styles.noteText, { color: theme.muted }]}>Aktuell ist kein Programm aktiv. IDs werden ohne Anwesenheitsstatus angezeigt.</Text>
+                    {statsMode === 'program' && !String(selectedProgramConfig?.name || '').trim() ? (
+                      <Text style={[styles.noteText, { color: theme.muted }]}>Kein Programm ausgewählt. IDs werden ohne Anwesenheitsstatus angezeigt.</Text>
                     ) : null}
                   </View>
                   </>) : null}
