@@ -3322,6 +3322,27 @@ function AppContent() {
     return memberChoices;
   }, [filteredMemberChoices, idSearchQuery, memberChoices]);
 
+  const registrationResponseBySelectionId = useMemo(() => {
+    if (attendanceMode !== 'registration') return new Map();
+    if (!selectedTanzeem || !selectedMajlis) return new Map();
+    const registrationId = String(registrationWindow.config?.id || '').trim();
+    if (!registrationWindow.isOpen || !registrationId) return new Map();
+
+    const nextMap = new Map();
+    registrationAttendanceEntries
+      .filter((entry) => String(entry?.registrationId || '').trim() === registrationId)
+      .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === selectedTanzeem)
+      .filter((entry) => String(entry?.majlis || '').trim() === selectedMajlis)
+      .forEach((entry) => {
+        const id = String(entry?.idNumber || '').trim();
+        if (!id || id === 'guest') return;
+        const response = String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept';
+        nextMap.set(id, response);
+      });
+
+    return nextMap;
+  }, [attendanceMode, registrationAttendanceEntries, registrationWindow.config?.id, registrationWindow.isOpen, selectedMajlis, selectedTanzeem]);
+
   const shouldShowCountedIdHint = Boolean(currentAccount);
   const countedMemberDocPrefixes = useMemo(() => {
     if (!shouldShowCountedIdHint) return [];
@@ -6488,6 +6509,10 @@ function AppContent() {
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
                     {visibleMemberChoices.map((member) => {
                       const isAlreadyCounted = shouldShowCountedIdHint && countedMemberIdsForSelection.has(String(member.idNumber || ''));
+                      const registrationResponse = isRegistrationMode ? registrationResponseBySelectionId.get(String(member.idNumber || '')) : '';
+                      const responseBorderStyle = registrationResponse === 'accept'
+                        ? { borderColor: '#16A34A', borderWidth: 3 }
+                        : (registrationResponse === 'decline' ? { borderColor: '#DC2626', borderWidth: 3 } : null);
                       return (
                         <Pressable
                           key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
@@ -6495,6 +6520,7 @@ function AppContent() {
                             styles.gridItem,
                             isTablet && styles.gridItemTablet,
                             { backgroundColor: theme.card, borderColor: theme.border },
+                            responseBorderStyle,
                             isAlreadyCounted && styles.gridItemCounted,
                             isAlreadyCounted && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.24)' : 'rgba(209, 213, 219, 0.26)' },
                           ], pressed && styles.buttonPressed]}
