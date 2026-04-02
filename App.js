@@ -45,7 +45,7 @@ const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = 'registration'; // 'full', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -2737,8 +2737,7 @@ function AppContent() {
     if (!shouldRestrictToRegistrationView) return;
     if (activeTab !== 'terminal') setActiveTab('terminal');
     if (attendanceMode !== 'registration') setAttendanceMode('registration');
-    if (terminalMode !== 'tanzeem') setTerminalMode('tanzeem');
-  }, [activeTab, attendanceMode, shouldRestrictToRegistrationView, terminalMode]);
+  }, [activeTab, attendanceMode, shouldRestrictToRegistrationView]);
 
   useEffect(() => {
     if (!shouldRestrictToQrView) return;
