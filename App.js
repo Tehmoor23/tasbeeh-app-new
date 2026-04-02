@@ -4633,7 +4633,7 @@ function AppContent() {
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
-      ['Zeitraum', `${option.startDate} bis ${option.endDate}`],
+      ['Zeitraum der Anmeldung', `${option.startDate} bis ${option.endDate}`],
       ['Gesamtanmeldungen', formatRatioWithPercent(Number(registrationStats?.total) || 0, registeredTotals.total)],
       ...activeTanzeems.map((key) => [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])]),
     ];
@@ -4889,8 +4889,6 @@ function AppContent() {
         idNumber: String(entry?.idNumber || '').trim(),
         tanzeem: String(entry?.tanzeem || '').toLowerCase(),
         majlis: String(entry?.majlis || '').trim(),
-        stimmberechtigt: normalizeVoterFlagValue(entry?.stimmberechtigt),
-        wahlberechtigt: normalizeVoterFlagValue(entry?.wahlberechtigt),
         anwesend_2026_01_08: normalizeVoterFlagValue(entry?.anwesend_2026_01_08),
       }))
       .sort((a, b) => {
@@ -4908,8 +4906,6 @@ function AppContent() {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
           idNumber: row.idNumber,
-          stimmberechtigt: row.stimmberechtigt,
-          wahlberechtigt: row.wahlberechtigt,
           anwesend_2026_01_08: row.anwesend_2026_01_08,
           registered: presentMap.has(key) ? 'Ja' : 'Nein',
           timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
@@ -4925,24 +4921,22 @@ function AppContent() {
     const rows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
-      ['Zeitraum', `${option.startDate} bis ${option.endDate}`],
+      ['Zeitraum der Anmeldung', `${option.startDate} bis ${option.endDate}`],
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Stimmberechtigt', 'Wahlberechtigt', 'Anwesend am 08.01.2026', 'Angemeldet', 'Zeitstempel'],
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Angemeldet', 'Zeitstempel'],
       ...memberRows.map((row) => [
         row.majlis,
         row.tanzeemLabel,
         row.idNumber,
-        row.stimmberechtigt,
-        row.wahlberechtigt,
-        row.anwesend_2026_01_08,
+        row.anwesend_2026_01_08 === 1 ? 'Ja' : (row.anwesend_2026_01_08 === 0 ? 'Nein' : '-'),
         row.registered,
         row.timestamp,
       ]),
     ];
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 24 }];
+    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
