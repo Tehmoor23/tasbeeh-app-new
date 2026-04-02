@@ -6247,7 +6247,11 @@ function AppContent() {
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Ausgewählte ID</Text>
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{pendingRegistrationMember.idNumber}</Text>
-                <Text style={[styles.noteText, { color: theme.muted }]}>{`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${pendingRegistrationMember.majlis}`}</Text>
+                <Text style={[styles.noteText, { color: theme.muted }]}>
+                  {`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${pendingRegistrationMember.majlis}${
+                    pendingRegistrationVoterFlag === 1 ? ' · Ehl-Voter' : (pendingRegistrationVoterFlag === 0 ? ' · Nicht-Ehl-Voter' : '')
+                  }`}
+                </Text>
               </View>
             ) : null}
             {registrationWindow.onlyEhlVoters && pendingRegistrationMember ? (
@@ -8248,13 +8252,7 @@ function AppContent() {
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
                       >
                         {statsMode === 'program' || statsMode === 'registration' ? (
-                          <Text style={{ color: theme.text, fontWeight: '700' }}>
-                            {`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}${
-                              statsMode === 'registration'
-                                ? ` · ${member.normalizedStimmberechtigt === 1 ? 'Ehl-Voter' : 'Nicht-Ehl-Voter'}`
-                                : ''
-                            }`}
-                          </Text>
+                          <Text style={{ color: theme.text, fontWeight: '700' }}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}`}</Text>
                         ) : (
                           <>
                             <Text style={{ color: theme.text, fontWeight: '700' }}>{member.idNumber}</Text>
