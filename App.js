@@ -2330,6 +2330,11 @@ function AppContent() {
     if (attendanceMode !== 'registration') return;
     const allowed = registrationWindow.canAccess && (APP_MODE === 'registration' ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     if (!allowed) {
+      if (APP_MODE === 'registration') {
+        setTerminalMode('tanzeem');
+        setPendingRegistrationMember(null);
+        return;
+      }
       setAttendanceMode('prayer');
       setTerminalMode('tanzeem');
       setPendingRegistrationMember(null);
@@ -6258,7 +6263,7 @@ function AppContent() {
                     </Text>
                   </>
                 ) : pendingRegistrationVoterFlag === 0 ? (
-                  <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie dürfen leider nicht an der Wahl teilnehmen.</Text>
+                  <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie sind leider nicht stimmberechtigt.</Text>
                 ) : (
                   <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie erfüllen nicht die Voraussetzungen eines Ehl-Voters.</Text>
                 )}
@@ -8243,7 +8248,13 @@ function AppContent() {
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
                       >
                         {statsMode === 'program' || statsMode === 'registration' ? (
-                          <Text style={{ color: theme.text, fontWeight: '700' }}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}`}</Text>
+                          <Text style={{ color: theme.text, fontWeight: '700' }}>
+                            {`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}${
+                              statsMode === 'registration'
+                                ? ` · ${member.normalizedStimmberechtigt === 1 ? 'Ehl-Voter' : 'Nicht-Ehl-Voter'}`
+                                : ''
+                            }`}
+                          </Text>
                         ) : (
                           <>
                             <Text style={{ color: theme.text, fontWeight: '700' }}>{member.idNumber}</Text>
