@@ -149,7 +149,7 @@ const buildAccountAuthEmail = (name) => {
 
 const normalizeAnnouncementText = (text) => String(text || '').replace(/\r\n/g, '\n').trim();
 
-const parseAnnouncementSegments = (text) => {
+const parseFormattedSegments = (text) => {
   const source = String(text || '');
   if (!source) return [];
   const segments = [];
@@ -189,6 +189,14 @@ const parseAnnouncementSegments = (text) => {
 
   return segments;
 };
+const parseAnnouncementSegments = (text) => parseFormattedSegments(text);
+const normalizeHeadlineText = (value) => String(value || '').trim();
+const buildHeadlineConfig = (source) => ({
+  title: normalizeHeadlineText(source?.title ?? source?.name ?? ''),
+  subtitle: normalizeHeadlineText(source?.subtitle || ''),
+  extraLine: normalizeHeadlineText(source?.extraLine || ''),
+});
+const headlineToLegacyName = (headline) => normalizeHeadlineText(headline?.title || '');
 
 const PRAYER_LABELS = {
   fajr: 'Fajr',
@@ -760,7 +768,8 @@ const registrationShortDateToKey = (value) => {
 };
 const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
   const id = String(data?.id || fallbackDocId || '').trim();
-  const name = String(data?.name || '').trim();
+  const headline = buildHeadlineConfig(data);
+  const name = headlineToLegacyName(headline);
   const startDate = normalizeRegistrationShortDate(data?.startDate || '');
   const endDate = normalizeRegistrationShortDate(data?.endDate || '');
   const includeTanzeems = Array.isArray(data?.advanced?.includeTanzeems)
@@ -772,6 +781,9 @@ const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
   return {
     id: id || `${startDate}_${endDate}_${toLocationKey(name || 'anmeldung')}`,
     name,
+    title: headline.title,
+    subtitle: headline.subtitle,
+    extraLine: headline.extraLine,
     startDate,
     endDate,
     disabled: Boolean(data?.disabled),
@@ -1474,6 +1486,8 @@ function AppContent() {
   const [passwordChangeInput, setPasswordChangeInput] = useState('');
 
   const [programNameInput, setProgramNameInput] = useState('');
+  const [programSubtitleInput, setProgramSubtitleInput] = useState('');
+  const [programExtraLineInput, setProgramExtraLineInput] = useState('');
   const [programStartInput, setProgramStartInput] = useState('');
   const [announcementInput, setAnnouncementInput] = useState('');
   const [programConfigByDate, setProgramConfigByDate] = useState({});
@@ -1483,6 +1497,8 @@ function AppContent() {
   const [selectedRegistrationStatsConfigId, setSelectedRegistrationStatsConfigId] = useState('');
   const [registrationMajlisFilter, setRegistrationMajlisFilter] = useState('total');
   const [registrationNameInput, setRegistrationNameInput] = useState('');
+  const [registrationSubtitleInput, setRegistrationSubtitleInput] = useState('');
+  const [registrationExtraLineInput, setRegistrationExtraLineInput] = useState('');
   const [registrationStartDateInput, setRegistrationStartDateInput] = useState('');
   const [registrationEndDateInput, setRegistrationEndDateInput] = useState('');
   const [registrationIsPublicInput, setRegistrationIsPublicInput] = useState(false);
@@ -2018,22 +2034,25 @@ function AppContent() {
     Object.entries(programConfigByDate || {})
       .filter(([iso, config]) => /^\d{4}-\d{2}-\d{2}$/.test(String(iso || ''))
         && isValidTime(config?.startTime)
-        && Boolean(String(config?.name || '').trim()))
+        && Boolean(headlineToLegacyName(buildHeadlineConfig(config))))
       .map(([iso, config]) => {
-        const programName = String(config?.name || '').trim();
+        const headline = buildHeadlineConfig(config);
+        const programName = headlineToLegacyName(headline);
         const programKey = toLocationKey(programName);
         return {
           docId: `${iso}_${programKey}`,
           iso: String(iso),
           programKey,
           programName,
+          headline,
           source: 'config',
         };
       })
       .sort((a, b) => b.docId.localeCompare(a.docId))
   ), [programConfigByDate]);
   const programWindow = useMemo(() => {
-    if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !String(programConfigToday.name || '').trim()) {
+    const headline = buildHeadlineConfig(programConfigToday);
+    if (!programConfigToday || !isValidTime(programConfigToday.startTime) || !headlineToLegacyName(headline)) {
       return { isConfigured: false, isActive: false, label: null, minutesUntilOpen: null };
     }
 
@@ -2045,7 +2064,8 @@ function AppContent() {
     return {
       isConfigured: true,
       isActive,
-      label: String(programConfigToday.name || '').trim(),
+      label: headlineToLegacyName(headline),
+      headline,
       startTime: programConfigToday.startTime,
       opensAt: `${pad(Math.floor((((openMinutes % 1440) + 1440) % 1440) / 60))}:${pad((((openMinutes % 1440) + 1440) % 1440) % 60)}`,
       minutesUntilOpen: isActive ? 0 : Math.max(0, openMinutes - nowMinutes),
@@ -2114,7 +2134,11 @@ function AppContent() {
     ? (programConfigByDate[selectedProgramConfigDateISO] || null)
     : null;
   const selectedProgramLabel = useMemo(() => {
-    const name = String(selectedProgramStatsOption?.programName || selectedProgramConfig?.name || '').trim();
+    const name = String(
+      selectedProgramStatsOption?.programName
+      || headlineToLegacyName(buildHeadlineConfig(selectedProgramConfig))
+      || '',
+    ).trim();
     if (!name) return '—';
     if (selectedProgramConfigDateISO === todayISO) return `${name} (heute)`;
     const dateObj = parseISO(selectedProgramConfigDateISO || '');
@@ -2130,7 +2154,7 @@ function AppContent() {
       .sort((a, b) => String(b.startDate || '').localeCompare(String(a.startDate || '')) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')))
       .map((config) => ({
         ...config,
-        label: `${config.startDate} bis ${config.endDate} · ${config.name}`,
+        label: `${config.startDate} bis ${config.endDate} · ${headlineToLegacyName(config)}`,
       }))
   ), [registrationConfigById]);
   const selectedRegistrationStatsOption = useMemo(() => {
@@ -3013,8 +3037,12 @@ function AppContent() {
       setProgramConfigByDate((prev) => {
         const next = { ...prev };
         if (data && typeof data === 'object') {
+          const headline = buildHeadlineConfig(data);
           next[todayISO] = {
-            name: String(data.name || '').trim(),
+            name: headlineToLegacyName(headline),
+            title: headline.title,
+            subtitle: headline.subtitle,
+            extraLine: headline.extraLine,
             startTime: String(data.startTime || '').trim(),
             updatedAt: data.updatedAt || null,
           };
@@ -3051,7 +3079,10 @@ function AppContent() {
 
   useEffect(() => {
     const todayConfig = programConfigByDate[todayISO] || null;
-    setProgramNameInput(todayConfig?.name || '');
+    const headline = buildHeadlineConfig(todayConfig);
+    setProgramNameInput(headline.title);
+    setProgramSubtitleInput(headline.subtitle);
+    setProgramExtraLineInput(headline.extraLine);
     setProgramStartInput(todayConfig?.startTime || '');
   }, [programConfigByDate, todayISO]);
 
@@ -3080,6 +3111,8 @@ function AppContent() {
   useEffect(() => {
     if (!activeRegistrationConfig) {
       setRegistrationNameInput('');
+      setRegistrationSubtitleInput('');
+      setRegistrationExtraLineInput('');
       setRegistrationStartDateInput('');
       setRegistrationEndDateInput('');
       setRegistrationIsPublicInput(false);
@@ -3087,7 +3120,9 @@ function AppContent() {
       setRegistrationIncludedTanzeemsInput([...REGISTRATION_TANZEEM_OPTIONS]);
       return;
     }
-    setRegistrationNameInput(activeRegistrationConfig.name || '');
+    setRegistrationNameInput(activeRegistrationConfig.title || activeRegistrationConfig.name || '');
+    setRegistrationSubtitleInput(activeRegistrationConfig.subtitle || '');
+    setRegistrationExtraLineInput(activeRegistrationConfig.extraLine || '');
     setRegistrationStartDateInput(activeRegistrationConfig.startDate || '');
     setRegistrationEndDateInput(activeRegistrationConfig.endDate || '');
     setRegistrationIsPublicInput(Boolean(activeRegistrationConfig.advanced?.isPublic));
@@ -3099,7 +3134,12 @@ function AppContent() {
 
   const saveProgramForToday = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
-    const name = String(programNameInput || '').trim();
+    const headline = buildHeadlineConfig({
+      title: programNameInput,
+      subtitle: programSubtitleInput,
+      extraLine: programExtraLineInput,
+    });
+    const name = headlineToLegacyName(headline);
     const startTime = String(programStartInput || '').trim();
     if (!name || !isValidTime(startTime)) {
       setToast('Bitte Programmname und gültige Startzeit eingeben');
@@ -3109,6 +3149,9 @@ function AppContent() {
       ...programConfigByDate,
       [todayISO]: {
         name,
+        title: headline.title,
+        subtitle: headline.subtitle,
+        extraLine: headline.extraLine,
         startTime,
         updatedAt: new Date().toISOString(),
       },
@@ -3116,6 +3159,9 @@ function AppContent() {
     setProgramConfigByDate(next);
     await setDocData(PROGRAM_CONFIG_COLLECTION, todayISO, {
       name,
+      title: headline.title,
+      subtitle: headline.subtitle,
+      extraLine: headline.extraLine,
       startTime,
       updatedAt: new Date().toISOString(),
     });
@@ -3133,7 +3179,12 @@ function AppContent() {
 
   const saveRegistrationConfig = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
-    const name = String(registrationNameInput || '').trim();
+    const headline = buildHeadlineConfig({
+      title: registrationNameInput,
+      subtitle: registrationSubtitleInput,
+      extraLine: registrationExtraLineInput,
+    });
+    const name = headlineToLegacyName(headline);
     const startDate = normalizeRegistrationShortDate(registrationStartDateInput || '');
     const endDate = normalizeRegistrationShortDate(registrationEndDateInput || '');
     const startDateKey = registrationShortDateToKey(startDate);
@@ -3153,6 +3204,9 @@ function AppContent() {
     const payload = normalizeRegistrationConfig({
       id: docId,
       name,
+      title: headline.title,
+      subtitle: headline.subtitle,
+      extraLine: headline.extraLine,
       startDate,
       endDate,
       disabled: false,
@@ -6140,6 +6194,39 @@ function AppContent() {
     );
   };
 
+  const renderHeadlineBlock = (headline, fallbackTitle = '') => {
+    const normalized = buildHeadlineConfig(headline);
+    const title = normalized.title || String(fallbackTitle || '').trim();
+    if (!title) return null;
+    const lines = [
+      { key: 'title', value: title, style: styles.headlineTitleText },
+      { key: 'subtitle', value: normalized.subtitle, style: styles.headlineSubtitleText },
+      { key: 'extra', value: normalized.extraLine, style: styles.headlineExtraText },
+    ].filter((line) => Boolean(String(line.value || '').trim()));
+    return (
+      <View style={styles.headlineBlock}>
+        {lines.map((line) => (
+          <Text key={line.key} style={[line.style, { color: theme.text }]}>
+            {parseFormattedSegments(line.value).map((segment, index) => (
+              <Text
+                key={`${line.key}_${segment.style}_${index}`}
+                style={[
+                  line.style,
+                  segment.style === 'bold' && styles.announcementBodyBold,
+                  segment.style === 'italic' && styles.announcementBodyItalic,
+                  segment.style === 'strike' && styles.announcementBodyStrike,
+                  { color: theme.text },
+                ]}
+              >
+                {segment.text}
+              </Text>
+            ))}
+          </Text>
+        ))}
+      </View>
+    );
+  };
+
   const renderTerminal = () => {
     const isRegistrationOnlyAppMode = APP_MODE === 'registration';
     const isPrayerMode = attendanceMode === 'prayer';
@@ -6157,7 +6244,6 @@ function AppContent() {
       return 'prayer';
     };
     const pendingRegistrationVoterFlag = normalizeVoterFlagValue(pendingRegistrationMember?.stimmberechtigt);
-    const pendingRegistrationWahlberechtigtFlag = normalizeVoterFlagValue(pendingRegistrationMember?.wahlberechtigt);
     const pendingRegistrationAnwesendFlag = normalizeVoterFlagValue(pendingRegistrationMember?.anwesend_2026_01_08);
     const isPendingRegistrationAllowedByVoterRule = !registrationWindow.onlyEhlVoters || pendingRegistrationVoterFlag === 1;
     const isPendingRegistrationDisallowedByVoterRule = Boolean(
@@ -6199,15 +6285,19 @@ function AppContent() {
             )
           ) : isProgramMode ? (
             programWindow.isActive ? (
-              <Text style={[styles.currentPrayerText, { color: theme.text }]}>Aktuelles Programm: {programWindow.label}</Text>
+              <>
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 6 }]}>Aktuelles Programm</Text>
+                {renderHeadlineBlock(programWindow.headline, programWindow.label)}
+              </>
             ) : (
               <>
                 <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Aktuell kein Programm vorhanden</Text>
                 {programWindow.isConfigured ? (
                   <View style={[styles.programScheduledHint, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                     <Text style={[styles.programScheduledLabel, { color: theme.text }]}>Programm geplant:</Text>
+                    {renderHeadlineBlock(programWindow.headline, programWindow.label)}
                     <Text style={[styles.programScheduledValue, { color: theme.text }]}>
-                      {programWindow.label} beginnt in {Math.floor((programWindow.minutesUntilStart || 0) / 60)}h {String((programWindow.minutesUntilStart || 0) % 60).padStart(2, '0')}m
+                      Beginnt in {Math.floor((programWindow.minutesUntilStart || 0) / 60)}h {String((programWindow.minutesUntilStart || 0) % 60).padStart(2, '0')}m
                     </Text>
                   </View>
                 ) : (
@@ -6218,10 +6308,14 @@ function AppContent() {
           ) : (
             registrationWindow.canAccess ? (
               registrationWindow.isOpen ? (
-                <Text style={[styles.currentPrayerText, { color: theme.text }]}>Anmeldung für {registrationWindow.config?.name || 'Anmeldung'}</Text>
+                <>
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 6 }]}>Anmeldung</Text>
+                  {renderHeadlineBlock(registrationWindow.config, registrationWindow.config?.name || 'Anmeldung')}
+                </>
               ) : registrationWindow.isUpcoming ? (
                 <View style={[styles.programScheduledHint, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
                   <Text style={[styles.programScheduledLabel, { color: theme.text }]}>Anmeldung startet am:</Text>
+                  {renderHeadlineBlock(registrationWindow.config, registrationWindow.config?.name || 'Anmeldung')}
                   <Text style={[styles.programScheduledValue, { color: theme.text }]}>{registrationWindow.config?.startDate || '—'}</Text>
                 </View>
               ) : (
@@ -6361,9 +6455,6 @@ function AppContent() {
                 {pendingRegistrationVoterFlag === 1 ? (
                   <>
                     <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie dürfen an der Wahl teilnehmen.</Text>
-                    <Text style={[styles.registrationVoterInfoDetail, { color: theme.muted }]}>
-                      {pendingRegistrationWahlberechtigtFlag === 1 ? 'Sie sind ebenfalls wahlberechtigt.' : 'Sie sind nicht wahlberechtigt.'}
-                    </Text>
                     <Text style={[styles.registrationVoterInfoDetail, { color: theme.muted }]}>
                       {pendingRegistrationAnwesendFlag === 1 ? 'Bei der letzten Wahl am 08.01.2026 waren Sie anwesend.' : 'Bei der letzten Wahl am 08.01.2026 waren Sie nicht anwesend.'}
                     </Text>
@@ -7733,9 +7824,12 @@ function AppContent() {
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>{programSettingsDate} · Heute</Text>
 
         <View style={styles.mergeInputWrap}>
-          <TextInput value={programNameInput} onChangeText={setProgramNameInput} placeholder="Programmname (z. B. Programm 1)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={programNameInput} onChangeText={setProgramNameInput} placeholder="Haupttitel / Name (z. B. Wahl 2026)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={programSubtitleInput} onChangeText={setProgramSubtitleInput} placeholder="Untertitel (optional)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={programExtraLineInput} onChangeText={setProgramExtraLineInput} placeholder="Zusatzzeile (optional)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
           <TextInput value={programStartInput} onChangeText={setProgramStartInput} placeholder="Programmanfang (HH:MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
+        <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Formatierung: *fett* · _kursiv_ · ~durchgestrichen~</Text>
 
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={saveProgramForToday}>
           <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Programm speichern</Text>
@@ -7748,10 +7842,13 @@ function AppContent() {
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Anmeldung</Text>
         <View style={styles.mergeInputWrap}>
-          <TextInput value={registrationNameInput} onChangeText={setRegistrationNameInput} placeholder="Name der Anmeldung (z. B. Wahl 2026)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationNameInput} onChangeText={setRegistrationNameInput} placeholder="Haupttitel / Name (z. B. Wahl 2026)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationSubtitleInput} onChangeText={setRegistrationSubtitleInput} placeholder="Untertitel (optional)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <TextInput value={registrationExtraLineInput} onChangeText={setRegistrationExtraLineInput} placeholder="Zusatzzeile (optional)" placeholderTextColor={theme.muted} autoCapitalize="sentences" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
           <TextInput value={registrationStartDateInput} onChangeText={setRegistrationStartDateInput} placeholder="Von (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
           <TextInput value={registrationEndDateInput} onChangeText={setRegistrationEndDateInput} placeholder="Bis (TT.MM)" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
         </View>
+        <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Formatierung: *fett* · _kursiv_ · ~durchgestrichen~</Text>
         <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={clearRegistrationConfig}>
           <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Anmeldung deaktivieren</Text>
         </Pressable>
@@ -8808,6 +8905,10 @@ const styles = StyleSheet.create({
   terminalBannerSubtitle: { textAlign: 'center', marginTop: 4, fontSize: 13, fontWeight: '600' },
   currentPrayerCard: { borderRadius: 16, borderWidth: 1, paddingVertical: 14, paddingHorizontal: 12, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   currentPrayerText: { textAlign: 'center', fontSize: 20, fontWeight: '800' },
+  headlineBlock: { alignItems: 'center', gap: 4 },
+  headlineTitleText: { textAlign: 'center', fontSize: 24, fontWeight: '900', lineHeight: 30 },
+  headlineSubtitleText: { textAlign: 'center', fontSize: 17, fontWeight: '700', lineHeight: 23 },
+  headlineExtraText: { textAlign: 'center', fontSize: 14, fontWeight: '600', lineHeight: 20, opacity: 0.85 },
   noPrayerTitle: { textAlign: 'center', alignSelf: 'center', fontSize: 18, fontWeight: '800', paddingVertical: 6, paddingHorizontal: 14, borderRadius: 999, overflow: 'hidden', letterSpacing: 0.2 },
   noPrayerTitleLight: { backgroundColor: '#FFF4A3', color: '#111111' },
   noPrayerTitleDark: { backgroundColor: '#FFF4A3', color: '#111111' },
