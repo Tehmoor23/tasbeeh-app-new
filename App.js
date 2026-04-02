@@ -2336,19 +2336,6 @@ function AppContent() {
   }, [attendanceMode, currentAccount, registrationWindow.canAccess, registrationWindow.isPublic]);
 
   useEffect(() => {
-    if (attendanceMode !== 'registration' || terminalMode !== 'registrationConfirm') return;
-    if (!registrationWindow.onlyEhlVoters || !pendingRegistrationMember) return;
-    if (isVotingEligibleMember(pendingRegistrationMember)) return;
-    setPendingRegistrationMember(null);
-    setRegistrationConfirmFromQuickSearch(false);
-    setSelectedTanzeem('');
-    setSelectedMajlis('');
-    setTerminalMode('tanzeem');
-    setQuickIdSearchVisible(false);
-    setQuickIdSearchQuery('');
-  }, [attendanceMode, pendingRegistrationMember, registrationWindow.onlyEhlVoters, terminalMode]);
-
-  useEffect(() => {
     let cancelled = false;
     setPrayerOverrideReady(false);
     setOverrideLoading(true);
@@ -6135,16 +6122,6 @@ function AppContent() {
                         key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
                         onPress={() => {
                           if (isRegistrationMode) {
-                            if (registrationWindow.onlyEhlVoters && !isVotingEligibleMember(member)) {
-                              setPendingRegistrationMember(null);
-                              setRegistrationConfirmFromQuickSearch(false);
-                              setSelectedTanzeem('');
-                              setSelectedMajlis('');
-                              setTerminalMode('tanzeem');
-                              setQuickIdSearchVisible(false);
-                              setQuickIdSearchQuery('');
-                              return;
-                            }
                             setQuickIdSearchVisible(false);
                             setRegistrationConfirmFromQuickSearch(true);
                             setPendingRegistrationMember(member);
@@ -6266,6 +6243,21 @@ function AppContent() {
             <Pressable
               style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
               onPress={() => {
+                const shouldBackToTanzeem = Boolean(
+                  registrationWindow.onlyEhlVoters
+                  && pendingRegistrationMember
+                  && !isVotingEligibleMember(pendingRegistrationMember),
+                );
+                if (shouldBackToTanzeem) {
+                  setPendingRegistrationMember(null);
+                  setRegistrationConfirmFromQuickSearch(false);
+                  setSelectedTanzeem('');
+                  setSelectedMajlis('');
+                  setTerminalMode('tanzeem');
+                  setQuickIdSearchVisible(false);
+                  setQuickIdSearchQuery('');
+                  return;
+                }
                 if (registrationConfirmFromQuickSearch) {
                   setPendingRegistrationMember(null);
                   setRegistrationConfirmFromQuickSearch(false);
@@ -6329,16 +6321,6 @@ function AppContent() {
                           ], pressed && styles.buttonPressed]}
                           onPress={() => {
                             if (isRegistrationMode) {
-                              if (registrationWindow.onlyEhlVoters && !isVotingEligibleMember(member)) {
-                                setPendingRegistrationMember(null);
-                                setRegistrationConfirmFromQuickSearch(false);
-                                setSelectedTanzeem('');
-                                setSelectedMajlis('');
-                                setTerminalMode('tanzeem');
-                                setQuickIdSearchVisible(false);
-                                setQuickIdSearchQuery('');
-                                return;
-                              }
                               setRegistrationConfirmFromQuickSearch(false);
                               setPendingRegistrationMember(member);
                               setTerminalMode('registrationConfirm');
