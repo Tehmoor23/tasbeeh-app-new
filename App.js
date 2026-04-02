@@ -4590,6 +4590,8 @@ function AppContent() {
 
         const presentByMajlis = registrationAttendanceEntries
           .filter((entry) => {
+            const responseType = String(entry?.registrationResponse || '').toLowerCase();
+            if (responseType === 'decline') return false;
             const tanzeem = String(entry?.tanzeem || '').toLowerCase();
             if (!activeTanzeems.includes(tanzeem)) return false;
             return filterKey === 'total' ? true : tanzeem === filterKey;
@@ -4661,6 +4663,8 @@ function AppContent() {
     const lastSelectedTanzeem = activeTanzeems[activeTanzeems.length - 1] || '';
 
     const workbook = XLSX.utils.book_new();
+    const totalAcceptCount = Number(registrationStats?.total) || 0;
+    const totalDeclineCount = Number(registrationStats?.declineTotal) || 0;
     const tanzeemOverviewRows = activeTanzeems.flatMap((key, index) => {
       const baseRow = [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])];
       if (key !== lastSelectedTanzeem || index !== (activeTanzeems.length - 1)) return [baseRow];
@@ -4675,8 +4679,9 @@ function AppContent() {
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
       ['Zeitraum der Anmeldung', `${option.startDate} bis ${option.endDate}`],
-      ['Gesamtanmeldungen', formatRatioWithPercent(Number(registrationStats?.total) || 0, registeredTotals.total)],
-      ['Absagen', Number(registrationStats?.declineTotal) || 0],
+      ['Zusagen', formatRatioWithPercent(totalAcceptCount, registeredTotals.total)],
+      ['Absagen', totalDeclineCount],
+      ['Gesamtanmeldungen (Absagen + Zusagen)', totalAcceptCount + totalDeclineCount],
       ...tanzeemOverviewRows,
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
@@ -4693,8 +4698,32 @@ function AppContent() {
     const majlisAttendanceSheet = XLSX.utils.aoa_to_sheet(majlisAttendanceSheetRows);
     majlisAttendanceSheet['!cols'] = [{ wch: 28 }, ...Array.from({ length: 1 + activeTanzeems.length }, () => ({ wch: 24 }))];
 
+    const majlisDeclineRows = registrationAttendanceEntries
+      .filter((entry) => String(entry?.registrationResponse || '').toLowerCase() === 'decline')
+      .filter((entry) => {
+        const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+        return activeTanzeems.includes(tanzeem);
+      })
+      .reduce((acc, entry) => {
+        const majlis = String(entry?.majlis || '').trim();
+        if (!majlis) return acc;
+        acc[majlis] = (acc[majlis] || 0) + 1;
+        return acc;
+      }, {});
+    const majlisDeclineSheetRows = [
+      ['Majlis', 'Absagen'],
+      ...Object.entries(majlisDeclineRows)
+        .map(([majlis, count]) => [majlis, Number(count) || 0])
+        .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]))),
+    ];
+
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anmeldungen');
+    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Zusagen');
+    if (majlisDeclineSheetRows.length > 1) {
+      const majlisDeclineSheet = XLSX.utils.aoa_to_sheet(majlisDeclineSheetRows);
+      majlisDeclineSheet['!cols'] = [{ wch: 28 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(workbook, majlisDeclineSheet, 'Majlis Absagen');
+    }
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const fileName = `Anmeldung_Stats_${toLocationKey(option.name || 'anmeldung')}_${option.startDate}_${option.endDate}.xlsx`;
@@ -4972,7 +5001,7 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Angemeldet (Zusage)', 'Absage', 'Grund', 'Zeitstempel'],
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'],
       ...memberRows.map((row) => [
         row.majlis,
         row.tanzeemLabel,
