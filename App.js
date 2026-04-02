@@ -4629,26 +4629,30 @@ function AppContent() {
       return;
     }
 
-    const khuddamEligibleCount = membersDirectory
-      .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === 'khuddam')
+    const selectedTanzeemEligibleCount = membersDirectory
+      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
       .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 1)
       .length;
-    const khuddamNotAllowedCount = membersDirectory
-      .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === 'khuddam')
+    const selectedTanzeemNotAllowedCount = membersDirectory
+      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
       .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 0)
       .length;
-    const khuddamPresentCount = Number(registrationStats?.byTanzeem?.khuddam) || 0;
-    const khuddamPotentialTotal = khuddamEligibleCount + khuddamNotAllowedCount;
-    const khuddamOverallRatio = `${khuddamPresentCount}/${khuddamPotentialTotal}`;
+    const selectedTanzeemPresentCount = activeTanzeems.reduce(
+      (sum, key) => sum + (Number(registrationStats?.byTanzeem?.[key]) || 0),
+      0,
+    );
+    const selectedTanzeemPotentialTotal = selectedTanzeemEligibleCount + selectedTanzeemNotAllowedCount;
+    const selectedTanzeemOverallRatio = `${selectedTanzeemPresentCount}/${selectedTanzeemPotentialTotal}`;
+    const lastSelectedTanzeem = activeTanzeems[activeTanzeems.length - 1] || '';
 
     const workbook = XLSX.utils.book_new();
-    const tanzeemOverviewRows = activeTanzeems.flatMap((key) => {
+    const tanzeemOverviewRows = activeTanzeems.flatMap((key, index) => {
       const baseRow = [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])];
-      if (key !== 'khuddam') return [baseRow];
+      if (key !== lastSelectedTanzeem || index !== (activeTanzeems.length - 1)) return [baseRow];
       return [
         baseRow,
-        ['Ehl Voters (nicht erlaubte)', String(khuddamNotAllowedCount)],
-        ['Gesamtanteil', khuddamOverallRatio],
+        ['Ehl Voters (nicht erlaubte)', String(selectedTanzeemNotAllowedCount)],
+        ['Gesamtanteil', selectedTanzeemOverallRatio],
       ];
     });
     const overviewRows = [
