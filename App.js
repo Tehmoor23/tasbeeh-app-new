@@ -5112,10 +5112,22 @@ function AppContent() {
       ? String(selectedProgramStatsOption?.programName || selectedProgramConfig?.name || '').trim()
       : String(selectedRegistrationStatsOption?.name || '').trim();
     const attendanceEntries = isProgramDetailedMode ? programAttendanceEntries : registrationAttendanceEntries;
+    const registrationResponseById = new Map(
+      isProgramDetailedMode
+        ? []
+        : attendanceEntries
+          .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === detailedFlowTanzeem)
+          .filter((entry) => String(entry?.majlis || '').trim() === detailedFlowMajlis)
+          .map((entry) => ([
+            String(entry?.idNumber || '').trim(),
+            String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept',
+          ])),
+    );
     const presentIds = new Set(
       attendanceEntries
         .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === detailedFlowTanzeem)
         .filter((entry) => String(entry?.majlis || '').trim() === detailedFlowMajlis)
+        .filter((entry) => (isProgramDetailedMode ? true : String(entry?.registrationResponse || '').toLowerCase() !== 'decline'))
         .map((entry) => String(entry?.idNumber || '').trim())
         .filter(Boolean),
     );
@@ -5132,6 +5144,7 @@ function AppContent() {
         ...entry,
         normalizedStimmberechtigt: normalizeVoterFlagValue(entry?.stimmberechtigt),
         isPresentInActiveFlow: Boolean(presentIds.has(String(entry.idNumber))),
+        registrationResponseInActiveFlow: registrationResponseById.get(String(entry.idNumber)) || '',
         hasActiveFlow: Boolean(activeItemName),
       }))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
@@ -6867,7 +6880,7 @@ function AppContent() {
                   </View>
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anmeldungen nach Majlis</Text>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Zusagen nach Majlis</Text>
                   <View style={styles.statsToggleRow}>
                     <Pressable
                       onPress={() => setRegistrationMajlisFilter((prev) => {
@@ -6897,6 +6910,8 @@ function AppContent() {
                       }, {});
                     const presentByMajlis = registrationAttendanceEntries
                       .filter((entry) => {
+                        const responseType = String(entry?.registrationResponse || '').toLowerCase();
+                        if (responseType === 'decline') return false;
                         const tanzeem = String(entry?.tanzeem || '').toLowerCase();
                         if (!allowedTanzeems.includes(tanzeem)) return false;
                         return includeAllAllowed ? true : tanzeem === filterKey;
@@ -8356,7 +8371,11 @@ function AppContent() {
                         {statsMode === 'program' || statsMode === 'registration' ? (
                           <Text style={{ color: member.hasActiveFlow ? (member.isPresentInActiveFlow ? '#16A34A' : '#DC2626') : theme.muted, fontSize: 12, marginTop: 4 }}>
                             {member.hasActiveFlow
-                              ? (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet')
+                              ? (statsMode === 'registration'
+                                ? (member.registrationResponseInActiveFlow === 'decline'
+                                  ? '● absage'
+                                  : (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet'))
+                                : (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet'))
                               : (statsMode === 'program' ? 'Kein aktives Programm konfiguriert' : 'Keine aktive Anmeldung ausgewählt')}
                           </Text>
                         ) : null}
