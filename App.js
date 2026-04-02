@@ -4629,13 +4629,34 @@ function AppContent() {
       return;
     }
 
+    const khuddamEligibleCount = membersDirectory
+      .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === 'khuddam')
+      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 1)
+      .length;
+    const khuddamNotAllowedCount = membersDirectory
+      .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === 'khuddam')
+      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 0)
+      .length;
+    const khuddamPresentCount = Number(registrationStats?.byTanzeem?.khuddam) || 0;
+    const khuddamPotentialTotal = khuddamEligibleCount + khuddamNotAllowedCount;
+    const khuddamOverallRatio = `${khuddamPresentCount}/${khuddamPotentialTotal}`;
+
     const workbook = XLSX.utils.book_new();
+    const tanzeemOverviewRows = activeTanzeems.flatMap((key) => {
+      const baseRow = [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])];
+      if (key !== 'khuddam') return [baseRow];
+      return [
+        baseRow,
+        ['Ehl Voters (nicht erlaubte)', String(khuddamNotAllowedCount)],
+        ['Gesamtanteil', khuddamOverallRatio],
+      ];
+    });
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
       ['Zeitraum der Anmeldung', `${option.startDate} bis ${option.endDate}`],
       ['Gesamtanmeldungen', formatRatioWithPercent(Number(registrationStats?.total) || 0, registeredTotals.total)],
-      ...activeTanzeems.map((key) => [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])]),
+      ...tanzeemOverviewRows,
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 24 }, { wch: 36 }];
