@@ -46,7 +46,7 @@ const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = 'registration'; // 'full', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -3334,7 +3334,7 @@ function AppContent() {
       .forEach((entry) => {
         const id = String(entry?.idNumber || '').trim();
         if (!id || id === 'guest') return;
-        const response = String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept';
+        const response = String(entry?.registrationResponse || '').trim().toLowerCase() === 'decline' ? 'decline' : 'accept';
         nextMap.set(id, response);
       });
 
@@ -4958,7 +4958,7 @@ function AppContent() {
           String(entry?.tanzeem || '').toLowerCase(),
           String(entry?.majlis || '').trim(),
         ].join('||');
-        const response = String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept';
+        const response = String(entry?.registrationResponse || '').trim().toLowerCase() === 'decline' ? 'decline' : 'accept';
         const reason = String(entry?.declineReason || '').trim();
         const timestamp = String(entry?.timestamp || '');
         const existingTimestamp = String(acc[key]?.timestamp || '');
@@ -6512,7 +6512,7 @@ function AppContent() {
                       const responseBorderStyle = shouldUseRegistrationResponseBorders
                         ? (registrationResponse === 'decline'
                           ? { borderColor: '#DC2626', borderWidth: 3 }
-                          : (registrationResponse === 'accept' || isAlreadyCounted ? { borderColor: '#16A34A', borderWidth: 3 } : null))
+                          : (registrationResponse === 'accept' ? { borderColor: '#16A34A', borderWidth: 3 } : null))
                         : null;
                       return (
                         <Pressable
