@@ -4629,13 +4629,38 @@ function AppContent() {
       return;
     }
 
+    const selectedTanzeemEligibleCount = membersDirectory
+      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
+      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 1)
+      .length;
+    const selectedTanzeemNotAllowedCount = membersDirectory
+      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
+      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 0)
+      .length;
+    const selectedTanzeemPresentCount = activeTanzeems.reduce(
+      (sum, key) => sum + (Number(registrationStats?.byTanzeem?.[key]) || 0),
+      0,
+    );
+    const selectedTanzeemPotentialTotal = selectedTanzeemEligibleCount + selectedTanzeemNotAllowedCount;
+    const selectedTanzeemOverallRatio = `${selectedTanzeemPresentCount}/${selectedTanzeemPotentialTotal}`;
+    const lastSelectedTanzeem = activeTanzeems[activeTanzeems.length - 1] || '';
+
     const workbook = XLSX.utils.book_new();
+    const tanzeemOverviewRows = activeTanzeems.flatMap((key, index) => {
+      const baseRow = [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])];
+      if (key !== lastSelectedTanzeem || index !== (activeTanzeems.length - 1)) return [baseRow];
+      return [
+        baseRow,
+        ['Ehl Voters (nicht erlaubte)', String(selectedTanzeemNotAllowedCount)],
+        ['Gesamtanteil', selectedTanzeemOverallRatio],
+      ];
+    });
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
       ['Zeitraum der Anmeldung', `${option.startDate} bis ${option.endDate}`],
       ['Gesamtanmeldungen', formatRatioWithPercent(Number(registrationStats?.total) || 0, registeredTotals.total)],
-      ...activeTanzeems.map((key) => [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])]),
+      ...tanzeemOverviewRows,
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 24 }, { wch: 36 }];
