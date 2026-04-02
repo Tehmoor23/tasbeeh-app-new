@@ -5106,9 +5106,15 @@ function AppContent() {
 
     return membersDirectory
       .filter((entry) => entry.tanzeem === detailedFlowTanzeem && entry.majlis === detailedFlowMajlis)
+      .filter((entry) => (
+        statsMode !== 'registration'
+          ? true
+          : normalizeVoterFlagValue(entry?.stimmberechtigt) !== '-'
+      ))
       .filter((entry) => (!query || String(entry.idNumber).includes(query)))
       .map((entry) => ({
         ...entry,
+        normalizedStimmberechtigt: normalizeVoterFlagValue(entry?.stimmberechtigt),
         isPresentInActiveFlow: Boolean(presentIds.has(String(entry.idNumber))),
         hasActiveFlow: Boolean(activeItemName),
       }))
@@ -8250,6 +8256,9 @@ function AppContent() {
                               ? (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet')
                               : (statsMode === 'program' ? 'Kein aktives Programm konfiguriert' : 'Keine aktive Anmeldung ausgewählt')}
                           </Text>
+                        ) : null}
+                        {statsMode === 'registration' && member.normalizedStimmberechtigt === 0 ? (
+                          <Text style={{ color: theme.muted, fontSize: 12, marginTop: 2 }}>Darf nicht teilnehmen.</Text>
                         ) : null}
                       </Pressable>
                     ))}
