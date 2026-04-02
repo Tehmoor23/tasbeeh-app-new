@@ -2737,8 +2737,7 @@ function AppContent() {
     if (!shouldRestrictToRegistrationView) return;
     if (activeTab !== 'terminal') setActiveTab('terminal');
     if (attendanceMode !== 'registration') setAttendanceMode('registration');
-    if (terminalMode !== 'tanzeem') setTerminalMode('tanzeem');
-  }, [activeTab, attendanceMode, shouldRestrictToRegistrationView, terminalMode]);
+  }, [activeTab, attendanceMode, shouldRestrictToRegistrationView]);
 
   useEffect(() => {
     if (!shouldRestrictToQrView) return;
