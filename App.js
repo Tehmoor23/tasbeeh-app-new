@@ -4642,7 +4642,7 @@ function AppContent() {
       0,
     );
     const selectedTanzeemPotentialTotal = selectedTanzeemEligibleCount + selectedTanzeemNotAllowedCount;
-    const selectedTanzeemOverallRatio = `${selectedTanzeemPresentCount}/${selectedTanzeemPotentialTotal}`;
+    const selectedTanzeemOverallRatio = formatRatioWithPercent(selectedTanzeemPresentCount, selectedTanzeemPotentialTotal);
     const lastSelectedTanzeem = activeTanzeems[activeTanzeems.length - 1] || '';
 
     const workbook = XLSX.utils.book_new();
@@ -4651,6 +4651,7 @@ function AppContent() {
       if (key !== lastSelectedTanzeem || index !== (activeTanzeems.length - 1)) return [baseRow];
       return [
         baseRow,
+        ['Ehl Voters (erlaubt)', String(selectedTanzeemEligibleCount)],
         ['Ehl Voters (nicht erlaubte)', String(selectedTanzeemNotAllowedCount)],
         ['Gesamtanteil', selectedTanzeemOverallRatio],
       ];
