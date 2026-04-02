@@ -19,6 +19,7 @@ import {
   Switch,
   Text,
   TextInput,
+  Linking,
   View,
   Vibration,
   useWindowDimensions,
@@ -6053,7 +6054,9 @@ function AppContent() {
     const isProgramMode = attendanceMode === 'program';
     const isRegistrationMode = attendanceMode === 'registration';
     const hasActiveAttendanceWindow = isPrayerMode ? prayerWindow.isActive : (isProgramMode ? programWindow.isActive : registrationWindow.isOpen);
-    const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : (isProgramMode ? 'Programmanwesenheit' : 'Anmeldung');
+    const modeSubTitle = isPrayerMode
+      ? 'Erfassung der Gebetsanwesenheit'
+      : (isProgramMode ? 'Erfassung der Programmanwesenheit' : 'Erfassung von Anmeldungen');
     const canAccessRegistrationMode = registrationWindow.canAccess && (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     const registrationLockedByLogin = isRegistrationOnlyAppMode ? false : (registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount);
     const cycleAttendanceMode = () => {
@@ -6065,6 +6068,11 @@ function AppContent() {
     const pendingRegistrationWahlberechtigtFlag = normalizeVoterFlagValue(pendingRegistrationMember?.wahlberechtigt);
     const pendingRegistrationAnwesendFlag = normalizeVoterFlagValue(pendingRegistrationMember?.anwesend_2026_01_08);
     const isPendingRegistrationAllowedByVoterRule = !registrationWindow.onlyEhlVoters || pendingRegistrationVoterFlag === 1;
+    const isPendingRegistrationDisallowedByVoterRule = Boolean(
+      registrationWindow.onlyEhlVoters
+      && pendingRegistrationMember
+      && pendingRegistrationVoterFlag !== 1,
+    );
 
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
@@ -6076,9 +6084,9 @@ function AppContent() {
               </Text>
             </Pressable>
           ) : null}
-          <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
+          <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>Local Amarat Frankfurt</Text>
           <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>{isPrayerMode ? 'نماز حاضری' : (isProgramMode ? 'پروگرام حاضری' : 'اندراج / رجسٹریشن')}</Text>
-          <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
+          <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>{modeSubTitle}</Text>
         </View>
 
         <View style={[styles.currentPrayerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -6274,7 +6282,10 @@ function AppContent() {
               </View>
             ) : null}
             <Pressable
-              style={({ pressed }) => [[styles.registrationConfirmBtn, { opacity: (pendingRegistrationMember && isPendingRegistrationAllowedByVoterRule) ? 1 : 0.6 }], pressed && styles.buttonPressed]}
+              style={({ pressed }) => [[styles.registrationConfirmBtn, {
+                opacity: (pendingRegistrationMember && isPendingRegistrationAllowedByVoterRule) ? 1 : 0.6,
+                backgroundColor: isPendingRegistrationDisallowedByVoterRule ? '#DC2626' : '#16A34A',
+              }], pressed && styles.buttonPressed]}
               disabled={!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule}
               onPress={async () => {
                 if (!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule) return;
@@ -8010,6 +8021,13 @@ function AppContent() {
                   isLast={index === PRIVACY_POLICY_SECTIONS.length - 1}
                 />
               ))}
+              <Text style={[styles.privacyParagraph, { color: theme.text, marginBottom: 0 }]}>
+                Mehr Informationen zum Datenschutz finden Sie{' '}
+                <Text style={{ textDecorationLine: 'underline' }} onPress={() => Linking.openURL('https://ahmadiyya.de/datenschutz/')}>
+                  hier
+                </Text>
+                .
+              </Text>
             </ScrollView>
           </SafeAreaView>
         </View>
