@@ -3331,8 +3331,6 @@ function AppContent() {
     const nextMap = new Map();
     registrationAttendanceEntries
       .filter((entry) => String(entry?.registrationId || '').trim() === registrationId)
-      .filter((entry) => String(entry?.tanzeem || '').toLowerCase() === selectedTanzeem)
-      .filter((entry) => String(entry?.majlis || '').trim() === selectedMajlis)
       .forEach((entry) => {
         const id = String(entry?.idNumber || '').trim();
         if (!id || id === 'guest') return;
@@ -3341,7 +3339,7 @@ function AppContent() {
       });
 
     return nextMap;
-  }, [attendanceMode, registrationAttendanceEntries, registrationWindow.config?.id, registrationWindow.isOpen, selectedMajlis, selectedTanzeem]);
+  }, [attendanceMode, registrationAttendanceEntries, registrationWindow.config?.id, registrationWindow.isOpen]);
 
   const shouldShowCountedIdHint = Boolean(currentAccount);
   const countedMemberDocPrefixes = useMemo(() => {
@@ -6509,10 +6507,13 @@ function AppContent() {
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
                     {visibleMemberChoices.map((member) => {
                       const isAlreadyCounted = shouldShowCountedIdHint && countedMemberIdsForSelection.has(String(member.idNumber || ''));
-                      const registrationResponse = isRegistrationMode ? registrationResponseBySelectionId.get(String(member.idNumber || '')) : '';
-                      const responseBorderStyle = registrationResponse === 'accept'
-                        ? { borderColor: '#16A34A', borderWidth: 3 }
-                        : (registrationResponse === 'decline' ? { borderColor: '#DC2626', borderWidth: 3 } : null);
+                      const shouldUseRegistrationResponseBorders = shouldShowCountedIdHint && isRegistrationMode && registrationWindow.onlyEhlVoters;
+                      const registrationResponse = shouldUseRegistrationResponseBorders ? registrationResponseBySelectionId.get(String(member.idNumber || '')) : '';
+                      const responseBorderStyle = shouldUseRegistrationResponseBorders
+                        ? (registrationResponse === 'decline'
+                          ? { borderColor: '#DC2626', borderWidth: 3 }
+                          : (registrationResponse === 'accept' || isAlreadyCounted ? { borderColor: '#16A34A', borderWidth: 3 } : null))
+                        : null;
                       return (
                         <Pressable
                           key={`${member.tanzeem}_${member.majlis}_${member.idNumber}`}
@@ -6521,8 +6522,8 @@ function AppContent() {
                             isTablet && styles.gridItemTablet,
                             { backgroundColor: theme.card, borderColor: theme.border },
                             responseBorderStyle,
-                            isAlreadyCounted && styles.gridItemCounted,
-                            isAlreadyCounted && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.24)' : 'rgba(209, 213, 219, 0.26)' },
+                            isAlreadyCounted && !shouldUseRegistrationResponseBorders && styles.gridItemCounted,
+                            isAlreadyCounted && !shouldUseRegistrationResponseBorders && { backgroundColor: isDarkMode ? 'rgba(75, 85, 99, 0.24)' : 'rgba(209, 213, 219, 0.26)' },
                           ], pressed && styles.buttonPressed]}
                           onPress={() => {
                             if (isRegistrationMode) {
@@ -6541,7 +6542,7 @@ function AppContent() {
                               styles.gridText,
                               isTablet && styles.gridTextTablet,
                               { color: theme.text },
-                              isAlreadyCounted && { color: theme.muted },
+                              isAlreadyCounted && !shouldUseRegistrationResponseBorders && { color: theme.muted },
                             ]}
                           >
                             {member.idNumber}
