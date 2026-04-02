@@ -6867,7 +6867,7 @@ function AppContent() {
                   </View>
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anmeldungen nach Majlis</Text>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Zusagen nach Majlis</Text>
                   <View style={styles.statsToggleRow}>
                     <Pressable
                       onPress={() => setRegistrationMajlisFilter((prev) => {
@@ -6897,6 +6897,8 @@ function AppContent() {
                       }, {});
                     const presentByMajlis = registrationAttendanceEntries
                       .filter((entry) => {
+                        const responseType = String(entry?.registrationResponse || '').toLowerCase();
+                        if (responseType === 'decline') return false;
                         const tanzeem = String(entry?.tanzeem || '').toLowerCase();
                         if (!allowedTanzeems.includes(tanzeem)) return false;
                         return includeAllAllowed ? true : tanzeem === filterKey;
