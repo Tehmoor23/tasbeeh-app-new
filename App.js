@@ -1490,6 +1490,8 @@ function AppContent() {
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
   const [registrationConfirmFromQuickSearch, setRegistrationConfirmFromQuickSearch] = useState(false);
+  const [registrationDeclineConfirmVisible, setRegistrationDeclineConfirmVisible] = useState(false);
+  const [registrationDeclineReasonInput, setRegistrationDeclineReasonInput] = useState('');
   const [idSearchQuery, setIdSearchQuery] = useState('');
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
@@ -4666,7 +4668,7 @@ function AppContent() {
         baseRow,
         ['Ehl Voters (erlaubt)', String(selectedTanzeemEligibleCount)],
         ['Ehl Voters (nicht erlaubte)', String(selectedTanzeemNotAllowedCount)],
-        ['Gesamtanteil', selectedTanzeemOverallRatio],
+        ['Gesamtanteil Anmeldungen', selectedTanzeemOverallRatio],
       ];
     });
     const overviewRows = [
@@ -4674,6 +4676,7 @@ function AppContent() {
       ['Anmeldung', option.name || '—'],
       ['Zeitraum der Anmeldung', `${option.startDate} bis ${option.endDate}`],
       ['Gesamtanmeldungen', formatRatioWithPercent(Number(registrationStats?.total) || 0, registeredTotals.total)],
+      ['Absagen', Number(registrationStats?.declineTotal) || 0],
       ...tanzeemOverviewRows,
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
@@ -4900,25 +4903,22 @@ function AppContent() {
       acc[String(name || '').trim().toLowerCase()] = index;
       return acc;
     }, {});
-    const presentMap = new Set(
-      registrationAttendanceEntries
-        .map((entry) => [
-          String(entry?.idNumber || ''),
-          String(entry?.tanzeem || '').toLowerCase(),
-          String(entry?.majlis || '').trim(),
-        ].join('||')),
-    );
-    const attendanceTimestampByKey = registrationAttendanceEntries
+    const attendanceResponseByKey = registrationAttendanceEntries
       .reduce((acc, entry) => {
         const key = [
           String(entry?.idNumber || ''),
           String(entry?.tanzeem || '').toLowerCase(),
           String(entry?.majlis || '').trim(),
         ].join('||');
+        const response = String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept';
+        const reason = String(entry?.declineReason || '').trim();
         const timestamp = String(entry?.timestamp || '');
-        const existing = String(acc[key] || '');
-        if (!existing) acc[key] = timestamp;
-        else if (timestamp && new Date(timestamp).getTime() < new Date(existing).getTime()) acc[key] = timestamp;
+        const existingTimestamp = String(acc[key]?.timestamp || '');
+        if (!existingTimestamp) {
+          acc[key] = { response, reason, timestamp };
+        } else if (timestamp && new Date(timestamp).getTime() < new Date(existingTimestamp).getTime()) {
+          acc[key] = { response, reason, timestamp };
+        }
         return acc;
       }, {});
 
@@ -4941,13 +4941,21 @@ function AppContent() {
       })
       .map((row) => {
         const key = [row.idNumber, row.tanzeem, row.majlis].join('||');
+        const responseNode = attendanceResponseByKey[key];
+        const responseType = String(responseNode?.response || '');
+        const hasDecline = responseType === 'decline';
+        const hasAccept = responseType === 'accept';
+        const responseTimestamp = String(responseNode?.timestamp || '');
+        const declineReason = String(responseNode?.reason || '').trim();
         return {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
           idNumber: row.idNumber,
           anwesend_2026_01_08: row.anwesend_2026_01_08,
-          registered: presentMap.has(key) ? 'Ja' : 'Nein',
-          timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
+          registeredAccept: hasAccept ? 'Ja' : '-',
+          declined: hasDecline ? 'Ja' : '-',
+          declineReason: hasDecline ? (declineReason || '-') : '-',
+          timestamp: responseTimestamp ? formatGermanDateTime(responseTimestamp) : '—',
         };
       });
 
@@ -4964,18 +4972,20 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Angemeldet', 'Zeitstempel'],
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Angemeldet (Zusage)', 'Absage', 'Grund', 'Zeitstempel'],
       ...memberRows.map((row) => [
         row.majlis,
         row.tanzeemLabel,
         row.idNumber,
         row.anwesend_2026_01_08 === 1 ? 'Ja' : (row.anwesend_2026_01_08 === 0 ? 'Nein' : '-'),
-        row.registered,
+        row.registeredAccept,
+        row.declined,
+        row.declineReason,
         row.timestamp,
       ]),
     ];
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 24 }];
+    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
@@ -5835,6 +5845,10 @@ function AppContent() {
     const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
     const resolvedLocationName = String(locationName || selectedMember?.majlis || selectedMajlis || 'Gast').trim();
     const locationKey = toLocationKey(resolvedLocationName || 'gast');
+    const registrationResponseType = modeType === 'registration' && options?.registrationResponse === 'decline' ? 'decline' : 'accept';
+    const registrationDeclineReason = modeType === 'registration' && registrationResponseType === 'decline'
+      ? String(options?.declineReason || '').trim()
+      : '';
     const targetKeys = [];
 
     if (modeType === 'program') {
@@ -5866,9 +5880,13 @@ function AppContent() {
           paths.push('total');
         }
       } else if (modeType === 'registration') {
-        paths.push(`byTanzeem.${effectiveTanzeem}`);
-        paths.push(`byMajlis.${locationKey}`);
-        paths.push('total');
+        if (registrationResponseType === 'decline') {
+          paths.push('declineTotal');
+        } else {
+          paths.push(`byTanzeem.${effectiveTanzeem}`);
+          paths.push(`byMajlis.${locationKey}`);
+          paths.push('total');
+        }
       } else if (kind === 'guest') {
         paths.push(`byPrayer.${targetKey}.guest`);
       } else {
@@ -5912,6 +5930,7 @@ function AppContent() {
             registrationId: registrationKey,
             registrationName: String(registrationWindow.config?.name || ''),
             total: 0,
+            declineTotal: 0,
             byTanzeem: {},
             byMajlis: {},
             createdAt: new Date().toISOString(),
@@ -5934,6 +5953,7 @@ function AppContent() {
             date: runtimeISO,
             ...(modeType === 'program' ? { programName: runtimeProgramWindow.label } : {}),
             ...(modeType === 'registration' ? { registrationId: registrationKey, registrationName: registrationWindow.config?.name || '' } : {}),
+            ...(modeType === 'registration' ? { registrationResponse: registrationResponseType, declineReason: registrationDeclineReason || null } : {}),
             ...(modeType === 'prayer' ? { prayer: targetKey } : {}),
             majlis: resolvedLocationName,
             tanzeem: effectiveTanzeem,
@@ -6173,6 +6193,8 @@ function AppContent() {
                           if (isRegistrationMode) {
                             setQuickIdSearchVisible(false);
                             setRegistrationConfirmFromQuickSearch(true);
+                            setRegistrationDeclineConfirmVisible(false);
+                            setRegistrationDeclineReasonInput('');
                             setPendingRegistrationMember(member);
                             setTerminalMode('registrationConfirm');
                             return;
@@ -6283,19 +6305,64 @@ function AppContent() {
             ) : null}
             <Pressable
               style={({ pressed }) => [[styles.registrationConfirmBtn, {
-                opacity: (pendingRegistrationMember && isPendingRegistrationAllowedByVoterRule) ? 1 : 0.6,
+                opacity: pendingRegistrationMember ? 1 : 0.6,
                 backgroundColor: isPendingRegistrationDisallowedByVoterRule ? '#DC2626' : '#16A34A',
-              }], pressed && styles.buttonPressed]}
-              disabled={!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule}
+              }], pressed && isPendingRegistrationAllowedByVoterRule && styles.buttonPressed]}
+              disabled={!pendingRegistrationMember}
               onPress={async () => {
-                if (!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule) return;
+                if (!pendingRegistrationMember) return;
+                if (!isPendingRegistrationAllowedByVoterRule) {
+                  if (pendingRegistrationVoterFlag === 0) setToast('Sie sind leider nicht stimmberechtigt.');
+                  else setToast('Sie erfüllen nicht die Voraussetzungen eines Ehl-Voters.');
+                  return;
+                }
                 await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember);
                 setPendingRegistrationMember(null);
                 setRegistrationConfirmFromQuickSearch(false);
+                setRegistrationDeclineConfirmVisible(false);
+                setRegistrationDeclineReasonInput('');
               }}
             >
               <Text style={styles.registrationConfirmBtnText}>Anmelden</Text>
             </Pressable>
+            {registrationWindow.onlyEhlVoters && pendingRegistrationMember && pendingRegistrationVoterFlag === 1 ? (
+              <>
+                <Pressable
+                  style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 8, backgroundColor: '#DC2626' }], pressed && styles.buttonPressed]}
+                  onPress={() => setRegistrationDeclineConfirmVisible((prev) => !prev)}
+                >
+                  <Text style={styles.registrationConfirmBtnText}>Absage</Text>
+                </Pressable>
+                {registrationDeclineConfirmVisible ? (
+                  <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 10 }]}>
+                    <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Optional Grund angeben</Text>
+                    <TextInput
+                      value={registrationDeclineReasonInput}
+                      onChangeText={setRegistrationDeclineReasonInput}
+                      placeholder="Optional Grund eingeben"
+                      placeholderTextColor={theme.muted}
+                      style={[styles.mergeInput, { marginTop: 8, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                    />
+                    <Pressable
+                      style={({ pressed }) => [[styles.saveBtn, { marginTop: 10, backgroundColor: '#DC2626' }], pressed && styles.buttonPressed]}
+                      onPress={async () => {
+                        if (!pendingRegistrationMember) return;
+                        await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember, {
+                          registrationResponse: 'decline',
+                          declineReason: registrationDeclineReasonInput,
+                        });
+                        setPendingRegistrationMember(null);
+                        setRegistrationConfirmFromQuickSearch(false);
+                        setRegistrationDeclineConfirmVisible(false);
+                        setRegistrationDeclineReasonInput('');
+                      }}
+                    >
+                      <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: '#FFFFFF' }]}>Absage bestätigen</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+              </>
+            ) : null}
             <Pressable
               style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
               onPress={() => {
@@ -6307,6 +6374,8 @@ function AppContent() {
                 if (shouldBackToTanzeem) {
                   setPendingRegistrationMember(null);
                   setRegistrationConfirmFromQuickSearch(false);
+                  setRegistrationDeclineConfirmVisible(false);
+                  setRegistrationDeclineReasonInput('');
                   setSelectedTanzeem('');
                   setSelectedMajlis('');
                   setTerminalMode('tanzeem');
@@ -6317,6 +6386,8 @@ function AppContent() {
                 if (registrationConfirmFromQuickSearch) {
                   setPendingRegistrationMember(null);
                   setRegistrationConfirmFromQuickSearch(false);
+                  setRegistrationDeclineConfirmVisible(false);
+                  setRegistrationDeclineReasonInput('');
                   setSelectedTanzeem('');
                   setSelectedMajlis('');
                   setTerminalMode('tanzeem');
@@ -6324,6 +6395,8 @@ function AppContent() {
                   setQuickIdSearchQuery('');
                   return;
                 }
+                setRegistrationDeclineConfirmVisible(false);
+                setRegistrationDeclineReasonInput('');
                 setTerminalMode('idSelection');
               }}
             >
@@ -6378,6 +6451,8 @@ function AppContent() {
                           onPress={() => {
                             if (isRegistrationMode) {
                               setRegistrationConfirmFromQuickSearch(false);
+                              setRegistrationDeclineConfirmVisible(false);
+                              setRegistrationDeclineReasonInput('');
                               setPendingRegistrationMember(member);
                               setTerminalMode('registrationConfirm');
                               return;
