@@ -1488,6 +1488,7 @@ function AppContent() {
   const [registrationIncludedTanzeemsInput, setRegistrationIncludedTanzeemsInput] = useState([...REGISTRATION_TANZEEM_OPTIONS]);
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
+  const [registrationConfirmFromQuickSearch, setRegistrationConfirmFromQuickSearch] = useState(false);
   const [idSearchQuery, setIdSearchQuery] = useState('');
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
@@ -2333,6 +2334,19 @@ function AppContent() {
       setPendingRegistrationMember(null);
     }
   }, [attendanceMode, currentAccount, registrationWindow.canAccess, registrationWindow.isPublic]);
+
+  useEffect(() => {
+    if (attendanceMode !== 'registration' || terminalMode !== 'registrationConfirm') return;
+    if (!registrationWindow.onlyEhlVoters || !pendingRegistrationMember) return;
+    if (isVotingEligibleMember(pendingRegistrationMember)) return;
+    setPendingRegistrationMember(null);
+    setRegistrationConfirmFromQuickSearch(false);
+    setSelectedTanzeem('');
+    setSelectedMajlis('');
+    setTerminalMode('tanzeem');
+    setQuickIdSearchVisible(false);
+    setQuickIdSearchQuery('');
+  }, [attendanceMode, pendingRegistrationMember, registrationWindow.onlyEhlVoters, terminalMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -6121,7 +6135,18 @@ function AppContent() {
                         key={`quick_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
                         onPress={() => {
                           if (isRegistrationMode) {
+                            if (registrationWindow.onlyEhlVoters && !isVotingEligibleMember(member)) {
+                              setPendingRegistrationMember(null);
+                              setRegistrationConfirmFromQuickSearch(false);
+                              setSelectedTanzeem('');
+                              setSelectedMajlis('');
+                              setTerminalMode('tanzeem');
+                              setQuickIdSearchVisible(false);
+                              setQuickIdSearchQuery('');
+                              return;
+                            }
                             setQuickIdSearchVisible(false);
+                            setRegistrationConfirmFromQuickSearch(true);
                             setPendingRegistrationMember(member);
                             setTerminalMode('registrationConfirm');
                             return;
@@ -6213,10 +6238,10 @@ function AppContent() {
                   <>
                     <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie dürfen an der Wahl teilnehmen.</Text>
                     <Text style={[styles.registrationVoterInfoDetail, { color: theme.muted }]}>
-                      Wahlberechtigt: {pendingRegistrationWahlberechtigtFlag === 1 ? 'Ja' : (pendingRegistrationWahlberechtigtFlag === 0 ? 'Nein' : '-')}
+                      {pendingRegistrationWahlberechtigtFlag === 1 ? 'Sie sind ebenfalls wahlberechtigt.' : 'Sie sind nicht wahlberechtigt.'}
                     </Text>
                     <Text style={[styles.registrationVoterInfoDetail, { color: theme.muted }]}>
-                      Anwesend am 08.01.2026: {pendingRegistrationAnwesendFlag === 1 ? 'Ja' : (pendingRegistrationAnwesendFlag === 0 ? 'Nein' : '-')}
+                      {pendingRegistrationAnwesendFlag === 1 ? 'Bei der letzten Wahl am 08.01.2026 waren Sie anwesend.' : 'Bei der letzten Wahl am 08.01.2026 waren Sie nicht anwesend.'}
                     </Text>
                   </>
                 ) : pendingRegistrationVoterFlag === 0 ? (
@@ -6233,11 +6258,27 @@ function AppContent() {
                 if (!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule) return;
                 await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember);
                 setPendingRegistrationMember(null);
+                setRegistrationConfirmFromQuickSearch(false);
               }}
             >
               <Text style={styles.registrationConfirmBtnText}>Anmelden</Text>
             </Pressable>
-            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('idSelection')}>
+            <Pressable
+              style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+              onPress={() => {
+                if (registrationConfirmFromQuickSearch) {
+                  setPendingRegistrationMember(null);
+                  setRegistrationConfirmFromQuickSearch(false);
+                  setSelectedTanzeem('');
+                  setSelectedMajlis('');
+                  setTerminalMode('tanzeem');
+                  setQuickIdSearchVisible(true);
+                  setQuickIdSearchQuery('');
+                  return;
+                }
+                setTerminalMode('idSelection');
+              }}
+            >
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
           </>
@@ -6288,6 +6329,17 @@ function AppContent() {
                           ], pressed && styles.buttonPressed]}
                           onPress={() => {
                             if (isRegistrationMode) {
+                              if (registrationWindow.onlyEhlVoters && !isVotingEligibleMember(member)) {
+                                setPendingRegistrationMember(null);
+                                setRegistrationConfirmFromQuickSearch(false);
+                                setSelectedTanzeem('');
+                                setSelectedMajlis('');
+                                setTerminalMode('tanzeem');
+                                setQuickIdSearchVisible(false);
+                                setQuickIdSearchQuery('');
+                                return;
+                              }
+                              setRegistrationConfirmFromQuickSearch(false);
                               setPendingRegistrationMember(member);
                               setTerminalMode('registrationConfirm');
                               return;
