@@ -6249,7 +6249,7 @@ function AppContent() {
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{pendingRegistrationMember.idNumber}</Text>
                 <Text style={[styles.noteText, { color: theme.muted }]}>
                   {`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${pendingRegistrationMember.majlis}${
-                    pendingRegistrationVoterFlag === 1 ? ' · Ehl-Voter' : (pendingRegistrationVoterFlag === 0 ? ' · Nicht-Ehl-Voter' : '')
+                    (pendingRegistrationVoterFlag === 1 || pendingRegistrationVoterFlag === 0) ? ' · Ehl-Voter' : ' · Nicht-Ehl-Voter'
                   }`}
                 </Text>
               </View>
