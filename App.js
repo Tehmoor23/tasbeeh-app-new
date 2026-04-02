@@ -6328,7 +6328,7 @@ function AppContent() {
             {registrationWindow.onlyEhlVoters && pendingRegistrationMember && pendingRegistrationVoterFlag === 1 ? (
               <>
                 <Pressable
-                  style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 8, backgroundColor: '#DC2626' }], pressed && styles.buttonPressed]}
+                  style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 2, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
                   onPress={() => setRegistrationDeclineConfirmVisible((prev) => !prev)}
                 >
                   <Text style={styles.registrationConfirmBtnText}>Absage</Text>
@@ -6344,7 +6344,7 @@ function AppContent() {
                       style={[styles.mergeInput, { marginTop: 8, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
                     />
                     <Pressable
-                      style={({ pressed }) => [[styles.saveBtn, { marginTop: 10, backgroundColor: '#DC2626' }], pressed && styles.buttonPressed]}
+                      style={({ pressed }) => [[styles.saveBtn, { marginTop: 10, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
                       onPress={async () => {
                         if (!pendingRegistrationMember) return;
                         await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember, {
