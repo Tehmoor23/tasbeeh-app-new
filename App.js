@@ -4952,8 +4952,8 @@ function AppContent() {
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
           idNumber: row.idNumber,
           anwesend_2026_01_08: row.anwesend_2026_01_08,
-          registeredAccept: hasAccept ? 'Ja' : '-',
-          declined: hasDecline ? 'Ja' : '-',
+          registeredAccept: hasAccept ? 'Ja' : (hasDecline ? 'Nein' : '-'),
+          declined: hasDecline ? 'Ja' : (hasAccept ? 'Nein' : '-'),
           declineReason: hasDecline ? (declineReason || '-') : '-',
           timestamp: responseTimestamp ? formatGermanDateTime(responseTimestamp) : '—',
         };
@@ -6328,7 +6328,7 @@ function AppContent() {
             {registrationWindow.onlyEhlVoters && pendingRegistrationMember && pendingRegistrationVoterFlag === 1 ? (
               <>
                 <Pressable
-                  style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 2, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
+                  style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 0, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
                   onPress={() => setRegistrationDeclineConfirmVisible((prev) => !prev)}
                 >
                   <Text style={styles.registrationConfirmBtnText}>Absage</Text>
@@ -6851,8 +6851,9 @@ function AppContent() {
                   <Text style={[styles.noteText, { color: theme.muted }]}>{`${selectedRegistrationStatsOption.startDate} bis ${selectedRegistrationStatsOption.endDate}`}</Text>
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Gesamtanmeldungen</Text>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Zusagen</Text>
                   <Text style={[styles.statsBigValue, { color: theme.text }]}>{Number(registrationStats?.total) || 0}</Text>
+                  <Text style={[styles.noteText, { color: theme.muted }]}>{`Absagen: ${Number(registrationStats?.declineTotal) || 0}`}</Text>
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                   <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Tanzeem Aufteilung (Anmeldung)</Text>
