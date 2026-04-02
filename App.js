@@ -1453,6 +1453,7 @@ function AppContent() {
   const [attendanceMode, setAttendanceMode] = useState('prayer');
   const [statsMode, setStatsMode] = useState('prayer');
   const [countedMemberIdsForSelection, setCountedMemberIdsForSelection] = useState(new Set());
+  const [countedMemberResponsesForSelection, setCountedMemberResponsesForSelection] = useState(new Map());
 
   const [isAdminLoginVisible, setAdminLoginVisible] = useState(false);
   const [loginNameInput, setLoginNameInput] = useState('');
@@ -3322,25 +3323,6 @@ function AppContent() {
     return memberChoices;
   }, [filteredMemberChoices, idSearchQuery, memberChoices]);
 
-  const registrationResponseBySelectionId = useMemo(() => {
-    if (attendanceMode !== 'registration') return new Map();
-    if (!selectedTanzeem || !selectedMajlis) return new Map();
-    const registrationId = String(registrationWindow.config?.id || '').trim();
-    if (!registrationWindow.isOpen || !registrationId) return new Map();
-
-    const nextMap = new Map();
-    registrationAttendanceEntries
-      .filter((entry) => String(entry?.registrationId || '').trim() === registrationId)
-      .forEach((entry) => {
-        const id = String(entry?.idNumber || '').trim();
-        if (!id || id === 'guest') return;
-        const response = String(entry?.registrationResponse || '').trim().toLowerCase() === 'decline' ? 'decline' : 'accept';
-        nextMap.set(id, response);
-      });
-
-    return nextMap;
-  }, [attendanceMode, registrationAttendanceEntries, registrationWindow.config?.id, registrationWindow.isOpen]);
-
   const shouldShowCountedIdHint = Boolean(currentAccount);
   const countedMemberDocPrefixes = useMemo(() => {
     if (!shouldShowCountedIdHint) return [];
@@ -3387,6 +3369,7 @@ function AppContent() {
   useEffect(() => {
     if (terminalMode !== 'idSelection' || countedMemberDocPrefixes.length === 0) {
       setCountedMemberIdsForSelection(new Set());
+      setCountedMemberResponsesForSelection(new Map());
       return undefined;
     }
 
@@ -3395,24 +3378,48 @@ function AppContent() {
       ? PROGRAM_ATTENDANCE_COLLECTION
       : (attendanceMode === 'registration' ? REGISTRATION_ATTENDANCE_COLLECTION : MEMBER_DIRECTORY_COLLECTION);
 
-    const fetchCountedMemberIds = () => {
-      listDocIds(targetCollection)
-        .then((ids) => {
-          if (cancelled) return;
-          const nextSet = new Set();
-          ids.forEach((docId) => {
-            const resolvedDocId = String(docId || '');
-            const matchingPrefix = countedMemberDocPrefixes.find((prefix) => resolvedDocId.startsWith(prefix));
-            if (!matchingPrefix) return;
-            const extractedId = resolvedDocId.slice(matchingPrefix.length).trim();
-            if (!extractedId || extractedId === 'guest') return;
-            nextSet.add(extractedId);
-          });
-          setCountedMemberIdsForSelection(nextSet);
-        })
-        .catch(() => {
-          if (!cancelled) setCountedMemberIdsForSelection(new Set());
+    const fetchCountedMemberIds = async () => {
+      try {
+        const ids = await listDocIds(targetCollection);
+        if (cancelled) return;
+
+        const nextSet = new Set();
+        const matchedRows = [];
+        ids.forEach((docId) => {
+          const resolvedDocId = String(docId || '');
+          const matchingPrefix = countedMemberDocPrefixes.find((prefix) => resolvedDocId.startsWith(prefix));
+          if (!matchingPrefix) return;
+          const extractedId = resolvedDocId.slice(matchingPrefix.length).trim();
+          if (!extractedId || extractedId === 'guest') return;
+          nextSet.add(extractedId);
+          matchedRows.push({ docId: resolvedDocId, idNumber: extractedId });
         });
+        setCountedMemberIdsForSelection(nextSet);
+
+        if (attendanceMode !== 'registration') {
+          setCountedMemberResponsesForSelection(new Map());
+          return;
+        }
+
+        const responseRows = await Promise.all(
+          matchedRows.map(async ({ docId, idNumber }) => {
+            const row = await getDocData(REGISTRATION_ATTENDANCE_COLLECTION, docId).catch(() => null);
+            const response = String(row?.registrationResponse || '').trim().toLowerCase() === 'decline' ? 'decline' : 'accept';
+            return { idNumber, response };
+          }),
+        );
+        if (cancelled) return;
+        const responseMap = new Map();
+        responseRows.forEach(({ idNumber, response }) => {
+          if (!idNumber) return;
+          responseMap.set(idNumber, response);
+        });
+        setCountedMemberResponsesForSelection(responseMap);
+      } catch (_error) {
+        if (cancelled) return;
+        setCountedMemberIdsForSelection(new Set());
+        setCountedMemberResponsesForSelection(new Map());
+      }
     };
 
     fetchCountedMemberIds();
@@ -6508,7 +6515,7 @@ function AppContent() {
                     {visibleMemberChoices.map((member) => {
                       const isAlreadyCounted = shouldShowCountedIdHint && countedMemberIdsForSelection.has(String(member.idNumber || ''));
                       const shouldUseRegistrationResponseBorders = shouldShowCountedIdHint && isRegistrationMode && registrationWindow.onlyEhlVoters;
-                      const registrationResponse = shouldUseRegistrationResponseBorders ? registrationResponseBySelectionId.get(String(member.idNumber || '')) : '';
+                      const registrationResponse = shouldUseRegistrationResponseBorders ? countedMemberResponsesForSelection.get(String(member.idNumber || '')) : '';
                       const responseBorderStyle = shouldUseRegistrationResponseBorders
                         ? (registrationResponse === 'decline'
                           ? { borderColor: '#DC2626', borderWidth: 3 }
