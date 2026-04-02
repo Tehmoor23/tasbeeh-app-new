@@ -45,7 +45,7 @@ const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = 'full'; // 'full', 'display' oder 'qr'
+const APP_MODE = 'full'; // 'full', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -1548,6 +1548,7 @@ function AppContent() {
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
   const shouldRestrictToQrView = APP_MODE === 'qr' && !currentAccount;
+  const shouldRestrictToRegistrationView = APP_MODE === 'registration' && !currentAccount;
 
   const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
   const effectivePermissions = {
@@ -2327,7 +2328,7 @@ function AppContent() {
 
   useEffect(() => {
     if (attendanceMode !== 'registration') return;
-    const allowed = registrationWindow.canAccess && (registrationWindow.isPublic || Boolean(currentAccount));
+    const allowed = registrationWindow.canAccess && (APP_MODE === 'registration' ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     if (!allowed) {
       setAttendanceMode('prayer');
       setTerminalMode('tanzeem');
@@ -2731,6 +2732,13 @@ function AppContent() {
       setActiveTab('gebetsplan');
     }
   }, [activeTab, shouldRestrictToPrayerView]);
+
+  useEffect(() => {
+    if (!shouldRestrictToRegistrationView) return;
+    if (activeTab !== 'terminal') setActiveTab('terminal');
+    if (attendanceMode !== 'registration') setAttendanceMode('registration');
+    if (terminalMode !== 'tanzeem') setTerminalMode('tanzeem');
+  }, [activeTab, attendanceMode, shouldRestrictToRegistrationView, terminalMode]);
 
   useEffect(() => {
     if (!shouldRestrictToQrView) return;
@@ -6030,13 +6038,14 @@ function AppContent() {
   };
 
   const renderTerminal = () => {
+    const isRegistrationOnlyAppMode = APP_MODE === 'registration';
     const isPrayerMode = attendanceMode === 'prayer';
     const isProgramMode = attendanceMode === 'program';
     const isRegistrationMode = attendanceMode === 'registration';
     const hasActiveAttendanceWindow = isPrayerMode ? prayerWindow.isActive : (isProgramMode ? programWindow.isActive : registrationWindow.isOpen);
     const modeTitle = isPrayerMode ? 'Gebetsanwesenheit' : (isProgramMode ? 'Programmanwesenheit' : 'Anmeldung');
-    const canAccessRegistrationMode = registrationWindow.canAccess && (registrationWindow.isPublic || Boolean(currentAccount));
-    const registrationLockedByLogin = registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount;
+    const canAccessRegistrationMode = registrationWindow.canAccess && (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
+    const registrationLockedByLogin = isRegistrationOnlyAppMode ? false : (registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount);
     const cycleAttendanceMode = () => {
       if (isPrayerMode) return 'program';
       if (isProgramMode) return canAccessRegistrationMode ? 'registration' : 'prayer';
@@ -6050,11 +6059,13 @@ function AppContent() {
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
         <View style={[styles.terminalBanner, { backgroundColor: isDarkMode ? '#111827' : '#FFFFFF', borderColor: isDarkMode ? '#374151' : '#111111', borderWidth: isDarkMode ? 1 : 3 }]}>
-          <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(cycleAttendanceMode()); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); setPendingRegistrationMember(null); }}>
-            <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>
-              {isPrayerMode ? '<< Gebetsanwesenheit >>' : (isProgramMode ? '<< Programmanwesenheit >>' : '<< Anmeldung >>')}
-            </Text>
-          </Pressable>
+          {!isRegistrationOnlyAppMode ? (
+            <Pressable style={withPressEffect(styles.modeSwitch)} onPress={() => { setAttendanceMode(cycleAttendanceMode()); setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); setPendingRegistrationMember(null); }}>
+              <Text style={[styles.modeSwitchText, isTablet && styles.modeSwitchTextTablet, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>
+                {isPrayerMode ? '<< Gebetsanwesenheit >>' : (isProgramMode ? '<< Programmanwesenheit >>' : '<< Anmeldung >>')}
+              </Text>
+            </Pressable>
+          ) : null}
           <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{modeTitle}</Text>
           <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>{isPrayerMode ? 'نماز حاضری' : (isProgramMode ? 'پروگرام حاضری' : 'اندراج / رجسٹریشن')}</Text>
           <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>Local Amarat Frankfurt</Text>
@@ -7900,6 +7911,8 @@ function AppContent() {
 
   const body = shouldRestrictToQrView
     ? (isQrScanPageVisible ? renderQrScanPage() : renderQrPage())
+    : shouldRestrictToRegistrationView
+      ? renderTerminal()
     : shouldRestrictToPrayerView
       ? renderPrayer()
       : isQrScanPageVisible
@@ -7931,7 +7944,7 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView && !shouldRestrictToQrView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount)) ? (
+      {!shouldRestrictToPrayerView && !shouldRestrictToQrView && !shouldRestrictToRegistrationView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount)) ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect(styles.tabItem)}>
