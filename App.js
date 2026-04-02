@@ -5120,7 +5120,10 @@ function AppContent() {
           .filter((entry) => String(entry?.majlis || '').trim() === detailedFlowMajlis)
           .map((entry) => ([
             String(entry?.idNumber || '').trim(),
-            String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept',
+            {
+              response: String(entry?.registrationResponse || '').toLowerCase() === 'decline' ? 'decline' : 'accept',
+              hasReason: Boolean(String(entry?.declineReason || '').trim()),
+            },
           ])),
     );
     const presentIds = new Set(
@@ -5144,7 +5147,8 @@ function AppContent() {
         ...entry,
         normalizedStimmberechtigt: normalizeVoterFlagValue(entry?.stimmberechtigt),
         isPresentInActiveFlow: Boolean(presentIds.has(String(entry.idNumber))),
-        registrationResponseInActiveFlow: registrationResponseById.get(String(entry.idNumber)) || '',
+        registrationResponseInActiveFlow: String(registrationResponseById.get(String(entry.idNumber))?.response || ''),
+        registrationDeclineHasReason: Boolean(registrationResponseById.get(String(entry.idNumber))?.hasReason),
         hasActiveFlow: Boolean(activeItemName),
       }))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
@@ -8369,11 +8373,19 @@ function AppContent() {
                           </>
                         )}
                         {statsMode === 'program' || statsMode === 'registration' ? (
-                          <Text style={{ color: member.hasActiveFlow ? (member.isPresentInActiveFlow ? '#16A34A' : '#DC2626') : theme.muted, fontSize: 12, marginTop: 4 }}>
+                          <Text style={{
+                            color: member.hasActiveFlow
+                              ? (statsMode === 'registration' && member.registrationResponseInActiveFlow === 'decline'
+                                ? '#D97706'
+                                : (member.isPresentInActiveFlow ? '#16A34A' : '#DC2626'))
+                              : theme.muted,
+                            fontSize: 12,
+                            marginTop: 4,
+                          }}>
                             {member.hasActiveFlow
                               ? (statsMode === 'registration'
                                 ? (member.registrationResponseInActiveFlow === 'decline'
-                                  ? '● absage'
+                                  ? `● Absage ${member.registrationDeclineHasReason ? '(mit Grund)' : '(ohne Grund)'}`
                                   : (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet'))
                                 : (member.isPresentInActiveFlow ? '● angemeldet' : '● nicht angemeldet'))
                               : (statsMode === 'program' ? 'Kein aktives Programm konfiguriert' : 'Keine aktive Anmeldung ausgewählt')}
