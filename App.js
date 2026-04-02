@@ -778,8 +778,24 @@ const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
     advanced: {
       isPublic: Boolean(data?.advanced?.isPublic ?? data?.isPublic),
       includeTanzeems: sanitizedTanzeems.length ? sanitizedTanzeems : [...REGISTRATION_TANZEEM_OPTIONS],
+      onlyEhlVoters: Boolean(data?.advanced?.onlyEhlVoters ?? data?.onlyEhlVoters),
     },
   };
+};
+const normalizeVoterFlagValue = (value) => {
+  if (value === '-') return '-';
+  if (String(value).trim() === '-') return '-';
+  if (Number(value) === 1) return 1;
+  if (Number(value) === 0) return 0;
+  return '-';
+};
+const isVotingEligibleMember = (member) => normalizeVoterFlagValue(member?.stimmberechtigt) === 1;
+const shouldIncludeMemberInRegistrationBase = (entry, allowedTanzeems, filterKey = 'total', onlyEhlVoters = false) => {
+  const tanzeem = String(entry?.tanzeem || '').toLowerCase();
+  if (!allowedTanzeems.includes(tanzeem)) return false;
+  if (filterKey !== 'total' && tanzeem !== filterKey) return false;
+  if (onlyEhlVoters && !isVotingEligibleMember(entry)) return false;
+  return true;
 };
 const getRegistrationWindowState = (config, todayISO) => {
   if (!config || !config.startDate || !config.endDate) return { hasRange: false, isOpen: false, isUpcoming: false, isPast: false };
@@ -1468,6 +1484,7 @@ function AppContent() {
   const [registrationStartDateInput, setRegistrationStartDateInput] = useState('');
   const [registrationEndDateInput, setRegistrationEndDateInput] = useState('');
   const [registrationIsPublicInput, setRegistrationIsPublicInput] = useState(false);
+  const [registrationOnlyEhlVotersInput, setRegistrationOnlyEhlVotersInput] = useState(false);
   const [registrationIncludedTanzeemsInput, setRegistrationIncludedTanzeemsInput] = useState([...REGISTRATION_TANZEEM_OPTIONS]);
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
@@ -2136,6 +2153,7 @@ function AppContent() {
       ...state,
       canAccess: Boolean(config && state.hasRange),
       isPublic: Boolean(config?.advanced?.isPublic),
+      onlyEhlVoters: Boolean(config?.advanced?.onlyEhlVoters),
       includeTanzeems: config?.advanced?.includeTanzeems || [...REGISTRATION_TANZEEM_OPTIONS],
     };
   }, [activeRegistrationConfig, todayISO]);
@@ -3048,6 +3066,7 @@ function AppContent() {
       setRegistrationStartDateInput('');
       setRegistrationEndDateInput('');
       setRegistrationIsPublicInput(false);
+      setRegistrationOnlyEhlVotersInput(false);
       setRegistrationIncludedTanzeemsInput([...REGISTRATION_TANZEEM_OPTIONS]);
       return;
     }
@@ -3055,6 +3074,7 @@ function AppContent() {
     setRegistrationStartDateInput(activeRegistrationConfig.startDate || '');
     setRegistrationEndDateInput(activeRegistrationConfig.endDate || '');
     setRegistrationIsPublicInput(Boolean(activeRegistrationConfig.advanced?.isPublic));
+    setRegistrationOnlyEhlVotersInput(Boolean(activeRegistrationConfig.advanced?.onlyEhlVoters));
     setRegistrationIncludedTanzeemsInput(activeRegistrationConfig.advanced?.includeTanzeems?.length
       ? activeRegistrationConfig.advanced.includeTanzeems
       : [...REGISTRATION_TANZEEM_OPTIONS]);
@@ -3122,6 +3142,7 @@ function AppContent() {
       updatedAt: new Date().toISOString(),
       advanced: {
         isPublic: registrationIsPublicInput,
+        onlyEhlVoters: registrationOnlyEhlVotersInput,
         includeTanzeems,
       },
     }, docId);
@@ -4517,9 +4538,10 @@ function AppContent() {
     const option = selectedRegistrationStatsOption;
     if (!option?.id) { setToast('Keine Anmeldungsdaten zum Export verfügbar'); return; }
     const activeTanzeems = option.advanced?.includeTanzeems || [];
+    const onlyEhlVoters = Boolean(option.advanced?.onlyEhlVoters);
 
     const registeredTotals = membersDirectory
-      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
+      .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, activeTanzeems, 'total', onlyEhlVoters))
       .reduce((acc, entry) => {
         const tanzeem = String(entry?.tanzeem || '').toLowerCase();
         acc.total += 1;
@@ -4542,8 +4564,7 @@ function AppContent() {
     const majlisAttendanceRows = (() => {
       const buildCountsForFilter = (filterKey) => {
         const registeredByMajlis = membersDirectory
-          .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
-          .filter((entry) => (filterKey === 'total' ? true : String(entry?.tanzeem || '').toLowerCase() === filterKey))
+          .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, activeTanzeems, filterKey, onlyEhlVoters))
           .reduce((acc, entry) => {
             const majlis = String(entry?.majlis || '').trim();
             if (!majlis) return acc;
@@ -4830,6 +4851,7 @@ function AppContent() {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
     const allowedTanzeems = option.advanced?.includeTanzeems || [];
+    const onlyEhlVoters = Boolean(option.advanced?.onlyEhlVoters);
     const normalizedFilter = allowedTanzeems.includes(String(filterTanzeem || '').toLowerCase())
       ? String(filterTanzeem || '').toLowerCase()
       : '';
@@ -4861,12 +4883,14 @@ function AppContent() {
       }, {});
 
     const memberRows = membersDirectory
-      .filter((entry) => allowedTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
-      .filter((entry) => (normalizedFilter ? entry.tanzeem === normalizedFilter : true))
+      .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, normalizedFilter || 'total', onlyEhlVoters))
       .map((entry) => ({
         idNumber: String(entry?.idNumber || '').trim(),
         tanzeem: String(entry?.tanzeem || '').toLowerCase(),
         majlis: String(entry?.majlis || '').trim(),
+        stimmberechtigt: normalizeVoterFlagValue(entry?.stimmberechtigt),
+        wahlberechtigt: normalizeVoterFlagValue(entry?.wahlberechtigt),
+        anwesend_2026_01_08: normalizeVoterFlagValue(entry?.anwesend_2026_01_08),
       }))
       .sort((a, b) => {
         const tA = tanzeemOrder.indexOf(a.tanzeem);
@@ -4883,6 +4907,9 @@ function AppContent() {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
           idNumber: row.idNumber,
+          stimmberechtigt: row.stimmberechtigt,
+          wahlberechtigt: row.wahlberechtigt,
+          anwesend_2026_01_08: row.anwesend_2026_01_08,
           registered: presentMap.has(key) ? 'Ja' : 'Nein',
           timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
         };
@@ -4901,11 +4928,20 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Angemeldet', 'Zeitstempel'],
-      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.registered, row.timestamp]),
+      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Stimmberechtigt', 'Wahlberechtigt', 'Anwesend am 08.01.2026', 'Angemeldet', 'Zeitstempel'],
+      ...memberRows.map((row) => [
+        row.majlis,
+        row.tanzeemLabel,
+        row.idNumber,
+        row.stimmberechtigt,
+        row.wahlberechtigt,
+        row.anwesend_2026_01_08,
+        row.registered,
+        row.timestamp,
+      ]),
     ];
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 24 }];
+    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 14 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
@@ -5985,6 +6021,10 @@ function AppContent() {
       if (isProgramMode) return canAccessRegistrationMode ? 'registration' : 'prayer';
       return 'prayer';
     };
+    const pendingRegistrationVoterFlag = normalizeVoterFlagValue(pendingRegistrationMember?.stimmberechtigt);
+    const pendingRegistrationWahlberechtigtFlag = normalizeVoterFlagValue(pendingRegistrationMember?.wahlberechtigt);
+    const pendingRegistrationAnwesendFlag = normalizeVoterFlagValue(pendingRegistrationMember?.anwesend_2026_01_08);
+    const isPendingRegistrationAllowedByVoterRule = !registrationWindow.onlyEhlVoters || pendingRegistrationVoterFlag === 1;
 
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
@@ -6167,11 +6207,30 @@ function AppContent() {
                 <Text style={[styles.noteText, { color: theme.muted }]}>{`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${pendingRegistrationMember.majlis}`}</Text>
               </View>
             ) : null}
+            {registrationWindow.onlyEhlVoters && pendingRegistrationMember ? (
+              <View style={[styles.registrationVoterInfoCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                {pendingRegistrationVoterFlag === 1 ? (
+                  <>
+                    <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie dürfen an der Wahl teilnehmen.</Text>
+                    <Text style={[styles.registrationVoterInfoDetail, { color: theme.muted }]}>
+                      Wahlberechtigt: {pendingRegistrationWahlberechtigtFlag === 1 ? 'Ja' : (pendingRegistrationWahlberechtigtFlag === 0 ? 'Nein' : '-')}
+                    </Text>
+                    <Text style={[styles.registrationVoterInfoDetail, { color: theme.muted }]}>
+                      Anwesend am 08.01.2026: {pendingRegistrationAnwesendFlag === 1 ? 'Ja' : (pendingRegistrationAnwesendFlag === 0 ? 'Nein' : '-')}
+                    </Text>
+                  </>
+                ) : pendingRegistrationVoterFlag === 0 ? (
+                  <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie dürfen leider nicht an der Wahl teilnehmen.</Text>
+                ) : (
+                  <Text style={[styles.registrationVoterInfoHeadline, { color: theme.text }]}>Sie erfüllen nicht die Voraussetzungen eines Ehl-Voters.</Text>
+                )}
+              </View>
+            ) : null}
             <Pressable
-              style={({ pressed }) => [[styles.registrationConfirmBtn, { opacity: pendingRegistrationMember ? 1 : 0.6 }], pressed && styles.buttonPressed]}
-              disabled={!pendingRegistrationMember}
+              style={({ pressed }) => [[styles.registrationConfirmBtn, { opacity: (pendingRegistrationMember && isPendingRegistrationAllowedByVoterRule) ? 1 : 0.6 }], pressed && styles.buttonPressed]}
+              disabled={!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule}
               onPress={async () => {
-                if (!pendingRegistrationMember) return;
+                if (!pendingRegistrationMember || !isPendingRegistrationAllowedByVoterRule) return;
                 await countAttendance('registration', 'member', pendingRegistrationMember.majlis, pendingRegistrationMember);
                 setPendingRegistrationMember(null);
               }}
@@ -6660,13 +6719,10 @@ function AppContent() {
                   {(() => {
                     const filterKey = registrationMajlisFilter;
                     const allowedTanzeems = selectedRegistrationStatsOption.advanced?.includeTanzeems || [];
+                    const onlyEhlVoters = Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
                     const includeAllAllowed = filterKey === 'total';
                     const registeredByMajlis = membersDirectory
-                      .filter((entry) => {
-                        const tanzeem = String(entry?.tanzeem || '').toLowerCase();
-                        if (!allowedTanzeems.includes(tanzeem)) return false;
-                        return includeAllAllowed ? true : tanzeem === filterKey;
-                      })
+                      .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, includeAllAllowed ? 'total' : filterKey, onlyEhlVoters))
                       .reduce((acc, entry) => {
                         const majlis = String(entry?.majlis || '').trim();
                         if (!majlis) return acc;
@@ -7452,6 +7508,10 @@ function AppContent() {
             <View style={styles.mergeSwitchWrap}>
               <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Öffentlich anzeigen</Text>
               <Switch value={registrationIsPublicInput} onValueChange={setRegistrationIsPublicInput} />
+            </View>
+            <View style={styles.mergeSwitchWrap}>
+              <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Nur Ehl-Voters</Text>
+              <Switch value={registrationOnlyEhlVotersInput} onValueChange={setRegistrationOnlyEhlVotersInput} />
             </View>
             <Text style={[styles.noteText, { color: theme.muted }]}>Berücksichtigte Tanzeem auswählen</Text>
             <View style={styles.statsToggleRow}>
@@ -8422,6 +8482,9 @@ const styles = StyleSheet.create({
   saveBtnTextTablet: { fontSize: 18 },
   registrationConfirmBtn: { borderRadius: 12, paddingVertical: 16, alignItems: 'center', backgroundColor: '#16A34A' },
   registrationConfirmBtnText: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
+  registrationVoterInfoCard: { borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 10 },
+  registrationVoterInfoHeadline: { fontSize: 18, fontWeight: '800', textAlign: 'center', lineHeight: 24 },
+  registrationVoterInfoDetail: { marginTop: 6, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   noteText: { fontSize: 12, fontWeight: '600' },
   announcementCard: { marginTop: 14, borderWidth: 1, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 14, gap: 8 },
   announcementCardTablet: { marginTop: 18, borderRadius: 16, paddingVertical: 18, paddingHorizontal: 18 },
