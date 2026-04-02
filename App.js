@@ -6377,7 +6377,7 @@ function AppContent() {
                   style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 0, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
                   onPress={() => setRegistrationDeclineConfirmVisible((prev) => !prev)}
                 >
-                  <Text style={styles.registrationConfirmBtnText}>Absage</Text>
+                  <Text style={styles.registrationConfirmBtnText}>Abmelden</Text>
                 </Pressable>
                 {registrationDeclineConfirmVisible ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border, marginTop: 10 }]}>
@@ -6403,14 +6403,18 @@ function AppContent() {
                         setRegistrationDeclineReasonInput('');
                       }}
                     >
-                      <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: '#FFFFFF' }]}>Absage bestätigen</Text>
+                      <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: '#FFFFFF' }]}>Abmeldung bestätigen</Text>
                     </Pressable>
                   </View>
                 ) : null}
               </>
             ) : null}
             <Pressable
-              style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+              style={({ pressed }) => [[styles.saveBtn, {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+                borderWidth: 1,
+              }], pressed && styles.buttonPressed]}
               onPress={() => {
                 const shouldBackToTanzeem = Boolean(
                   registrationWindow.onlyEhlVoters
@@ -6446,7 +6450,7 @@ function AppContent() {
                 setTerminalMode('idSelection');
               }}
             >
-              <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
+              <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.text }]}>Zurück</Text>
             </Pressable>
           </>
         ) : (
