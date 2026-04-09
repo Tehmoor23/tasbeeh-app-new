@@ -1622,7 +1622,6 @@ function AppContent() {
   const normalizedAppMode = APP_MODE === 'guest' ? 'extern' : APP_MODE;
   const isExternMode = normalizedAppMode === 'extern' || normalizedAppMode === 'qr_extern';
   const isQrExternMode = normalizedAppMode === 'qr_extern';
-  const [isQrExternUnlocked, setQrExternUnlocked] = useState(false);
   const isGuestMode = isExternMode;
   const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
 
@@ -1703,7 +1702,7 @@ function AppContent() {
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = normalizedAppMode === 'display' && !currentAccount;
   const shouldRestrictToQrView = (normalizedAppMode === 'qr' && !currentAccount)
-    || (isQrExternMode && (Boolean(currentAccount) || isQrExternUnlocked));
+    || isQrExternMode;
   const shouldRestrictToRegistrationView = normalizedAppMode === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
   const isGuestActivated = Boolean(guestActivation?.scopeKey);
@@ -1927,7 +1926,6 @@ function AppContent() {
       }
       localSessionActiveRef.current = true;
       setCurrentAccount(fallbackAccount);
-      if (isQrExternMode) setQrExternUnlocked(true);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
       setToast(`Assalāmu ʿalaikum wa raḥmatullāhi wa barakātuhu, ${fallbackAccount.name || name}! 👋`);
@@ -1953,7 +1951,6 @@ function AppContent() {
       }
       localSessionActiveRef.current = false;
       setCurrentAccount(account);
-      if (isQrExternMode) setQrExternUnlocked(true);
       if (isGuestMode && account?.isExternalGuest) {
         const activationPayload = {
           accountNameKey: account.nameKey || docId,
@@ -1986,7 +1983,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [isGuestMode, isQrExternMode, loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
+  }, [isGuestMode, loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
 
   const logoutAccount = useCallback(async () => {
     localSessionActiveRef.current = false;
@@ -3115,15 +3112,12 @@ function AppContent() {
   }, [activeTab, effectivePermissions.canEditSettings]);
 
   useEffect(() => {
-    if (isQrExternMode) {
-      if (!isQrExternUnlocked) setAdminLoginVisible(true);
-      return;
-    }
+    if (isQrExternMode) return;
     if (!isGuestMode) return;
     if (!currentAccount && !guestActivation?.scopeKey) {
       setAdminLoginVisible(true);
     }
-  }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode, isQrExternUnlocked]);
+  }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode]);
 
   useEffect(() => {
     if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
@@ -8889,7 +8883,7 @@ function AppContent() {
               <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: '#000000', backgroundColor: '#000000', opacity: authLoading ? 0.7 : 1 }]}> 
                 <Text style={[styles.statsExportOptionBtnText, { color: '#FFFFFF' }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
               </Pressable>
-              {(!isGuestMode || (Boolean(guestActivation?.scopeKey) && !isQrExternMode)) ? (
+              {(!isGuestMode || Boolean(guestActivation?.scopeKey)) ? (
                 <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
                   <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
                 </Pressable>
