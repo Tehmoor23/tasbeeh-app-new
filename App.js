@@ -7148,11 +7148,6 @@ function AppContent() {
 
         <View style={styles.privacyNoticeWrap}>
           <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
-          {!isRegistrationMode ? (
-            <Pressable onPress={() => setQrPageVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
-              <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>QR-Code anzeigen</Text>
-            </Pressable>
-          ) : null}
           <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
