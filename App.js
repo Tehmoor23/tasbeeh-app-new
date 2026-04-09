@@ -339,10 +339,11 @@ const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 // EXTERNAL MEMBER DIRECTORY DATA - EDIT HERE
 const EXTERNAL_MEMBER_DIRECTORY_DATA = [
-  { tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' },
-  { tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' },
-  { tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
+  { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' },
+  { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' },
+  { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
 ].map((entry) => ({
+  amarat: normalizeAccountNameKey(entry.amarat || ''),
   tanzeem: String(entry.tanzeem || '').trim().toLowerCase(),
   majlis: String(entry.majlis || '').trim(),
   idNumber: String(entry.idNumber || '').trim(),
@@ -1551,7 +1552,13 @@ function AppContent() {
     () => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart, attendanceCategory: qrAttendanceCategory }),
     [activeMosqueKey, qrAttendanceCategory, qrCycleStart],
   );
-  const qrMembersDirectory = isGuestMode ? EXTERNAL_MEMBER_DIRECTORY_DATA : MEMBER_DIRECTORY_DATA;
+  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.mosqueName || '');
+  const qrMembersDirectory = isGuestMode
+    ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
+      const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
+      return !entryScope || !qrGuestAmaratScopeKey || entryScope === qrGuestAmaratScopeKey;
+    })
+    : MEMBER_DIRECTORY_DATA;
   const qrCurrentRegistrationMember = useMemo(() => {
     if (!qrRegistration?.idNumber) return null;
     return qrMembersDirectory.find((entry) => String(entry.idNumber) === String(qrRegistration.idNumber)) || null;
@@ -1596,7 +1603,17 @@ function AppContent() {
   const detailedLogsCacheRef = useRef({});
 
   const theme = isDarkMode ? THEME.dark : THEME.light;
-  const activeMosque = useMemo(() => getMosqueOptionByKey(activeMosqueKey), [activeMosqueKey]);
+  const activeMosque = useMemo(() => {
+    const base = getMosqueOptionByKey(activeMosqueKey);
+    if (isGuestMode) {
+      const guestLabel = String(guestActivation?.mosqueName || '').trim();
+      return {
+        ...base,
+        label: guestLabel || 'Extern',
+      };
+    }
+    return base;
+  }, [activeMosqueKey, guestActivation?.mosqueName, isGuestMode]);
   const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
@@ -1673,11 +1690,21 @@ function AppContent() {
     if (!isSuperAdmin) return;
     try {
       setAdminAccountsLoading(true);
-      const ids = await listGlobalDocIds(ADMIN_ACCOUNTS_COLLECTION);
-      const docs = await Promise.all(ids.map((id) => getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, id)));
-      const rows = docs
+      const [globalIds, externalIds] = await Promise.all([
+        listGlobalDocIds(ADMIN_ACCOUNTS_COLLECTION),
+        listGlobalDocIds(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION).catch(() => []),
+      ]);
+      const [globalDocs, externalDocs] = await Promise.all([
+        Promise.all(globalIds.map((id) => getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, id))),
+        Promise.all(externalIds.map((id) => getGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, id))),
+      ]);
+      const rows = [...globalDocs, ...externalDocs]
         .filter(Boolean)
-        .map((entry) => ({ ...entry, key: normalizeAccountNameKey(entry.name || '') }))
+        .map((entry) => ({
+          ...entry,
+          key: normalizeAccountNameKey(entry.name || ''),
+          accountCollection: entry?.isExternalGuest ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION,
+        }))
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
       setAdminAccounts(rows);
     } catch (error) {
@@ -2029,7 +2056,8 @@ function AppContent() {
     const performDelete = async () => {
       try {
         const docId = String(account.nameKey || normalizeAccountNameKey(account.name));
-        await deleteGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+        const targetCollection = account?.isExternalGuest ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION;
+        await deleteGlobalDocData(targetCollection, docId);
         setToast('Account gelöscht (Auth-Zugang ggf. separat entfernen)');
         await loadAdminAccounts();
       } catch (error) {
@@ -2054,7 +2082,7 @@ function AppContent() {
   }, [isSuperAdmin, loadAdminAccounts]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
-    if (!isSuperAdmin || !account || account.isSuperAdmin) return;
+    if (!isSuperAdmin || !account || account.isSuperAdmin || account?.isExternalGuest) return;
     try {
       await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, normalizeAccountNameKey(account.name), {
         ...account,
@@ -3137,13 +3165,14 @@ function AppContent() {
     setMosqueSwitchTapCount((prev) => {
       const next = prev + 1;
       if (next < 3) return next;
-      const currentIndex = MOSQUE_OPTIONS.findIndex((option) => option.key === activeMosqueKey);
-      const nextOption = MOSQUE_OPTIONS[(currentIndex + 1) % MOSQUE_OPTIONS.length] || MOSQUE_OPTIONS[0];
+      const availableOptions = MOSQUE_OPTIONS.filter((option) => isGuestMode ? option.key === EXTERNAL_MOSQUE_KEY : option.key !== EXTERNAL_MOSQUE_KEY);
+      const currentIndex = availableOptions.findIndex((option) => option.key === activeMosqueKey);
+      const nextOption = availableOptions[(currentIndex + 1) % availableOptions.length] || availableOptions[0];
       onSelectMosque(nextOption.key);
       setToast(`Moschee gewechselt: ${nextOption.label}`);
       return 0;
     });
-  }, [activeMosqueKey, currentAccount, onSelectMosque]);
+  }, [activeMosqueKey, currentAccount, isGuestMode, onSelectMosque]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3450,7 +3479,13 @@ function AppContent() {
       setQrStatusTone('neutral');
     }
   }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
-  const membersDirectory = isGuestMode ? EXTERNAL_MEMBER_DIRECTORY_DATA : MEMBER_DIRECTORY_DATA;
+  const guestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.mosqueName || '');
+  const membersDirectory = isGuestMode
+    ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
+      const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
+      return !entryScope || !guestAmaratScopeKey || entryScope === guestAmaratScopeKey;
+    })
+    : MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
   const showMemberNamesInGrid = isGuestMode ? Boolean(guestActivation?.showNames) : SHOW_MEMBER_NAMES_IN_ID_GRID;
 
@@ -7819,6 +7854,9 @@ function AppContent() {
   const renderSettings = () => {
     const settingsDate = germanDateLong(overrideDisplayDate);
     const programSettingsDate = germanDateLong(now);
+    const mosqueOptionsForSelection = isGuestMode
+      ? MOSQUE_OPTIONS.filter((option) => option.key === EXTERNAL_MOSQUE_KEY)
+      : MOSQUE_OPTIONS.filter((option) => option.key !== EXTERNAL_MOSQUE_KEY);
     if (false && isGuestMode) {
       return (
         <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
@@ -7873,20 +7911,23 @@ function AppContent() {
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
-      <View style={[styles.settingsMosqueHighlightCard, { backgroundColor: theme.chipBg, borderColor: theme.rowActiveBorder }]}> 
-        <Text style={[styles.settingsMosqueHighlightTitle, { color: theme.chipText }]}>Aktive Moschee</Text>
-        <Text style={[styles.settingsMosqueHighlightValue, { color: theme.chipText }]}>{activeMosque.label}</Text>
-      </View>
+      {!isGuestMode ? (
+        <View style={[styles.settingsMosqueHighlightCard, { backgroundColor: theme.chipBg, borderColor: theme.rowActiveBorder }]}> 
+          <Text style={[styles.settingsMosqueHighlightTitle, { color: theme.chipText }]}>Aktive Moschee</Text>
+          <Text style={[styles.settingsMosqueHighlightValue, { color: theme.chipText }]}>{activeMosque.label}</Text>
+        </View>
+      ) : null}
 
       <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <View style={styles.switchRow}><Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text }]}>Dark Mode</Text><Switch value={isDarkMode} onValueChange={onToggleDarkMode} /></View>
       </View>
 
+      {!isGuestMode ? (
       <View style={[styles.section, styles.activeMosqueSection, { backgroundColor: theme.card, borderColor: theme.border }]}> 
         <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, styles.activeMosqueSectionTitle, { color: theme.text }]}>Aktive Moschee</Text>
         <Text style={[styles.noteText, styles.activeMosqueSectionCurrent, { color: theme.muted }]}>{activeMosque.label}</Text>
         <View style={[styles.statsToggleRow, styles.activeMosqueToggleRow]}>
-          {MOSQUE_OPTIONS.map((option) => {
+          {mosqueOptionsForSelection.map((option) => {
             const isActive = activeMosqueKey === option.key;
             return (
               <Pressable
@@ -7909,6 +7950,7 @@ function AppContent() {
           </Pressable>
         ) : null}
       </View>
+      ) : null}
 
       {isGuestMode ? (
         <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
@@ -8138,6 +8180,12 @@ function AppContent() {
               <Pressable
                 key={mosque.key}
                 onPress={() => setAdminManageMosqueKeys((prev) => {
+                  if (mosque.key === EXTERNAL_MOSQUE_KEY) {
+                    return prev.includes(EXTERNAL_MOSQUE_KEY) ? [DEFAULT_MOSQUE_KEY] : [EXTERNAL_MOSQUE_KEY];
+                  }
+                  if (prev.includes(EXTERNAL_MOSQUE_KEY)) {
+                    return [mosque.key];
+                  }
                   const exists = prev.includes(mosque.key);
                   if (exists) {
                     const next = prev.filter((key) => key !== mosque.key);
@@ -8157,13 +8205,17 @@ function AppContent() {
               <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Namen anzeigen</Text><Switch value={adminManageExternalShowNames} onValueChange={setAdminManageExternalShowNames} /></View>
             </>
           ) : null}
-          <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Einstellungen ändern</Text><Switch value={adminManagePermissions.canEditSettings} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canEditSettings: v }))} /></View>
-          <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>ID-Statistiken sehen</Text><Switch value={adminManagePermissions.canViewIdStats} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canViewIdStats: v }))} /></View>
-          <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Daten exportieren</Text><Switch value={adminManagePermissions.canExportData} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canExportData: v }))} /></View>
-          <View style={styles.statsToggleRow}>
-            <Pressable onPress={() => setAdminManagePermissions(allPermissionsEnabled())} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}><Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Alle Rechte</Text></Pressable>
-            <Pressable onPress={() => setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS })} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}><Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Alles entfernen</Text></Pressable>
-          </View>
+          {!adminManageMosqueKeys.includes(EXTERNAL_MOSQUE_KEY) ? (
+            <>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Einstellungen ändern</Text><Switch value={adminManagePermissions.canEditSettings} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canEditSettings: v }))} /></View>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>ID-Statistiken sehen</Text><Switch value={adminManagePermissions.canViewIdStats} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canViewIdStats: v }))} /></View>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Daten exportieren</Text><Switch value={adminManagePermissions.canExportData} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canExportData: v }))} /></View>
+              <View style={styles.statsToggleRow}>
+                <Pressable onPress={() => setAdminManagePermissions(allPermissionsEnabled())} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}><Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Alle Rechte</Text></Pressable>
+                <Pressable onPress={() => setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS })} style={[styles.statsCardMiniSwitch, { borderColor: theme.border, backgroundColor: theme.bg }]}><Text style={[styles.statsCardMiniSwitchText, { color: theme.text }]}>Alles entfernen</Text></Pressable>
+              </View>
+            </>
+          ) : null}
           <Pressable style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: adminAccountsLoading ? 0.7 : 1 }], pressed && styles.buttonPressed]} onPress={createManagedAccount} disabled={adminAccountsLoading}>
             <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{adminAccountsLoading ? 'Lädt…' : 'Account erstellen'}</Text>
           </Pressable>
@@ -8177,6 +8229,7 @@ function AppContent() {
                     <Text style={{ color: theme.muted }}>{account.isSuperAdmin
                       ? 'Super-Admin'
                       : (() => {
+                        if (account?.isExternalGuest) return 'Extern';
                         const keys = Array.isArray(account.mosqueIds) && account.mosqueIds.length
                           ? account.mosqueIds
                           : (account.mosqueId ? [account.mosqueId] : []);
@@ -8199,6 +8252,7 @@ function AppContent() {
                       ['canViewIdStats', 'ID-Stats'],
                       ['canExportData', 'Export'],
                     ].map(([permKey, label]) => {
+                      if (account?.isExternalGuest) return null;
                       const isOn = Boolean(account?.permissions?.[permKey]);
                       return (
                         <Pressable
