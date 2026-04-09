@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'guest'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -7183,7 +7183,7 @@ function AppContent() {
       ));
 
       const registeredByMajlis = directoryMembers.reduce((acc, entry) => {
-        const majlis = String(entry?.majlis || '').trim();
+        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         if (!majlis) return acc;
         acc[majlis] = (acc[majlis] || 0) + 1;
         return acc;
@@ -7196,7 +7196,7 @@ function AppContent() {
           return filterKey === 'total' ? true : tanzeem === filterKey;
         })
         .reduce((acc, entry) => {
-          const majlis = String(entry?.majlis || '').trim();
+          const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
           if (!majlis) return acc;
           acc[majlis] = (acc[majlis] || 0) + 1;
           return acc;
@@ -7524,12 +7524,12 @@ function AppContent() {
                   {(() => {
                     const filterKey = registrationMajlisFilter;
                     const allowedTanzeems = selectedRegistrationStatsOption.advanced?.includeTanzeems || [];
-                    const onlyEhlVoters = Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
+                    const onlyEhlVoters = !isGuestMode && Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
                     const includeAllAllowed = filterKey === 'total';
                     const registeredByMajlis = membersDirectory
                       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, includeAllAllowed ? 'total' : filterKey, onlyEhlVoters))
                       .reduce((acc, entry) => {
-                        const majlis = String(entry?.majlis || '').trim();
+                        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
                         if (!majlis) return acc;
                         acc[majlis] = (acc[majlis] || 0) + 1;
                         return acc;
@@ -7543,7 +7543,7 @@ function AppContent() {
                         return includeAllAllowed ? true : tanzeem === filterKey;
                       })
                       .reduce((acc, entry) => {
-                        const majlis = String(entry?.majlis || '').trim();
+                        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
                         if (!majlis) return acc;
                         acc[majlis] = (acc[majlis] || 0) + 1;
                         return acc;
