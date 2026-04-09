@@ -1292,7 +1292,16 @@ async function deleteGlobalDocData(collection, id) {
 }
 
 async function deleteAllGlobalDocsInCollection(collection) {
-  const ids = await listGlobalDocIds(collection).catch(() => []);
+  let ids = [];
+  try {
+    ids = await listGlobalDocIds(collection);
+  } catch (error) {
+    return {
+      total: 0,
+      deleted: 0,
+      failed: [{ id: '__collection__', error: `list_failed:${String(error?.message || error || 'unknown')}` }],
+    };
+  }
   let deleted = 0;
   const failed = [];
   await Promise.all(ids.map(async (id) => {
@@ -2181,6 +2190,71 @@ function AppContent() {
       : true;
     if (confirmed) performDelete();
   }, [isSuperAdmin, loadAdminAccounts]);
+
+  const resetGuestScopeData = useCallback(() => {
+    if (!isGuestMode) return;
+    const performReset = async () => {
+      const resolvedScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || externalMosqueNameInput || '');
+      if (!resolvedScopeKey) {
+        setExternalMosqueNameInput('');
+        setToast('Keine Local Amarat zum Zurücksetzen gefunden');
+        return;
+      }
+      try {
+        setExternalConfigSaving(true);
+        const cleanupResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
+          deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${resolvedScopeKey}`)
+        )));
+        const failedDeletes = cleanupResults.flatMap((collectionResult) => (
+          (collectionResult.failed || []).map((failure) => ({ ...failure, scopeKey: resolvedScopeKey }))
+        ));
+        if (failedDeletes.length) {
+          console.error('Guest scope reset cleanup failures', failedDeletes);
+          throw new Error('Guest scope reset cleanup failed');
+        }
+
+        const accountNameKey = currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || '');
+        const configDocIds = new Set([accountNameKey, resolvedScopeKey].filter(Boolean));
+        await Promise.all(Array.from(configDocIds).map((configId) => (
+          deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, configId).catch(() => {})
+        )));
+
+        await AsyncStorage.removeItem(STORAGE_KEYS.guestActivation).catch(() => {});
+        setGuestActivation(null);
+        setExternalMosqueNameInput('');
+        if (currentAccount?.nameKey) {
+          await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, currentAccount.nameKey, {
+            ...buildExternalAccountWritePayload(currentAccount),
+            externalMosqueName: '',
+            updatedAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+        setToast('Local Amarat zurückgesetzt und Daten gelöscht');
+      } catch (error) {
+        console.error('resetGuestScopeData failed', error);
+        setToast('Zurücksetzen fehlgeschlagen');
+      } finally {
+        setExternalConfigSaving(false);
+      }
+    };
+
+    const canUseAlert = Platform.OS !== 'web';
+    if (canUseAlert) {
+      Alert.alert(
+        'Local Amarat zurücksetzen',
+        'Sollen alle Daten dieser externen Amarat gelöscht und das Feld zurückgesetzt werden?',
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          { text: 'Zurücksetzen', style: 'destructive', onPress: performReset },
+        ],
+      );
+      return;
+    }
+    const confirmed = typeof globalThis?.confirm === 'function'
+      ? globalThis.confirm('Sollen alle Daten dieser externen Amarat gelöscht und das Feld zurückgesetzt werden?')
+      : true;
+    if (confirmed) performReset();
+  }, [currentAccount, externalMosqueNameInput, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin || account?.isExternalGuest) return;
@@ -8126,6 +8200,13 @@ function AppContent() {
             }}
           >
             <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{externalConfigSaving ? 'Speichert…' : 'Speichern'}</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: '#B91C1C', opacity: externalConfigSaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+            disabled={externalConfigSaving}
+            onPress={resetGuestScopeData}
+          >
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: '#FFFFFF' }]}>Zurücksetzen & Daten löschen</Text>
           </Pressable>
         </View>
       ) : null}
