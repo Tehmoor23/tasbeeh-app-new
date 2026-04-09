@@ -1049,7 +1049,7 @@ const normalizePendingPrayerOverride = (data) => {
 };
 
 
-const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${encodeURIComponent(String(id))}?key=${FIREBASE_CONFIG.apiKey}`;
+const docUrl = (collection, id) => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${collection}/${id}?key=${FIREBASE_CONFIG.apiKey}`;
 const commitUrl = () => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents:commit?key=${FIREBASE_CONFIG.apiKey}`;
 const loadFirebaseRuntime = () => {
   try {
