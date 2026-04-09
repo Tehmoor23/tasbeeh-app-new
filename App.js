@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'guest'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -335,6 +335,19 @@ const PROGRAM_CONFIG_COLLECTION = 'program_configs';
 const REGISTRATION_ATTENDANCE_COLLECTION = 'attendance_registration_entries';
 const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
 const REGISTRATION_CONFIG_COLLECTION = 'registration_configs';
+const EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS = [
+  PRAYER_OVERRIDE_COLLECTION,
+  ANNOUNCEMENT_COLLECTION,
+  PROGRAM_CONFIG_COLLECTION,
+  REGISTRATION_CONFIG_COLLECTION,
+  'attendance_daily',
+  PROGRAM_DAILY_COLLECTION,
+  PROGRAM_DAILY_COLLECTION_LEGACY,
+  REGISTRATION_DAILY_COLLECTION,
+  MEMBER_DIRECTORY_COLLECTION,
+  PROGRAM_ATTENDANCE_COLLECTION,
+  REGISTRATION_ATTENDANCE_COLLECTION,
+];
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 // EXTERNAL MEMBER DIRECTORY DATA - EDIT HERE
@@ -1278,6 +1291,11 @@ async function deleteGlobalDocData(collection, id) {
   if (!res.ok && res.status !== 404) throw new Error('Firestore delete failed');
 }
 
+async function deleteAllGlobalDocsInCollection(collection) {
+  const ids = await listGlobalDocIds(collection).catch(() => []);
+  await Promise.all(ids.map((id) => deleteGlobalDocData(collection, id).catch(() => {})));
+}
+
 async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanzeemKey, locationName, locationKey, member) {
   const existing = (await getDocData('attendance_daily', dateISO)) || {};
   const nextByPrayer = { ...(existing.byPrayer || {}) };
@@ -2099,6 +2117,27 @@ function AppContent() {
       try {
         const docId = String(account.nameKey || normalizeAccountNameKey(account.name));
         const targetCollection = account?.isExternalGuest ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION;
+        if (account?.isExternalGuest) {
+          const fallbackScopeKey = normalizeExternalScopeKey(account?.externalMosqueName || account?.name || docId);
+          const scopeKeys = new Set([fallbackScopeKey].filter(Boolean));
+          const [configByNameKey, configByScopeKey] = await Promise.all([
+            getGlobalDocData(EXTERNAL_CONFIG_COLLECTION, docId).catch(() => null),
+            fallbackScopeKey ? getGlobalDocData(EXTERNAL_CONFIG_COLLECTION, fallbackScopeKey).catch(() => null) : Promise.resolve(null),
+          ]);
+          [configByNameKey, configByScopeKey].forEach((cfg) => {
+            const scoped = normalizeExternalScopeKey(cfg?.scopeKey || cfg?.mosqueName || '');
+            if (scoped) scopeKeys.add(scoped);
+          });
+          await Promise.all(Array.from(scopeKeys).map(async (scopeKey) => {
+            await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
+              deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${scopeKey}`)
+            )));
+          }));
+          await Promise.all([
+            deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, docId).catch(() => {}),
+            fallbackScopeKey ? deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, fallbackScopeKey).catch(() => {}) : Promise.resolve(),
+          ]);
+        }
         await deleteGlobalDocData(targetCollection, docId);
         setToast('Account gelöscht (Auth-Zugang ggf. separat entfernen)');
         await loadAdminAccounts();
@@ -6126,6 +6165,15 @@ function AppContent() {
       return { status: 'missing_member' };
     }
 
+    if (isGuestMode) {
+      const resolvedGuestScope = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      if (!resolvedGuestScope) {
+        setToast('Bitte zuerst Local Amarat speichern');
+        return { status: 'missing_guest_scope' };
+      }
+      setActiveMosqueScope(EXTERNAL_MOSQUE_KEY, resolvedGuestScope);
+    }
+
     const runtimeOverride = prayerOverride;
     const runtimeContext = options?.runtimeContext || getRuntimePrayerContext(runtimeOverride, availableDates);
     const runtimeNow = runtimeContext.now;
@@ -6181,7 +6229,12 @@ function AppContent() {
     const resolvedMemberTanzeem = kind === 'member' ? String(selectedMember?.tanzeem || '').toLowerCase() : '';
     const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
     const resolvedLocationName = String(locationName || selectedMember?.majlis || selectedMajlis || 'Gast').trim();
+    const pathTanzeemKey = toLocationKey(effectiveTanzeem || '');
     const locationKey = toLocationKey(resolvedLocationName || 'gast');
+    if (kind === 'member' && !pathTanzeemKey) {
+      setToast('Tanzeem beim Mitglied fehlt');
+      return { status: 'missing_tanzeem' };
+    }
     const registrationResponseType = modeType === 'registration' && options?.registrationResponse === 'decline' ? 'decline' : 'accept';
     const registrationDeclineReason = modeType === 'registration' && registrationResponseType === 'decline'
       ? String(options?.declineReason || '').trim()
@@ -6212,7 +6265,7 @@ function AppContent() {
           paths.push('guestTotal');
           paths.push('total');
         } else {
-          paths.push(`byTanzeem.${effectiveTanzeem}`);
+          paths.push(`byTanzeem.${pathTanzeemKey}`);
           paths.push(`byMajlis.${locationKey}`);
           paths.push('total');
         }
@@ -6220,14 +6273,14 @@ function AppContent() {
         if (registrationResponseType === 'decline') {
           paths.push('declineTotal');
         } else {
-          paths.push(`byTanzeem.${effectiveTanzeem}`);
+          paths.push(`byTanzeem.${pathTanzeemKey}`);
           paths.push(`byMajlis.${locationKey}`);
           paths.push('total');
         }
       } else if (kind === 'guest') {
         paths.push(`byPrayer.${targetKey}.guest`);
       } else {
-        paths.push(`byPrayer.${targetKey}.tanzeem.${effectiveTanzeem}.majlis.${locationKey}`);
+        paths.push(`byPrayer.${targetKey}.tanzeem.${pathTanzeemKey}.majlis.${locationKey}`);
       }
     });
 
