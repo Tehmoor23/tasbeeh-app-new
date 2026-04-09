@@ -6638,7 +6638,6 @@ function AppContent() {
     const canAccessRegistrationMode = registrationWindow.canAccess && (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     const registrationLockedByLogin = isRegistrationOnlyAppMode ? false : (registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount);
     const cycleAttendanceMode = () => {
-      if (isGuestMode) return isPrayerMode ? 'program' : 'prayer';
       if (isPrayerMode) return 'program';
       if (isProgramMode) return canAccessRegistrationMode ? 'registration' : 'prayer';
       return 'prayer';
