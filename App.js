@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'guest'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
