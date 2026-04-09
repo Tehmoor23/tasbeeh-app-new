@@ -35,6 +35,8 @@ const STORAGE_KEYS = {
   qrBrowserDeviceId: '@tasbeeh_qr_browser_device_id',
   qrRegistration: '@tasbeeh_qr_registration',
   qrActivePage: '@tasbeeh_qr_active_page',
+  guestActivation: '@tasbeeh_guest_activation',
+  guestExternalConfig: '@tasbeeh_guest_external_config',
 };
 
 const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
@@ -46,12 +48,14 @@ const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
-const APP_MODE = 'full'; // 'full', 'display', 'qr' oder 'registration'
+const EXTERNAL_MOSQUE_KEY = 'external_guest';
+const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
   { key: 'roedelheim', label: 'Rödelheim', suffix: 'RO' },
   { key: 'hoechst', label: 'Höchst', suffix: 'HO' },
+  { key: EXTERNAL_MOSQUE_KEY, label: 'Extern', suffix: 'EXT' },
 ];
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
@@ -125,6 +129,8 @@ const TAB_ITEMS = [
 
 
 const ADMIN_ACCOUNTS_COLLECTION = 'admin_accounts_global';
+const ADMIN_EXTERNAL_ACCOUNTS_COLLECTION = 'admin_accounts_external';
+const EXTERNAL_CONFIG_COLLECTION = 'external_guest_configs';
 const SUPER_ADMIN_NAME = 'admin';
 const SUPER_ADMIN_DEFAULT_PASSWORD = '1234';
 const DEFAULT_ACCOUNT_PERMISSIONS = {
@@ -133,6 +139,7 @@ const DEFAULT_ACCOUNT_PERMISSIONS = {
   canExportData: false,
 };
 const allPermissionsEnabled = () => ({ canEditSettings: true, canViewIdStats: true, canExportData: true });
+const allGuestPermissionsEnabled = () => ({ canEditSettings: true, canViewIdStats: true, canExportData: true });
 const hashLocalPassword = async (password, nameKey) => Crypto.digestStringAsync(
   Crypto.CryptoDigestAlgorithm.SHA256,
   `${String(nameKey || '').toLowerCase()}::${String(password || '')}`,
@@ -330,6 +337,17 @@ const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
 const REGISTRATION_CONFIG_COLLECTION = 'registration_configs';
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
+// EXTERNAL MEMBER DIRECTORY DATA - EDIT HERE
+const EXTERNAL_MEMBER_DIRECTORY_DATA = [
+  { tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' },
+  { tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' },
+  { tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
+].map((entry) => ({
+  tanzeem: String(entry.tanzeem || '').trim().toLowerCase(),
+  majlis: String(entry.majlis || '').trim(),
+  idNumber: String(entry.idNumber || '').trim(),
+  name: String(entry.name || '').trim(),
+}));
 const RAMADAN_END_ISO = '2026-03-19';
 
 const RAMADAN_RAW = {
@@ -1049,12 +1067,19 @@ const loadFirebaseRuntime = () => {
 
 const firebaseRuntime = hasFirebaseConfig() ? loadFirebaseRuntime() : null;
 let activeMosqueScopeKey = DEFAULT_MOSQUE_KEY;
+let activeExternalScopeKey = '';
 
 const getMosqueOptionByKey = (key) => MOSQUE_OPTIONS.find((item) => item.key === key) || MOSQUE_OPTIONS[0];
-const setActiveMosqueScope = (key) => {
+const normalizeExternalScopeKey = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_\-äöüß]/gi, '');
+const setActiveMosqueScope = (key, externalScopeKey = '') => {
   activeMosqueScopeKey = getMosqueOptionByKey(key).key;
+  activeExternalScopeKey = normalizeExternalScopeKey(externalScopeKey);
 };
 const resolveScopedCollectionForMosque = (collection, mosqueKey) => {
+  if (String(mosqueKey) === EXTERNAL_MOSQUE_KEY) {
+    const externalSuffix = normalizeExternalScopeKey(activeExternalScopeKey || 'default');
+    return `${collection}_ext_${externalSuffix}`;
+  }
   const suffix = getMosqueOptionByKey(mosqueKey).suffix;
   return suffix ? `${collection}_${suffix}` : collection;
 };
@@ -1472,6 +1497,9 @@ function AppContent() {
   const [loginPasswordInput, setLoginPasswordInput] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [currentAccount, setCurrentAccount] = useState(null);
+  const [guestActivation, setGuestActivation] = useState(null);
+  const [externalMosqueNameInput, setExternalMosqueNameInput] = useState('');
+  const [externalConfigSaving, setExternalConfigSaving] = useState(false);
   const [adminTapCount, setAdminTapCount] = useState(0);
   const [mosqueSwitchTapCount, setMosqueSwitchTapCount] = useState(0);
   const [globalThemeTapCount, setGlobalThemeTapCount] = useState(0);
@@ -1479,6 +1507,8 @@ function AppContent() {
   const [adminManageName, setAdminManageName] = useState('');
   const [adminManagePassword, setAdminManagePassword] = useState('');
   const [adminManageMosqueKeys, setAdminManageMosqueKeys] = useState([DEFAULT_MOSQUE_KEY]);
+  const [adminManageExternalMultiMajlis, setAdminManageExternalMultiMajlis] = useState(true);
+  const [adminManageExternalShowNames, setAdminManageExternalShowNames] = useState(false);
   const [adminManagePermissions, setAdminManagePermissions] = useState({ ...DEFAULT_ACCOUNT_PERMISSIONS });
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
@@ -1519,22 +1549,23 @@ function AppContent() {
     () => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart, attendanceCategory: qrAttendanceCategory }),
     [activeMosqueKey, qrAttendanceCategory, qrCycleStart],
   );
+  const qrMembersDirectory = isGuestMode ? EXTERNAL_MEMBER_DIRECTORY_DATA : MEMBER_DIRECTORY_DATA;
   const qrCurrentRegistrationMember = useMemo(() => {
     if (!qrRegistration?.idNumber) return null;
-    return MEMBER_DIRECTORY_DATA.find((entry) => String(entry.idNumber) === String(qrRegistration.idNumber)) || null;
-  }, [qrRegistration]);
+    return qrMembersDirectory.find((entry) => String(entry.idNumber) === String(qrRegistration.idNumber)) || null;
+  }, [qrMembersDirectory, qrRegistration]);
   const qrRegistrationMajlisChoices = useMemo(() => (
-    MEMBER_DIRECTORY_DATA
+    qrMembersDirectory
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
       .map((entry) => entry.majlis)
       .filter((value, index, arr) => value && arr.indexOf(value) === index)
       .sort((a, b) => a.localeCompare(b, 'de'))
-  ), [qrRegistrationTanzeem]);
+  ), [qrMembersDirectory, qrRegistrationTanzeem]);
   const qrRegistrationMemberChoices = useMemo(() => (
-    MEMBER_DIRECTORY_DATA
-      .filter((entry) => entry.tanzeem === qrRegistrationTanzeem && entry.majlis === qrRegistrationMajlis)
+    qrMembersDirectory
+      .filter((entry) => entry.tanzeem === qrRegistrationTanzeem && (isGuestMode && !hasMultipleMajalisInGuest ? true : entry.majlis === qrRegistrationMajlis))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber), 'de'))
-  ), [qrRegistrationMajlis, qrRegistrationTanzeem]);
+  ), [hasMultipleMajalisInGuest, isGuestMode, qrMembersDirectory, qrRegistrationMajlis, qrRegistrationTanzeem]);
   const qrRegistrationTanzeemOptions = useMemo(
     () => (qrAttendanceCategory === 'program' ? PROGRAM_TANZEEM_OPTIONS : TANZEEM_OPTIONS),
     [qrAttendanceCategory],
@@ -1543,11 +1574,11 @@ function AppContent() {
   const qrRegistrationSearchResults = useMemo(() => {
     if (qrRegistrationSearchDigits.length < 4) return [];
     const allowed = new Set(qrRegistrationTanzeemOptions);
-    return MEMBER_DIRECTORY_DATA
+    return qrMembersDirectory
       .filter((entry) => allowed.has(String(entry.tanzeem || '').toLowerCase()))
       .filter((entry) => String(entry.idNumber || '').includes(qrRegistrationSearchDigits))
       .slice(0, 24);
-  }, [qrRegistrationSearchDigits, qrRegistrationTanzeemOptions]);
+  }, [qrMembersDirectory, qrRegistrationSearchDigits, qrRegistrationTanzeemOptions]);
 
 
 
@@ -1569,12 +1600,23 @@ function AppContent() {
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
   const shouldRestrictToQrView = APP_MODE === 'qr' && !currentAccount;
   const shouldRestrictToRegistrationView = APP_MODE === 'registration' && !currentAccount;
+  const isGuestMode = APP_MODE === 'guest';
+  const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
+  const isGuestActivated = Boolean(guestActivation?.scopeKey);
+  const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
+  const guestRequiresConfig = isGuestMode && (!isGuestActivated || !String(guestActivation?.mosqueName || '').trim());
 
   const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
   const effectivePermissions = {
-    canEditSettings: isSuperAdmin || Boolean(currentAccount?.permissions?.canEditSettings),
-    canViewIdStats: isSuperAdmin || Boolean(currentAccount?.permissions?.canViewIdStats),
-    canExportData: isSuperAdmin || Boolean(currentAccount?.permissions?.canExportData),
+    canEditSettings: isGuestMode
+      ? Boolean(currentAccount)
+      : (isSuperAdmin || Boolean(currentAccount?.permissions?.canEditSettings)),
+    canViewIdStats: isGuestMode
+      ? Boolean(currentAccount)
+      : (isSuperAdmin || Boolean(currentAccount?.permissions?.canViewIdStats)),
+    canExportData: isGuestMode
+      ? Boolean(currentAccount)
+      : (isSuperAdmin || Boolean(currentAccount?.permissions?.canExportData)),
   };
 
   const getAllowedMosqueKeys = useCallback((account) => {
@@ -1613,7 +1655,11 @@ function AppContent() {
     return getAllowedMosqueKeys(currentAccount).length > 1;
   }, [currentAccount, getAllowedMosqueKeys, isSuperAdmin]);
 
-  const visibleTabs = useMemo(() => TAB_ITEMS.filter((tab) => (tab.key !== 'settings' || effectivePermissions.canEditSettings)), [effectivePermissions.canEditSettings]);
+  const visibleTabs = useMemo(() => TAB_ITEMS.filter((tab) => {
+    if (tab.key === 'settings') return effectivePermissions.canEditSettings;
+    if (isGuestMode && tab.key === 'stats') return Boolean(currentAccount);
+    return true;
+  }), [currentAccount, effectivePermissions.canEditSettings, isGuestMode]);
 
   const getSecondaryAuth = useCallback(() => {
     if (!firebaseRuntime?.authApi) return null;
@@ -1696,8 +1742,9 @@ function AppContent() {
       return;
     }
     const docId = normalizeAccountNameKey(name);
+    const targetAccountCollection = isGuestMode ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION;
     const localAccountLogin = async () => {
-      const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId).catch(() => null);
+      const existing = await getGlobalDocData(targetAccountCollection, docId).catch(() => null);
       const isDefaultSuperAdmin = normalizeAccountNameKey(name) === normalizeAccountNameKey(SUPER_ADMIN_NAME) && password === SUPER_ADMIN_DEFAULT_PASSWORD;
       if (!existing && !isDefaultSuperAdmin) {
         return false;
@@ -1725,7 +1772,7 @@ function AppContent() {
 
       if (existing && hasStoredLocalPassword && !hasStoredLocalPasswordHash) {
         const migratedHash = await hashLocalPassword(password, docId);
-        await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+        await setGlobalDocData(targetAccountCollection, docId, {
           ...existing,
           localPasswordHash: migratedHash,
           localPassword: null,
@@ -1737,7 +1784,7 @@ function AppContent() {
 
       if (!existing && isDefaultSuperAdmin) {
         const defaultHash = await hashLocalPassword(SUPER_ADMIN_DEFAULT_PASSWORD, docId);
-        await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+        await setGlobalDocData(targetAccountCollection, docId, {
           ...fallbackAccount,
           authEmail: buildAccountAuthEmail(SUPER_ADMIN_NAME),
           authUid: null,
@@ -1752,6 +1799,18 @@ function AppContent() {
       const preferredMosqueKey = resolveAccountMosquePreference(fallbackAccount);
       if (preferredMosqueKey) {
         setActiveMosqueKey(String(preferredMosqueKey));
+      }
+      if (isGuestMode && existing?.isExternalGuest) {
+        const activationPayload = {
+          accountNameKey: existing.nameKey || docId,
+          scopeKey: normalizeExternalScopeKey(existing.externalMosqueName || existing.name || docId),
+          mosqueName: String(existing.externalMosqueName || '').trim(),
+          multipleMajalis: existing.externalMultipleMajalis !== false,
+          showNames: Boolean(existing.externalShowNames),
+        };
+        setGuestActivation(activationPayload);
+        await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
+        setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
       }
       localSessionActiveRef.current = true;
       setCurrentAccount(fallbackAccount);
@@ -1770,7 +1829,7 @@ function AppContent() {
     try {
       setAuthLoading(true);
       const cred = await firebaseRuntime.authApi.signInWithEmailAndPassword(firebaseRuntime.auth, buildAccountAuthEmail(name), password);
-      const account = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+      const account = await getGlobalDocData(targetAccountCollection, docId);
       if (!account?.active) throw new Error('Account ist nicht aktiv');
       const nextMosque = resolveAccountMosquePreference(account);
       if (nextMosque) setActiveMosqueKey(String(nextMosque));
@@ -1780,6 +1839,18 @@ function AppContent() {
       }
       localSessionActiveRef.current = false;
       setCurrentAccount(account);
+      if (isGuestMode && account?.isExternalGuest) {
+        const activationPayload = {
+          accountNameKey: account.nameKey || docId,
+          scopeKey: normalizeExternalScopeKey(account.externalMosqueName || account.name || docId),
+          mosqueName: String(account.externalMosqueName || '').trim(),
+          multipleMajalis: account.externalMultipleMajalis !== false,
+          showNames: Boolean(account.externalShowNames),
+        };
+        setGuestActivation(activationPayload);
+        await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
+        setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
+      }
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
       setToast(`Assalāmu ʿalaikum wa raḥmatullāhi wa barakātuhu, ${account.name}! 👋`);
@@ -1800,7 +1871,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
+  }, [isGuestMode, loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
 
   const logoutAccount = useCallback(async () => {
     localSessionActiveRef.current = false;
@@ -1832,7 +1903,8 @@ function AppContent() {
         const docId = normalizeAccountNameKey(currentAccount?.nameKey || currentAccount?.name || '');
         if (!docId) throw new Error('missing-account');
         const nextHash = await hashLocalPassword(nextPassword, docId);
-        await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+        const targetCollection = isGuestMode ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION;
+        await setGlobalDocData(targetCollection, docId, {
           ...(currentAccount || {}),
           nameKey: docId,
           localPassword: null,
@@ -1855,7 +1927,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [currentAccount, passwordChangeInput]);
+  }, [currentAccount, isGuestMode, passwordChangeInput]);
 
   const createManagedAccount = useCallback(async () => {
     if (!isSuperAdmin) return;
@@ -1873,6 +1945,7 @@ function AppContent() {
     const selectedMosqueIds = adminManageMosqueKeys
       .map((key) => String(key || ''))
       .filter((key, index, arr) => key && arr.indexOf(key) === index);
+    const isExternalAccount = selectedMosqueIds.includes(EXTERNAL_MOSQUE_KEY);
     if (!selectedMosqueIds.length) {
       setToast('Bitte mindestens eine Moschee auswählen');
       return;
@@ -1882,7 +1955,8 @@ function AppContent() {
     let localOnly = !firebaseRuntime?.authApi;
     try {
       setAdminAccountsLoading(true);
-      const existing = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId);
+      const targetCollection = isExternalAccount ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION;
+      const existing = await getGlobalDocData(targetCollection, docId);
       if (existing) {
         setToast('Name existiert bereits');
         return;
@@ -1905,17 +1979,21 @@ function AppContent() {
       } else {
         localOnly = true;
       }
-      await setGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, docId, {
+      await setGlobalDocData(targetCollection, docId, {
         name,
         nameKey: docId,
         authEmail: buildAccountAuthEmail(name),
         authUid,
         localPassword: null,
         localPasswordHash: localOnly ? await hashLocalPassword(password, docId) : null,
-        mosqueId: selectedMosqueIds[0],
-        mosqueIds: selectedMosqueIds,
-        preferredMosqueId: selectedMosqueIds.includes(DEFAULT_MOSQUE_KEY) ? DEFAULT_MOSQUE_KEY : selectedMosqueIds[0],
-        permissions: { ...adminManagePermissions },
+        mosqueId: isExternalAccount ? EXTERNAL_MOSQUE_KEY : selectedMosqueIds[0],
+        mosqueIds: isExternalAccount ? [EXTERNAL_MOSQUE_KEY] : selectedMosqueIds,
+        preferredMosqueId: isExternalAccount ? EXTERNAL_MOSQUE_KEY : (selectedMosqueIds.includes(DEFAULT_MOSQUE_KEY) ? DEFAULT_MOSQUE_KEY : selectedMosqueIds[0]),
+        permissions: isExternalAccount ? allGuestPermissionsEnabled() : { ...adminManagePermissions },
+        isExternalGuest: isExternalAccount,
+        externalMultipleMajalis: isExternalAccount ? Boolean(adminManageExternalMultiMajlis) : null,
+        externalShowNames: isExternalAccount ? Boolean(adminManageExternalShowNames) : null,
+        externalMosqueName: isExternalAccount ? '' : null,
         isSuperAdmin: false,
         active: true,
         createdAt: new Date().toISOString(),
@@ -1924,6 +2002,8 @@ function AppContent() {
       setAdminManageName('');
       setAdminManagePassword('');
       setAdminManageMosqueKeys([DEFAULT_MOSQUE_KEY]);
+      setAdminManageExternalMultiMajlis(true);
+      setAdminManageExternalShowNames(false);
       setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
       setToast(localOnly ? 'Account erstellt ✓ (lokal)' : 'Account erstellt ✓');
       await loadAdminAccounts();
@@ -1941,7 +2021,7 @@ function AppContent() {
       }
       setAdminAccountsLoading(false);
     }
-  }, [adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
+  }, [adminManageExternalMultiMajlis, adminManageExternalShowNames, adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
 
   const deleteManagedAccount = useCallback((account) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin) return;
@@ -2018,8 +2098,9 @@ function AppContent() {
     return d;
   }, [refreshTick]);
   useEffect(() => {
-    setActiveMosqueScope(activeMosqueKey);
-  }, [activeMosqueKey]);
+    const guestScope = isGuestMode ? guestActivation?.scopeKey : '';
+    setActiveMosqueScope(activeMosqueKey, guestScope);
+  }, [activeMosqueKey, guestActivation?.scopeKey, isGuestMode]);
   const todayISO = toISO(now);
   const tomorrowISO = useMemo(() => toISO(addDays(now, 1)), [now]);
   const overrideDisplayDate = useMemo(() => addDays(now, overrideEditDayOffset), [now, overrideEditDayOffset]);
@@ -2731,7 +2812,7 @@ function AppContent() {
         return;
       }
       try {
-        const account = await getGlobalDocData(ADMIN_ACCOUNTS_COLLECTION, nameKey);
+        const account = await getGlobalDocData(isGuestMode ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION, nameKey);
         if (!account?.active) {
           await firebaseRuntime.authApi.signOut(firebaseRuntime.auth).catch(() => {});
           setCurrentAccount(null);
@@ -2746,19 +2827,38 @@ function AppContent() {
           return;
         }
         setCurrentAccount(account);
+        if (isGuestMode && account?.isExternalGuest) {
+          const activationPayload = {
+            accountNameKey: account.nameKey || nameKey,
+            scopeKey: normalizeExternalScopeKey(account.externalMosqueName || account.name || nameKey),
+            mosqueName: String(account.externalMosqueName || '').trim(),
+            multipleMajalis: account.externalMultipleMajalis !== false,
+            showNames: Boolean(account.externalShowNames),
+          };
+          setGuestActivation(activationPayload);
+          await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
+          setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
+        }
       } catch (error) {
         console.error('Auth account load failed', error);
         setCurrentAccount(null);
       }
     });
     return () => unsubscribe();
-  }, [accountMatchesActiveMosque, resolveAccountMosquePreference]);
+  }, [accountMatchesActiveMosque, isGuestMode, resolveAccountMosquePreference]);
 
   useEffect(() => {
     if (activeTab === 'settings' && !effectivePermissions.canEditSettings) {
       setActiveTab('gebetsplan');
     }
   }, [activeTab, effectivePermissions.canEditSettings]);
+
+  useEffect(() => {
+    if (!isGuestMode) return;
+    if (!currentAccount && !guestActivation?.scopeKey) {
+      setAdminLoginVisible(true);
+    }
+  }, [currentAccount, guestActivation?.scopeKey, isGuestMode]);
 
   useEffect(() => {
     if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
@@ -2796,8 +2896,23 @@ function AppContent() {
   useEffect(() => {
     const loadLocal = async () => {
       try {
+        let loadedGuestScopeKey = '';
+        if (isGuestMode) {
+          const activationRaw = await AsyncStorage.getItem(STORAGE_KEYS.guestActivation);
+          if (activationRaw) {
+            const parsed = JSON.parse(activationRaw);
+            if (parsed?.scopeKey) {
+              loadedGuestScopeKey = String(parsed.scopeKey);
+              setGuestActivation(parsed);
+              setExternalMosqueNameInput(String(parsed?.mosqueName || ''));
+              setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
+            }
+          }
+        }
         const mosqueRaw = await AsyncStorage.getItem(STORAGE_KEYS.activeMosque);
-        const initialMosqueKey = (mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) ? mosqueRaw : DEFAULT_MOSQUE_KEY;
+        const initialMosqueKey = isGuestMode
+          ? (loadedGuestScopeKey ? EXTERNAL_MOSQUE_KEY : DEFAULT_MOSQUE_KEY)
+          : ((mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) ? mosqueRaw : DEFAULT_MOSQUE_KEY);
         setActiveMosqueKey(initialMosqueKey);
         const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(initialMosqueKey));
         const fallbackDarkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
@@ -2810,7 +2925,7 @@ function AppContent() {
       }
     };
     loadLocal();
-  }, []);
+  }, [isGuestMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2965,6 +3080,7 @@ function AppContent() {
   }, [activeMosqueKey]);
 
   const onSelectMosque = async (key) => {
+    if (isGuestMode && String(key) !== EXTERNAL_MOSQUE_KEY) return;
     if (currentAccount && !isSuperAdmin) {
       const allowed = getAllowedMosqueKeys(currentAccount);
       if (!allowed.includes(String(key || ''))) return;
@@ -3334,10 +3450,12 @@ function AppContent() {
       setQrStatusTone('neutral');
     }
   }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
-  const membersDirectory = MEMBER_DIRECTORY_DATA;
+  const membersDirectory = isGuestMode ? EXTERNAL_MEMBER_DIRECTORY_DATA : MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
+  const showMemberNamesInGrid = isGuestMode ? Boolean(guestActivation?.showNames) : SHOW_MEMBER_NAMES_IN_ID_GRID;
 
   const majlisChoices = useMemo(() => {
+    if (isGuestMode && !hasMultipleMajalisInGuest) return ['-'];
     const allowedRegistration = new Set(registrationWindow.includeTanzeems || REGISTRATION_TANZEEM_OPTIONS);
     const available = new Set(
       membersDirectory
@@ -3346,19 +3464,19 @@ function AppContent() {
         .map((entry) => entry.majlis),
     );
     return TERMINAL_LOCATIONS.filter((majlisName) => available.has(majlisName));
-  }, [attendanceMode, membersDirectory, registrationWindow.includeTanzeems, selectedTanzeem]);
+  }, [attendanceMode, hasMultipleMajalisInGuest, isGuestMode, membersDirectory, registrationWindow.includeTanzeems, selectedTanzeem]);
 
   const memberChoices = useMemo(() => (
     membersDirectory
       .filter((entry) => (attendanceMode === 'registration' ? registrationWindow.includeTanzeems.includes(entry.tanzeem) : true))
-      .filter((entry) => entry.tanzeem === selectedTanzeem && entry.majlis === selectedMajlis)
+      .filter((entry) => entry.tanzeem === selectedTanzeem && (isGuestMode && !hasMultipleMajalisInGuest ? true : entry.majlis === selectedMajlis))
       .sort((a, b) => {
         const aNum = Number.parseInt(String(a.idNumber), 10);
         const bNum = Number.parseInt(String(b.idNumber), 10);
         if (Number.isFinite(aNum) && Number.isFinite(bNum)) return aNum - bNum;
         return String(a.idNumber).localeCompare(String(b.idNumber));
       })
-  ), [attendanceMode, membersDirectory, registrationWindow.includeTanzeems, selectedMajlis, selectedTanzeem]);
+  ), [attendanceMode, hasMultipleMajalisInGuest, isGuestMode, membersDirectory, registrationWindow.includeTanzeems, selectedMajlis, selectedTanzeem]);
 
   const filteredMemberChoices = useMemo(() => {
     if (!idSearchQuery) return [];
@@ -5758,7 +5876,7 @@ function AppContent() {
         setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
         return;
       }
-      const member = MEMBER_DIRECTORY_DATA.find((entry) => String(entry.idNumber) === String(registration.idNumber));
+      const member = qrMembersDirectory.find((entry) => String(entry.idNumber) === String(registration.idNumber));
       if (!member) {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
@@ -6232,13 +6350,14 @@ function AppContent() {
     const isPrayerMode = attendanceMode === 'prayer';
     const isProgramMode = attendanceMode === 'program';
     const isRegistrationMode = attendanceMode === 'registration';
-    const hasActiveAttendanceWindow = isPrayerMode ? prayerWindow.isActive : (isProgramMode ? programWindow.isActive : registrationWindow.isOpen);
+    const hasActiveAttendanceWindow = !guestRequiresConfig && (isPrayerMode ? prayerWindow.isActive : (isProgramMode ? programWindow.isActive : registrationWindow.isOpen));
     const modeSubTitle = isPrayerMode
       ? 'Erfassung der Gebetsanwesenheit'
       : (isProgramMode ? 'Erfassung der Programmanwesenheit' : 'Erfassung von Anmeldungen');
     const canAccessRegistrationMode = registrationWindow.canAccess && (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     const registrationLockedByLogin = isRegistrationOnlyAppMode ? false : (registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount);
     const cycleAttendanceMode = () => {
+      if (isGuestMode) return isPrayerMode ? 'program' : 'prayer';
       if (isPrayerMode) return 'program';
       if (isProgramMode) return canAccessRegistrationMode ? 'registration' : 'prayer';
       return 'prayer';
@@ -6262,7 +6381,7 @@ function AppContent() {
               </Text>
             </Pressable>
           ) : null}
-          <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>Local Amarat Frankfurt</Text>
+          <Text style={[styles.terminalBannerTitle, { color: isDarkMode ? '#FFFFFF' : '#111111' }]}>{isGuestMode ? (guestActivation?.mosqueName || 'Local Amarat') : 'Local Amarat Frankfurt'}</Text>
           <Text style={[styles.terminalBannerArabic, { color: isDarkMode ? '#D1D5DB' : '#374151' }]}>{isPrayerMode ? 'نماز حاضری' : (isProgramMode ? 'پروگرام حاضری' : 'اندراج / رجسٹریشن')}</Text>
           <Text style={[styles.terminalBannerSubtitle, { color: isDarkMode ? '#D1D5DB' : '#4B5563' }]}>{modeSubTitle}</Text>
         </View>
@@ -6386,7 +6505,7 @@ function AppContent() {
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
             <View style={styles.tanzeemRow}>
               {(isPrayerMode ? TANZEEM_OPTIONS : (isProgramMode ? PROGRAM_TANZEEM_OPTIONS : registrationWindow.includeTanzeems)).map((tanzeem) => (
-                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(''); setTerminalMode('majlis'); }}>
+                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(hasMultipleMajalisInGuest ? '' : '-'); setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'idSelection'); }}>
                   <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                 </Pressable>
               ))}
@@ -6575,7 +6694,7 @@ function AppContent() {
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
-            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode('majlis')}>
+            <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'tanzeem')}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
             {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
@@ -6645,7 +6764,7 @@ function AppContent() {
                           >
                             {member.idNumber}
                           </Text>
-                          {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
+                          {showMemberNamesInGrid ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
                         </Pressable>
                       );
                     })}
@@ -6670,9 +6789,13 @@ function AppContent() {
           <>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>
               {isPrayerMode
-                ? 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).'
+                ? (guestRequiresConfig
+                  ? 'Bitte zuerst die Local Amarat in den Einstellungen speichern.'
+                  : 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).')
                 : (isProgramMode
-                  ? 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.'
+                  ? (guestRequiresConfig
+                    ? 'Bitte zuerst die Local Amarat in den Einstellungen speichern.'
+                    : 'Programmanwesenheit kann nur bei aktivem Programm erfasst werden.')
                   : (registrationLockedByLogin
                     ? 'Anmeldung ist nur für eingeloggte Nutzer sichtbar.'
                     : (registrationWindow.isUpcoming
@@ -7696,6 +7819,57 @@ function AppContent() {
   const renderSettings = () => {
     const settingsDate = germanDateLong(overrideDisplayDate);
     const programSettingsDate = germanDateLong(now);
+    if (false && isGuestMode) {
+      return (
+        <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
+          <View style={[styles.settingsMosqueHighlightCard, { backgroundColor: theme.chipBg, borderColor: theme.rowActiveBorder }]}>
+            <Text style={[styles.settingsMosqueHighlightTitle, { color: theme.chipText }]}>Externe Moschee</Text>
+            <Text style={[styles.settingsMosqueHighlightValue, { color: theme.chipText }]}>{guestActivation?.mosqueName || 'Nicht gesetzt'}</Text>
+          </View>
+          <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+            <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Local Amarat / Moschee</Text>
+            <TextInput value={externalMosqueNameInput} onChangeText={setExternalMosqueNameInput} placeholder="z. B. Hamburg" placeholderTextColor={theme.muted} autoCapitalize="words" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+            <Pressable
+              style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: externalConfigSaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+              disabled={externalConfigSaving}
+              onPress={async () => {
+                const cleanName = String(externalMosqueNameInput || '').trim();
+                if (!cleanName) { setToast('Bitte zuerst die Local Amarat speichern.'); return; }
+                const scopeKey = normalizeExternalScopeKey(cleanName);
+                const nextActivation = {
+                  accountNameKey: currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || ''),
+                  mosqueName: cleanName,
+                  scopeKey,
+                  multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
+                  showNames: Boolean(currentAccount?.externalShowNames),
+                };
+                try {
+                  setExternalConfigSaving(true);
+                  await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(nextActivation));
+                  setGuestActivation(nextActivation);
+                  await setGlobalDocData(EXTERNAL_CONFIG_COLLECTION, `${nextActivation.accountNameKey || scopeKey}`, {
+                    ...nextActivation,
+                    updatedAt: new Date().toISOString(),
+                  }).catch(() => {});
+                  if (currentAccount?.nameKey) {
+                    await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, currentAccount.nameKey, {
+                      ...currentAccount,
+                      externalMosqueName: cleanName,
+                      updatedAt: new Date().toISOString(),
+                    }).catch(() => {});
+                  }
+                  setToast('Externe Moschee gespeichert ✓');
+                } finally {
+                  setExternalConfigSaving(false);
+                }
+              }}
+            >
+              <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{externalConfigSaving ? 'Speichert…' : 'Speichern'}</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      );
+    }
 
     return (
     <ScrollView contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
@@ -7735,6 +7909,51 @@ function AppContent() {
           </Pressable>
         ) : null}
       </View>
+
+      {isGuestMode ? (
+        <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Local Amarat / Moschee</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Pflichtfeld für externen Modus</Text>
+          <TextInput value={externalMosqueNameInput} onChangeText={setExternalMosqueNameInput} placeholder="z. B. Hamburg" placeholderTextColor={theme.muted} autoCapitalize="words" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
+          <Pressable
+            style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: externalConfigSaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+            disabled={externalConfigSaving}
+            onPress={async () => {
+              const cleanName = String(externalMosqueNameInput || '').trim();
+              if (!cleanName) { setToast('Bitte zuerst die Local Amarat speichern.'); return; }
+              const scopeKey = normalizeExternalScopeKey(cleanName);
+              const nextActivation = {
+                accountNameKey: currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || ''),
+                mosqueName: cleanName,
+                scopeKey,
+                multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
+                showNames: Boolean(currentAccount?.externalShowNames),
+              };
+              try {
+                setExternalConfigSaving(true);
+                await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(nextActivation));
+                setGuestActivation(nextActivation);
+                await setGlobalDocData(EXTERNAL_CONFIG_COLLECTION, `${nextActivation.accountNameKey || scopeKey}`, {
+                  ...nextActivation,
+                  updatedAt: new Date().toISOString(),
+                }).catch(() => {});
+                if (currentAccount?.nameKey) {
+                  await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, currentAccount.nameKey, {
+                    ...currentAccount,
+                    externalMosqueName: cleanName,
+                    updatedAt: new Date().toISOString(),
+                  }).catch(() => {});
+                }
+                setToast('Externe Moschee gespeichert ✓');
+              } finally {
+                setExternalConfigSaving(false);
+              }
+            }}
+          >
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{externalConfigSaving ? 'Speichert…' : 'Speichern'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}> 
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Ankündigung</Text>
@@ -7932,6 +8151,12 @@ function AppContent() {
               </Pressable>
             ))}
           </View>
+          {adminManageMosqueKeys.includes(EXTERNAL_MOSQUE_KEY) ? (
+            <>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Mehrere Majlis</Text><Switch value={adminManageExternalMultiMajlis} onValueChange={setAdminManageExternalMultiMajlis} /></View>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Namen anzeigen</Text><Switch value={adminManageExternalShowNames} onValueChange={setAdminManageExternalShowNames} /></View>
+            </>
+          ) : null}
           <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Einstellungen ändern</Text><Switch value={adminManagePermissions.canEditSettings} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canEditSettings: v }))} /></View>
           <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>ID-Statistiken sehen</Text><Switch value={adminManagePermissions.canViewIdStats} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canViewIdStats: v }))} /></View>
           <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Daten exportieren</Text><Switch value={adminManagePermissions.canExportData} onValueChange={(v) => setAdminManagePermissions((prev) => ({ ...prev, canExportData: v }))} /></View>
@@ -8127,7 +8352,7 @@ function AppContent() {
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
                 <View style={styles.tanzeemRow}>
                   {qrRegistrationTanzeemOptions.map((tanzeem) => (
-                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(''); setQrRegistrationMode('majlis'); }}>
+                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(hasMultipleMajalisInGuest ? '' : '-'); setQrRegistrationMode(hasMultipleMajalisInGuest ? 'majlis' : 'idSelection'); }}>
                       <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                     </Pressable>
                   ))}
@@ -8159,7 +8384,7 @@ function AppContent() {
                 <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{qrRegistrationMajlis} · {TANZEEM_LABELS[qrRegistrationTanzeem] || ''}</Text>
-                <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMode('majlis')}>
+                <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMode(hasMultipleMajalisInGuest ? 'majlis' : 'tanzeem')}>
                   <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
                 </Pressable>
                 {qrRegistrationMemberChoices.length === 0 ? (
@@ -8173,7 +8398,7 @@ function AppContent() {
                         onPress={() => handleQrMemberRegistration(member)}
                       >
                         <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{member.idNumber}</Text>
-                        {SHOW_MEMBER_NAMES_IN_ID_GRID ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
+                        {showMemberNamesInGrid ? <Text style={[styles.gridSubText, { color: theme.muted }]} numberOfLines={1}>{member.name}</Text> : null}
                       </Pressable>
                     ))}
                   </View>
@@ -8193,7 +8418,15 @@ function AppContent() {
     </ScrollView>
   );
 
-  const body = shouldRestrictToQrView
+  const body = isGuestMode
+    ? (activeTab === 'stats'
+      ? (currentAccount ? renderStats() : renderPrayer())
+      : activeTab === 'settings'
+        ? (currentAccount ? renderSettings() : renderPrayer())
+        : activeTab === 'terminal'
+          ? renderTerminal()
+          : renderPrayer())
+    : shouldRestrictToQrView
     ? (isQrScanPageVisible ? renderQrScanPage() : renderQrPage())
     : shouldRestrictToRegistrationView
       ? renderTerminal()
@@ -8228,7 +8461,7 @@ function AppContent() {
       ) : null}
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
-      {!shouldRestrictToPrayerView && !shouldRestrictToQrView && !shouldRestrictToRegistrationView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount)) ? (
+      {!shouldRestrictToPrayerView && !shouldRestrictToQrView && !shouldRestrictToRegistrationView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount) || isGuestMode) ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect(styles.tabItem)}>
@@ -8243,7 +8476,7 @@ function AppContent() {
         <View style={styles.privacyModalBackdrop}>
           <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
             <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Account Login</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Interner Zugang</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isGuestMode ? 'Externer Zugang' : 'Interner Zugang'}</Text>
             <View style={styles.mergeInputWrap}>
               <TextInput value={loginNameInput} onChangeText={setLoginNameInput} placeholder="Name" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
               <TextInput value={loginPasswordInput} onChangeText={setLoginPasswordInput} placeholder="Passwort" placeholderTextColor={theme.muted} autoCapitalize="none" secureTextEntry style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
@@ -8252,9 +8485,11 @@ function AppContent() {
               <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: '#000000', backgroundColor: '#000000', opacity: authLoading ? 0.7 : 1 }]}> 
                 <Text style={[styles.statsExportOptionBtnText, { color: '#FFFFFF' }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
               </Pressable>
-              <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
-                <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
-              </Pressable>
+              {(!isGuestMode || Boolean(guestActivation?.scopeKey)) ? (
+                <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
+                  <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </View>
