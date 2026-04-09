@@ -1,0 +1,31 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isExternalAccountDoc(accountId) {
+      return signedIn()
+        && accountId == request.auth.token.name_key;
+    }
+
+    // Existing Frankfurt rules stay unchanged above this block.
+
+    match /admin_accounts_external/{accountId} {
+      allow read, update: if isExternalAccountDoc(accountId);
+      allow create, delete: if false;
+    }
+
+    match /external_guest_configs/{docId} {
+      allow read, write: if signedIn() && docId == request.auth.token.name_key;
+    }
+
+    // Scoped external attendance/program/prayer data.
+    match /{collection}/{docId} {
+      allow read, write: if signedIn()
+        && collection.matches('.*_ext_[a-z0-9_\\-äöüß]+')
+        && request.auth.token.external_scope == collection.split('_ext_')[1];
+    }
+  }
+}
