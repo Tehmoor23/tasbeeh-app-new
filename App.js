@@ -7183,7 +7183,7 @@ function AppContent() {
       ));
 
       const registeredByMajlis = directoryMembers.reduce((acc, entry) => {
-        const majlis = String(entry?.majlis || '').trim();
+        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         if (!majlis) return acc;
         acc[majlis] = (acc[majlis] || 0) + 1;
         return acc;
@@ -7196,7 +7196,7 @@ function AppContent() {
           return filterKey === 'total' ? true : tanzeem === filterKey;
         })
         .reduce((acc, entry) => {
-          const majlis = String(entry?.majlis || '').trim();
+          const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
           if (!majlis) return acc;
           acc[majlis] = (acc[majlis] || 0) + 1;
           return acc;
@@ -7524,12 +7524,12 @@ function AppContent() {
                   {(() => {
                     const filterKey = registrationMajlisFilter;
                     const allowedTanzeems = selectedRegistrationStatsOption.advanced?.includeTanzeems || [];
-                    const onlyEhlVoters = Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
+                    const onlyEhlVoters = !isGuestMode && Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
                     const includeAllAllowed = filterKey === 'total';
                     const registeredByMajlis = membersDirectory
                       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, includeAllAllowed ? 'total' : filterKey, onlyEhlVoters))
                       .reduce((acc, entry) => {
-                        const majlis = String(entry?.majlis || '').trim();
+                        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
                         if (!majlis) return acc;
                         acc[majlis] = (acc[majlis] || 0) + 1;
                         return acc;
@@ -7543,7 +7543,7 @@ function AppContent() {
                         return includeAllAllowed ? true : tanzeem === filterKey;
                       })
                       .reduce((acc, entry) => {
-                        const majlis = String(entry?.majlis || '').trim();
+                        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
                         if (!majlis) return acc;
                         acc[majlis] = (acc[majlis] || 0) + 1;
                         return acc;
