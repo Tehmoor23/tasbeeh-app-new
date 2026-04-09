@@ -2151,17 +2151,34 @@ function AppContent() {
             const scopedCollectionResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
               deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${scopeKey}`)
             )));
+            await Promise.all([
+              deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${scopeKey}`, PRAYER_OVERRIDE_GLOBAL_DOC_ID).catch(() => {}),
+              deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${scopeKey}`, PRAYER_OVERRIDE_PENDING_DOC_ID).catch(() => {}),
+              deleteGlobalDocData(`${ANNOUNCEMENT_COLLECTION}_ext_${scopeKey}`, ANNOUNCEMENT_DOC_ID).catch(() => {}),
+            ]);
             return { scopeKey, scopedCollectionResults };
           }));
+          const cleanupWarnings = cleanupResults.flatMap((scopeResult) => (
+            scopeResult.scopedCollectionResults.flatMap((collectionResult) => (
+              (collectionResult.failed || [])
+                .filter((failure) => String(failure?.id || '') === '__collection__')
+                .map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
+            ))
+          ));
           const failedDeletes = cleanupResults.flatMap((scopeResult) => (
             scopeResult.scopedCollectionResults.flatMap((collectionResult) => (
-              (collectionResult.failed || []).map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
+              (collectionResult.failed || [])
+                .filter((failure) => String(failure?.id || '') !== '__collection__')
+                .map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
             ))
           ));
           const externalConfigDocIdsToDelete = new Set([docId, ...Array.from(scopeKeys).filter(Boolean)]);
           await Promise.all(Array.from(externalConfigDocIdsToDelete).map((configDocId) => (
             deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, configDocId)
           )));
+          if (cleanupWarnings.length) {
+            console.warn('External scoped cleanup list warnings', cleanupWarnings);
+          }
           if (failedDeletes.length) {
             console.error('External scoped cleanup delete failures', failedDeletes);
             throw new Error('External scoped cleanup failed');
@@ -2205,9 +2222,24 @@ function AppContent() {
         const cleanupResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
           deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${resolvedScopeKey}`)
         )));
-        const failedDeletes = cleanupResults.flatMap((collectionResult) => (
-          (collectionResult.failed || []).map((failure) => ({ ...failure, scopeKey: resolvedScopeKey }))
+        await Promise.all([
+          deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${resolvedScopeKey}`, PRAYER_OVERRIDE_GLOBAL_DOC_ID).catch(() => {}),
+          deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${resolvedScopeKey}`, PRAYER_OVERRIDE_PENDING_DOC_ID).catch(() => {}),
+          deleteGlobalDocData(`${ANNOUNCEMENT_COLLECTION}_ext_${resolvedScopeKey}`, ANNOUNCEMENT_DOC_ID).catch(() => {}),
+        ]);
+        const cleanupWarnings = cleanupResults.flatMap((collectionResult) => (
+          (collectionResult.failed || [])
+            .filter((failure) => String(failure?.id || '') === '__collection__')
+            .map((failure) => ({ ...failure, scopeKey: resolvedScopeKey }))
         ));
+        const failedDeletes = cleanupResults.flatMap((collectionResult) => (
+          (collectionResult.failed || [])
+            .filter((failure) => String(failure?.id || '') !== '__collection__')
+            .map((failure) => ({ ...failure, scopeKey: resolvedScopeKey }))
+        ));
+        if (cleanupWarnings.length) {
+          console.warn('Guest scope reset list warnings', cleanupWarnings);
+        }
         if (failedDeletes.length) {
           console.error('Guest scope reset cleanup failures', failedDeletes);
           throw new Error('Guest scope reset cleanup failed');
