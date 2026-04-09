@@ -1544,6 +1544,7 @@ function AppContent() {
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
   const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
   const isGuestMode = APP_MODE === 'guest';
+  const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
 
 
   const qrScanUrl = useMemo(
@@ -1603,7 +1604,6 @@ function AppContent() {
   const shouldRestrictToRegistrationView = APP_MODE === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
   const isGuestActivated = Boolean(guestActivation?.scopeKey);
-  const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
   const guestRequiresConfig = isGuestMode && (!isGuestActivated || !String(guestActivation?.mosqueName || '').trim());
 
   const isSuperAdmin = Boolean(currentAccount?.isSuperAdmin);
