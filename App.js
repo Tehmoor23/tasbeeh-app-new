@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'guest'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -824,6 +824,7 @@ const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
       isPublic: Boolean(data?.advanced?.isPublic ?? data?.isPublic),
       includeTanzeems: sanitizedTanzeems.length ? sanitizedTanzeems : [...REGISTRATION_TANZEEM_OPTIONS],
       onlyEhlVoters: Boolean(data?.advanced?.onlyEhlVoters ?? data?.onlyEhlVoters),
+      allowDecline: Boolean(data?.advanced?.allowDecline ?? data?.allowDecline),
     },
   };
 };
@@ -1607,6 +1608,7 @@ function AppContent() {
   const [registrationEndDateInput, setRegistrationEndDateInput] = useState('');
   const [registrationIsPublicInput, setRegistrationIsPublicInput] = useState(false);
   const [registrationOnlyEhlVotersInput, setRegistrationOnlyEhlVotersInput] = useState(false);
+  const [registrationAllowDeclineInput, setRegistrationAllowDeclineInput] = useState(false);
   const [registrationIncludedTanzeemsInput, setRegistrationIncludedTanzeemsInput] = useState([...REGISTRATION_TANZEEM_OPTIONS]);
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
@@ -1640,7 +1642,7 @@ function AppContent() {
     qrMembersDirectory
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
       .map((entry) => entry.majlis)
-      .filter((value, index, arr) => value && arr.indexOf(value) === index)
+      .filter((value, index, arr) => value && value !== '-' && arr.indexOf(value) === index)
       .sort((a, b) => a.localeCompare(b, 'de'))
   ), [qrMembersDirectory, qrRegistrationTanzeem]);
   const qrRegistrationMemberChoices = useMemo(() => (
@@ -2515,10 +2517,11 @@ function AppContent() {
       ...state,
       canAccess: Boolean(config && state.hasRange),
       isPublic: Boolean(config?.advanced?.isPublic),
-      onlyEhlVoters: Boolean(config?.advanced?.onlyEhlVoters),
+      onlyEhlVoters: !isGuestMode && Boolean(config?.advanced?.onlyEhlVoters),
+      allowDecline: Boolean(config?.advanced?.allowDecline),
       includeTanzeems: config?.advanced?.includeTanzeems || [...REGISTRATION_TANZEEM_OPTIONS],
     };
-  }, [activeRegistrationConfig, todayISO]);
+  }, [activeRegistrationConfig, isGuestMode, todayISO]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
   const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
@@ -3485,6 +3488,7 @@ function AppContent() {
       setRegistrationEndDateInput('');
       setRegistrationIsPublicInput(false);
       setRegistrationOnlyEhlVotersInput(false);
+      setRegistrationAllowDeclineInput(false);
       setRegistrationIncludedTanzeemsInput([...REGISTRATION_TANZEEM_OPTIONS]);
       return;
     }
@@ -3494,11 +3498,12 @@ function AppContent() {
     setRegistrationStartDateInput(activeRegistrationConfig.startDate || '');
     setRegistrationEndDateInput(activeRegistrationConfig.endDate || '');
     setRegistrationIsPublicInput(Boolean(activeRegistrationConfig.advanced?.isPublic));
-    setRegistrationOnlyEhlVotersInput(Boolean(activeRegistrationConfig.advanced?.onlyEhlVoters));
+    setRegistrationOnlyEhlVotersInput(isGuestMode ? false : Boolean(activeRegistrationConfig.advanced?.onlyEhlVoters));
+    setRegistrationAllowDeclineInput(Boolean(activeRegistrationConfig.advanced?.allowDecline));
     setRegistrationIncludedTanzeemsInput(activeRegistrationConfig.advanced?.includeTanzeems?.length
       ? activeRegistrationConfig.advanced.includeTanzeems
       : [...REGISTRATION_TANZEEM_OPTIONS]);
-  }, [activeRegistrationConfig]);
+  }, [activeRegistrationConfig, isGuestMode]);
 
   const saveProgramForToday = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
@@ -3581,7 +3586,8 @@ function AppContent() {
       updatedAt: new Date().toISOString(),
       advanced: {
         isPublic: registrationIsPublicInput,
-        onlyEhlVoters: registrationOnlyEhlVotersInput,
+        onlyEhlVoters: isGuestMode ? false : registrationOnlyEhlVotersInput,
+        allowDecline: registrationAllowDeclineInput,
         includeTanzeems,
       },
     }, docId);
@@ -3715,13 +3721,16 @@ function AppContent() {
   const majlisChoices = useMemo(() => {
     if (isGuestMode && !hasMultipleMajalisInGuest) return ['-'];
     const allowedRegistration = new Set(registrationWindow.includeTanzeems || REGISTRATION_TANZEEM_OPTIONS);
-    const available = new Set(
+    const available = Array.from(new Set(
       membersDirectory
         .filter((entry) => (attendanceMode === 'registration' ? allowedRegistration.has(entry.tanzeem) : true))
         .filter((entry) => entry.tanzeem === selectedTanzeem)
-        .map((entry) => entry.majlis),
-    );
-    return TERMINAL_LOCATIONS.filter((majlisName) => available.has(majlisName));
+        .map((entry) => String(entry.majlis || '').trim())
+        .filter((entry) => entry && entry !== '-'),
+    )).sort((a, b) => a.localeCompare(b, 'de'));
+    if (isGuestMode) return available;
+    const availableSet = new Set(available);
+    return TERMINAL_LOCATIONS.filter((majlisName) => availableSet.has(majlisName));
   }, [attendanceMode, hasMultipleMajalisInGuest, isGuestMode, membersDirectory, registrationWindow.includeTanzeems, selectedTanzeem]);
 
   const memberChoices = useMemo(() => (
@@ -6879,7 +6888,7 @@ function AppContent() {
             >
               <Text style={styles.registrationConfirmBtnText}>Anmelden</Text>
             </Pressable>
-            {registrationWindow.onlyEhlVoters && pendingRegistrationMember && pendingRegistrationVoterFlag === 1 ? (
+            {registrationWindow.allowDecline && pendingRegistrationMember && (!registrationWindow.onlyEhlVoters || pendingRegistrationVoterFlag === 1) ? (
               <>
                 <Pressable
                   style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 0, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
@@ -6996,7 +7005,7 @@ function AppContent() {
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
                     {visibleMemberChoices.map((member) => {
                       const isAlreadyCounted = shouldShowCountedIdHint && countedMemberIdsForSelection.has(String(member.idNumber || ''));
-                      const shouldUseRegistrationResponseBorders = shouldShowCountedIdHint && isRegistrationMode && registrationWindow.onlyEhlVoters;
+                      const shouldUseRegistrationResponseBorders = shouldShowCountedIdHint && isRegistrationMode && (registrationWindow.onlyEhlVoters || registrationWindow.allowDecline);
                       const registrationResponse = shouldUseRegistrationResponseBorders ? countedMemberResponsesForSelection.get(String(member.idNumber || '')) : '';
                       const responseBorderStyle = shouldUseRegistrationResponseBorders
                         ? (registrationResponse === 'decline'
@@ -8369,6 +8378,12 @@ function AppContent() {
               <View style={styles.mergeSwitchWrap}>
                 <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Nur Ehl-Voters</Text>
                 <Switch value={registrationOnlyEhlVotersInput} onValueChange={setRegistrationOnlyEhlVotersInput} />
+              </View>
+            ) : null}
+            {isGuestMode ? (
+              <View style={styles.mergeSwitchWrap}>
+                <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Abmeldung erlauben</Text>
+                <Switch value={registrationAllowDeclineInput} onValueChange={setRegistrationAllowDeclineInput} />
               </View>
             ) : null}
             <Text style={[styles.noteText, { color: theme.muted }]}>Berücksichtigte Tanzeem auswählen</Text>
