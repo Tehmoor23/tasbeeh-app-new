@@ -1071,7 +1071,43 @@ let activeMosqueScopeKey = DEFAULT_MOSQUE_KEY;
 let activeExternalScopeKey = '';
 
 const getMosqueOptionByKey = (key) => MOSQUE_OPTIONS.find((item) => item.key === key) || MOSQUE_OPTIONS[0];
-const normalizeExternalScopeKey = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_\-äöüß]/gi, '');
+const normalizeExternalScopeKey = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/ä/g, 'ae')
+  .replace(/ö/g, 'oe')
+  .replace(/ü/g, 'ue')
+  .replace(/ß/g, 'ss')
+  .replace(/\s+/g, '_')
+  .replace(/[^a-z0-9_\-]/g, '');
+
+const buildExternalAccountWritePayload = (account, overrides = {}) => {
+  const next = {
+    name: String(account?.name || ''),
+    nameKey: String(account?.nameKey || normalizeAccountNameKey(account?.name || '')),
+    authEmail: account?.authEmail ?? null,
+    authUid: account?.authUid ?? null,
+    localPassword: account?.localPassword ?? null,
+    localPasswordHash: account?.localPasswordHash ?? null,
+    mosqueId: account?.mosqueId ?? EXTERNAL_MOSQUE_KEY,
+    mosqueIds: Array.isArray(account?.mosqueIds) && account.mosqueIds.length ? account.mosqueIds : [EXTERNAL_MOSQUE_KEY],
+    preferredMosqueId: account?.preferredMosqueId ?? EXTERNAL_MOSQUE_KEY,
+    permissions: account?.permissions || allPermissionsEnabled(),
+    isExternalGuest: true,
+    externalMultipleMajalis: account?.externalMultipleMajalis !== false,
+    externalShowNames: Boolean(account?.externalShowNames),
+    externalMosqueName: String(account?.externalMosqueName || ''),
+    accountCollection: ADMIN_EXTERNAL_ACCOUNTS_COLLECTION,
+    isSuperAdmin: Boolean(account?.isSuperAdmin),
+    active: account?.active !== false,
+    createdAt: account?.createdAt || new Date().toISOString(),
+    createdBy: account?.createdBy || 'system',
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  };
+  next.nameKey = String(next.nameKey || normalizeAccountNameKey(next.name || ''));
+  return next;
+};
 const setActiveMosqueScope = (key, externalScopeKey = '') => {
   activeMosqueScopeKey = getMosqueOptionByKey(key).key;
   activeExternalScopeKey = normalizeExternalScopeKey(externalScopeKey);
@@ -2107,12 +2143,10 @@ function AppContent() {
     if (!isSuperAdmin || !account || !account?.isExternalGuest) return;
     try {
       const docId = normalizeAccountNameKey(account.nameKey || account.name);
-      await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, docId, {
-        ...account,
+      await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, docId, buildExternalAccountWritePayload(account, {
         externalMultipleMajalis: Boolean(nextOptions?.externalMultipleMajalis),
         externalShowNames: Boolean(nextOptions?.externalShowNames),
-        updatedAt: new Date().toISOString(),
-      });
+      }));
       await loadAdminAccounts();
       setToast('Extern-Optionen aktualisiert ✓');
     } catch (error) {
@@ -7898,8 +7932,9 @@ function AppContent() {
                 const cleanName = String(externalMosqueNameInput || '').trim();
                 if (!cleanName) { setToast('Bitte zuerst die Local Amarat speichern.'); return; }
                 const scopeKey = normalizeExternalScopeKey(cleanName);
+                const accountNameKey = currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || '') || scopeKey;
                 const nextActivation = {
-                  accountNameKey: currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || ''),
+                  accountNameKey,
                   mosqueName: cleanName,
                   scopeKey,
                   multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
@@ -7909,13 +7944,13 @@ function AppContent() {
                   setExternalConfigSaving(true);
                   await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(nextActivation));
                   setGuestActivation(nextActivation);
-                  await setGlobalDocData(EXTERNAL_CONFIG_COLLECTION, `${nextActivation.accountNameKey || scopeKey}`, {
+                  await setGlobalDocData(EXTERNAL_CONFIG_COLLECTION, `${nextActivation.accountNameKey}`, {
                     ...nextActivation,
                     updatedAt: new Date().toISOString(),
                   }).catch(() => {});
                   if (currentAccount?.nameKey) {
                     await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, currentAccount.nameKey, {
-                      ...currentAccount,
+                      ...buildExternalAccountWritePayload(currentAccount),
                       externalMosqueName: cleanName,
                       updatedAt: new Date().toISOString(),
                     }).catch(() => {});
@@ -7988,8 +8023,9 @@ function AppContent() {
               const cleanName = String(externalMosqueNameInput || '').trim();
               if (!cleanName) { setToast('Bitte zuerst die Local Amarat speichern.'); return; }
               const scopeKey = normalizeExternalScopeKey(cleanName);
+              const accountNameKey = currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || '') || scopeKey;
               const nextActivation = {
-                accountNameKey: currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || ''),
+                accountNameKey,
                 mosqueName: cleanName,
                 scopeKey,
                 multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
@@ -7999,13 +8035,13 @@ function AppContent() {
                 setExternalConfigSaving(true);
                 await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(nextActivation));
                 setGuestActivation(nextActivation);
-                await setGlobalDocData(EXTERNAL_CONFIG_COLLECTION, `${nextActivation.accountNameKey || scopeKey}`, {
+                await setGlobalDocData(EXTERNAL_CONFIG_COLLECTION, `${nextActivation.accountNameKey}`, {
                   ...nextActivation,
                   updatedAt: new Date().toISOString(),
                 }).catch(() => {});
                 if (currentAccount?.nameKey) {
                   await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, currentAccount.nameKey, {
-                    ...currentAccount,
+                    ...buildExternalAccountWritePayload(currentAccount),
                     externalMosqueName: cleanName,
                     updatedAt: new Date().toISOString(),
                   }).catch(() => {});
