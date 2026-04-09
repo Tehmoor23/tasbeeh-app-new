@@ -1670,6 +1670,7 @@ function AppContent() {
       .filter((entry) => String(entry.idNumber || '').includes(qrRegistrationSearchDigits))
       .slice(0, 24);
   }, [qrMembersDirectory, qrRegistrationSearchDigits, qrRegistrationTanzeemOptions]);
+  const isQrExternScopeSelected = Boolean(normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || ''));
 
 
 
@@ -1688,13 +1689,13 @@ function AppContent() {
   const activeMosque = useMemo(() => {
     const base = getMosqueOptionByKey(activeMosqueKey);
     if (isGuestMode) {
+      const guestLabel = String(guestActivation?.mosqueName || '').trim();
       if (!currentAccount) {
         return {
           ...base,
-          label: 'Extern',
+          label: guestLabel || 'Extern',
         };
       }
-      const guestLabel = String(guestActivation?.mosqueName || '').trim();
       return {
         ...base,
         label: guestLabel || 'Extern',
@@ -8708,7 +8709,12 @@ function AppContent() {
         <Pressable onPress={handleQrExternHeaderPress} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
           <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
         </Pressable>
-        {qrAttendanceCategory === 'program' ? (
+        {isQrExternMode && !isQrExternScopeSelected ? (
+          <>
+            <Text style={[styles.noPrayerTitle, isDarkMode ? styles.noPrayerTitleDark : styles.noPrayerTitleLight]}>Erst Moschee auswählen</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Tippe 3x auf den grünen Header, um eine externe Moschee auszuwählen oder zu wechseln.</Text>
+          </>
+        ) : qrAttendanceCategory === 'program' ? (
           qrLiveProgramWindow.isActive ? (
             <>
               <Text style={[styles.qrPageSubtitle, { color: theme.muted }]}>Aktuelles Programm: {qrLiveProgramWindow.label || 'Programm'}</Text>
