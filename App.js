@@ -354,7 +354,7 @@ const STORE_MEMBER_NAMES_IN_DB = false;
 const EXTERNAL_MEMBER_DIRECTORY_DATA = [
   { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' },
   { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' },
-  { amarat: 'ham', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
+  { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
 ].map((entry) => ({
   amarat: normalizeAccountNameKey(entry.amarat || ''),
   tanzeem: String(entry.tanzeem || '').trim().toLowerCase(),
@@ -1293,7 +1293,17 @@ async function deleteGlobalDocData(collection, id) {
 
 async function deleteAllGlobalDocsInCollection(collection) {
   const ids = await listGlobalDocIds(collection).catch(() => []);
-  await Promise.all(ids.map((id) => deleteGlobalDocData(collection, id).catch(() => {})));
+  let deleted = 0;
+  const failed = [];
+  await Promise.all(ids.map(async (id) => {
+    try {
+      await deleteGlobalDocData(collection, id);
+      deleted += 1;
+    } catch (error) {
+      failed.push({ id, error: String(error?.message || error || 'delete_failed') });
+    }
+  }));
+  return { total: ids.length, deleted, failed };
 }
 
 async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanzeemKey, locationName, locationKey, member) {
@@ -2128,15 +2138,23 @@ function AppContent() {
             const scoped = normalizeExternalScopeKey(cfg?.scopeKey || cfg?.mosqueName || '');
             if (scoped) scopeKeys.add(scoped);
           });
-          await Promise.all(Array.from(scopeKeys).map(async (scopeKey) => {
-            await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
+          const cleanupResults = await Promise.all(Array.from(scopeKeys).map(async (scopeKey) => {
+            const scopedCollectionResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
               deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${scopeKey}`)
             )));
+            return { scopeKey, scopedCollectionResults };
           }));
-          await Promise.all([
-            deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, docId).catch(() => {}),
-            fallbackScopeKey ? deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, fallbackScopeKey).catch(() => {}) : Promise.resolve(),
-          ]);
+          const failedDeletes = cleanupResults.flatMap((scopeResult) => (
+            scopeResult.scopedCollectionResults.flatMap((collectionResult) => (
+              (collectionResult.failed || []).map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
+            ))
+          ));
+          await deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, docId);
+          if (fallbackScopeKey) await deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, fallbackScopeKey);
+          if (failedDeletes.length) {
+            console.error('External scoped cleanup delete failures', failedDeletes);
+            throw new Error('External scoped cleanup failed');
+          }
         }
         await deleteGlobalDocData(targetCollection, docId);
         setToast('Account gelöscht (Auth-Zugang ggf. separat entfernen)');
