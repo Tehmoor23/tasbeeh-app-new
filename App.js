@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'guest'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -3717,6 +3717,27 @@ function AppContent() {
     : MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
   const showMemberNamesInGrid = isGuestMode ? Boolean(guestActivation?.showNames) : SHOW_MEMBER_NAMES_IN_ID_GRID;
+  const shouldIncludeGuestNameInExports = isGuestMode && Boolean(guestActivation?.showNames);
+  const guestMajlisFallbackLabel = String(guestActivation?.mosqueName || activeMosque.label || '').trim();
+  const resolveExportMajlisLabel = useCallback((majlisValue, amaratValue = '') => {
+    const rawMajlis = String(majlisValue || '').trim();
+    if (!isGuestMode) return rawMajlis || '—';
+    if (rawMajlis && rawMajlis !== '-') return rawMajlis;
+    const rawAmarat = String(amaratValue || '').trim();
+    if (rawAmarat) return rawAmarat;
+    if (guestMajlisFallbackLabel) return guestMajlisFallbackLabel;
+    return rawMajlis || '—';
+  }, [guestMajlisFallbackLabel, isGuestMode]);
+  const memberMetadataById = useMemo(() => membersDirectory.reduce((acc, entry) => {
+    const id = String(entry?.idNumber || '').trim();
+    if (!id || acc[id]) return acc;
+    acc[id] = {
+      name: String(entry?.name || '').trim(),
+      majlis: String(entry?.majlis || '').trim(),
+      amarat: String(entry?.amarat || '').trim(),
+    };
+    return acc;
+  }, {}), [membersDirectory]);
 
   const majlisChoices = useMemo(() => {
     if (isGuestMode && !hasMultipleMajalisInGuest) return ['-'];
@@ -4726,19 +4747,31 @@ function AppContent() {
       XLSX.utils.book_append_sheet(workbook, topSheet, 'Gebete nach Majlis');
     }
     if (dataset.prayerLogRows.length) {
+      const protocolHeader = shouldIncludeGuestNameInExports
+        ? ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', 'Majlis']
+        : ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'];
       const protocolRows = [
-        ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'],
-        ...dataset.prayerLogRows.map((row) => [
-          formatIsoWithWeekday(row.dateISO),
-          formatGermanDateTime(row.timestamp),
-          STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayerKey)?.label || row.prayerKey,
-          row.idNumber || '—',
-          TANZEEM_LABELS[row.tanzeem] || row.tanzeem || '—',
-          row.majlis || '—',
-        ]),
+        protocolHeader,
+        ...dataset.prayerLogRows.map((row) => {
+          const metadata = memberMetadataById[String(row.idNumber || '').trim()] || {};
+          const values = [
+            formatIsoWithWeekday(row.dateISO),
+            formatGermanDateTime(row.timestamp),
+            STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayerKey)?.label || row.prayerKey,
+            row.idNumber || '—',
+          ];
+          if (shouldIncludeGuestNameInExports) values.push(metadata?.name || '—');
+          values.push(
+            TANZEEM_LABELS[row.tanzeem] || row.tanzeem || '—',
+            resolveExportMajlisLabel(row.majlis, metadata?.amarat),
+          );
+          return values;
+        }),
       ];
       const protocolSheet = XLSX.utils.aoa_to_sheet(protocolRows);
-      protocolSheet['!cols'] = [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
+      protocolSheet['!cols'] = shouldIncludeGuestNameInExports
+        ? [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 24 }]
+        : [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
       XLSX.utils.book_append_sheet(workbook, protocolSheet, 'Gebetsprotokoll');
     }
 
@@ -4800,7 +4833,7 @@ function AppContent() {
       dialogTitle: 'Statistik exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getStatsExportDataset]);
+  }, [activeMosque.label, getStatsExportDataset, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
 
   const handleExportStats = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -4857,7 +4890,7 @@ function AppContent() {
         const registeredByMajlis = membersDirectory
           .filter((entry) => (filterKey === 'total' ? true : entry.tanzeem === filterKey))
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -4870,7 +4903,7 @@ function AppContent() {
             return filterKey === 'total' ? true : tanzeem === filterKey;
           })
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -4998,7 +5031,7 @@ function AppContent() {
       dialogTitle: 'Programmdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5019,7 +5052,7 @@ function AppContent() {
     const option = selectedRegistrationStatsOption;
     if (!option?.id) { setToast('Keine Anmeldungsdaten zum Export verfügbar'); return; }
     const activeTanzeems = option.advanced?.includeTanzeems || [];
-    const onlyEhlVoters = Boolean(option.advanced?.onlyEhlVoters);
+    const onlyEhlVoters = !isGuestMode && Boolean(option.advanced?.onlyEhlVoters);
 
     const registeredTotals = membersDirectory
       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, activeTanzeems, 'total', onlyEhlVoters))
@@ -5047,7 +5080,7 @@ function AppContent() {
         const registeredByMajlis = membersDirectory
           .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, activeTanzeems, filterKey, onlyEhlVoters))
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -5062,7 +5095,7 @@ function AppContent() {
             return filterKey === 'total' ? true : tanzeem === filterKey;
           })
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -5111,35 +5144,12 @@ function AppContent() {
       return;
     }
 
-    const selectedTanzeemEligibleCount = membersDirectory
-      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
-      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 1)
-      .length;
-    const selectedTanzeemNotAllowedCount = membersDirectory
-      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
-      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 0)
-      .length;
-    const selectedTanzeemPresentCount = activeTanzeems.reduce(
-      (sum, key) => sum + (Number(registrationStats?.byTanzeem?.[key]) || 0),
-      0,
-    );
-    const selectedTanzeemPotentialTotal = selectedTanzeemEligibleCount + selectedTanzeemNotAllowedCount;
-    const selectedTanzeemOverallRatio = formatRatioWithPercent(selectedTanzeemPresentCount, selectedTanzeemPotentialTotal);
-    const lastSelectedTanzeem = activeTanzeems[activeTanzeems.length - 1] || '';
-
     const workbook = XLSX.utils.book_new();
     const totalAcceptCount = Number(registrationStats?.total) || 0;
     const totalDeclineCount = Number(registrationStats?.declineTotal) || 0;
-    const tanzeemOverviewRows = activeTanzeems.flatMap((key, index) => {
-      const baseRow = [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])];
-      if (key !== lastSelectedTanzeem || index !== (activeTanzeems.length - 1)) return [baseRow];
-      return [
-        baseRow,
-        ['Ehl Voters (erlaubt)', String(selectedTanzeemEligibleCount)],
-        ['Ehl Voters (nicht erlaubte)', String(selectedTanzeemNotAllowedCount)],
-        ['Gesamtanteil Anmeldungen', selectedTanzeemOverallRatio],
-      ];
-    });
+    const tanzeemOverviewRows = activeTanzeems.map((key) => (
+      [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])]
+    ));
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
@@ -5170,7 +5180,7 @@ function AppContent() {
         return activeTanzeems.includes(tanzeem);
       })
       .reduce((acc, entry) => {
-        const majlis = String(entry?.majlis || '').trim();
+        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         if (!majlis) return acc;
         acc[majlis] = (acc[majlis] || 0) + 1;
         return acc;
@@ -5214,7 +5224,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungsdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, membersDirectory, registrationAttendanceEntries, registrationStats, selectedRegistrationStatsOption]);
+  }, [activeMosque.label, isGuestMode, membersDirectory, registrationAttendanceEntries, registrationStats, resolveExportMajlisLabel, selectedRegistrationStatsOption]);
 
   const handleExportRegistration = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5271,9 +5281,10 @@ function AppContent() {
     const memberRows = membersDirectory
       .filter((entry) => (normalizedFilter ? entry.tanzeem === normalizedFilter : true))
       .map((entry) => ({
+        name: String(entry?.name || '').trim(),
         idNumber: String(entry?.idNumber || '').trim(),
         tanzeem: String(entry?.tanzeem || '').toLowerCase(),
-        majlis: String(entry?.majlis || '').trim(),
+        majlis: resolveExportMajlisLabel(entry?.majlis, entry?.amarat),
       }))
       .sort((a, b) => {
         const tA = tanzeemOrder.indexOf(a.tanzeem);
@@ -5289,6 +5300,7 @@ function AppContent() {
         return {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
+          name: row.name,
           idNumber: row.idNumber,
           present: presentMap.has(key) ? 'Ja' : 'Nein',
           timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
@@ -5301,6 +5313,9 @@ function AppContent() {
     }
 
     const workbook = XLSX.utils.book_new();
+    const idTableHeader = shouldIncludeGuestNameInExports
+      ? ['Majlis', 'Tanzeem', 'ID-Nummer', 'Name', 'Anwesend', 'Zeitstempel']
+      : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'];
     const rows = [
       ['Moschee', activeMosque.label],
       ['Datum', dateLabel],
@@ -5308,12 +5323,18 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'],
-      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.present, row.timestamp]),
+      idTableHeader,
+      ...memberRows.map((row) => (
+        shouldIncludeGuestNameInExports
+          ? [row.majlis, row.tanzeemLabel, row.idNumber, row.name || '—', row.present, row.timestamp]
+          : [row.majlis, row.tanzeemLabel, row.idNumber, row.present, row.timestamp]
+      )),
     ];
 
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 24 }];
+    sheet['!cols'] = shouldIncludeGuestNameInExports
+      ? [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 24 }]
+      : [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const boldCellStyle = { font: { bold: true } };
@@ -5324,6 +5345,7 @@ function AppContent() {
     if (sheet.C7) sheet.C7.s = boldCellStyle;
     if (sheet.D7) sheet.D7.s = boldCellStyle;
     if (sheet.E7) sheet.E7.s = boldCellStyle;
+    if (shouldIncludeGuestNameInExports && sheet.F7) sheet.F7.s = boldCellStyle;
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
@@ -5364,7 +5386,7 @@ function AppContent() {
       dialogTitle: 'Programm-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, shouldIncludeGuestNameInExports, todayISO]);
 
   const handleExportProgramDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5388,7 +5410,7 @@ function AppContent() {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
     const allowedTanzeems = option.advanced?.includeTanzeems || [];
-    const onlyEhlVoters = Boolean(option.advanced?.onlyEhlVoters);
+    const onlyEhlVoters = !isGuestMode && Boolean(option.advanced?.onlyEhlVoters);
     const normalizedFilter = allowedTanzeems.includes(String(filterTanzeem || '').toLowerCase())
       ? String(filterTanzeem || '').toLowerCase()
       : '';
@@ -5419,9 +5441,10 @@ function AppContent() {
     const memberRows = membersDirectory
       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, normalizedFilter || 'total', onlyEhlVoters))
       .map((entry) => ({
+        name: String(entry?.name || '').trim(),
         idNumber: String(entry?.idNumber || '').trim(),
         tanzeem: String(entry?.tanzeem || '').toLowerCase(),
-        majlis: String(entry?.majlis || '').trim(),
+        majlis: resolveExportMajlisLabel(entry?.majlis, entry?.amarat),
         anwesend_2026_01_08: normalizeVoterFlagValue(entry?.anwesend_2026_01_08),
       }))
       .sort((a, b) => {
@@ -5444,6 +5467,7 @@ function AppContent() {
         return {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
+          name: row.name,
           idNumber: row.idNumber,
           anwesend_2026_01_08: row.anwesend_2026_01_08,
           registeredAccept: hasAccept ? 'Ja' : (hasDecline ? 'Nein' : '-'),
@@ -5459,6 +5483,11 @@ function AppContent() {
     }
 
     const workbook = XLSX.utils.book_new();
+    const detailedHeader = isGuestMode
+      ? (shouldIncludeGuestNameInExports
+        ? ['Majlis', 'Tanzeem', 'ID-Nummer', 'Name', 'Zusage', 'Absage', 'Grund', 'Zeitstempel']
+        : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'])
+      : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'];
     const rows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
@@ -5466,20 +5495,32 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'],
-      ...memberRows.map((row) => [
-        row.majlis,
-        row.tanzeemLabel,
-        row.idNumber,
-        row.anwesend_2026_01_08 === 1 ? 'Ja' : (row.anwesend_2026_01_08 === 0 ? 'Nein' : '-'),
-        row.registeredAccept,
-        row.declined,
-        row.declineReason,
-        row.timestamp,
-      ]),
+      detailedHeader,
+      ...memberRows.map((row) => {
+        if (isGuestMode) {
+          if (shouldIncludeGuestNameInExports) {
+            return [row.majlis, row.tanzeemLabel, row.idNumber, row.name || '—', row.registeredAccept, row.declined, row.declineReason, row.timestamp];
+          }
+          return [row.majlis, row.tanzeemLabel, row.idNumber, row.registeredAccept, row.declined, row.declineReason, row.timestamp];
+        }
+        return [
+          row.majlis,
+          row.tanzeemLabel,
+          row.idNumber,
+          row.anwesend_2026_01_08 === 1 ? 'Ja' : (row.anwesend_2026_01_08 === 0 ? 'Nein' : '-'),
+          row.registeredAccept,
+          row.declined,
+          row.declineReason,
+          row.timestamp,
+        ];
+      }),
     ];
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }];
+    sheet['!cols'] = isGuestMode
+      ? (shouldIncludeGuestNameInExports
+        ? [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }]
+        : [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }])
+      : [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
@@ -5509,7 +5550,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungs-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, membersDirectory, registrationAttendanceEntries, selectedRegistrationStatsOption]);
+  }, [activeMosque.label, isGuestMode, membersDirectory, registrationAttendanceEntries, resolveExportMajlisLabel, selectedRegistrationStatsOption, shouldIncludeGuestNameInExports]);
 
   const handleExportRegistrationDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5812,8 +5853,9 @@ function AppContent() {
       ['Zeitraum', `${startLabel} – ${endLabel}`],
       ['Export Zeitstempel', exportTimestamp],
       ['ID', selectedDetailedMember.idNumber],
+      ...(shouldIncludeGuestNameInExports ? [['Name', String(selectedDetailedMember?.name || memberMetadataById[String(selectedDetailedMember?.idNumber || '')]?.name || '—')]] : []),
       ['Tanzeem', TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—'],
-      ['Majlis', selectedDetailedMember.majlis || '—'],
+      ['Majlis', resolveExportMajlisLabel(selectedDetailedMember.majlis, selectedDetailedMember?.amarat)],
       ['Gesamt Gebete', Number(dataset.total) || 0],
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
@@ -5833,19 +5875,30 @@ function AppContent() {
     const prayerSheet = XLSX.utils.aoa_to_sheet(prayerRows);
     prayerSheet['!cols'] = [{ wch: 22 }, { wch: 32 }];
 
+    const logHeader = shouldIncludeGuestNameInExports
+      ? ['Datum', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', 'Majlis', 'Zeitstempel']
+      : ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis', 'Zeitstempel'];
     const logRows = [
-      ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis', 'Zeitstempel'],
-      ...dataset.logs.map((row) => [
-        formatIsoWithWeekday(row.date),
-        STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayer)?.label || row.prayer,
-        selectedDetailedMember.idNumber,
-        TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—',
-        selectedDetailedMember.majlis || '—',
-        formatGermanDateTime(row.timestamp),
-      ]),
+      logHeader,
+      ...dataset.logs.map((row) => {
+        const values = [
+          formatIsoWithWeekday(row.date),
+          STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayer)?.label || row.prayer,
+          selectedDetailedMember.idNumber,
+        ];
+        if (shouldIncludeGuestNameInExports) values.push(String(selectedDetailedMember?.name || memberMetadataById[String(selectedDetailedMember?.idNumber || '')]?.name || '—'));
+        values.push(
+          TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—',
+          resolveExportMajlisLabel(selectedDetailedMember.majlis, selectedDetailedMember?.amarat),
+          formatGermanDateTime(row.timestamp),
+        );
+        return values;
+      }),
     ];
     const logsSheet = XLSX.utils.aoa_to_sheet(logRows);
-    logsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 24 }];
+    logsSheet['!cols'] = shouldIncludeGuestNameInExports
+      ? [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 24 }, { wch: 24 }]
+      : [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 24 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete nach Tage');
@@ -5900,7 +5953,7 @@ function AppContent() {
       dialogTitle: 'Detaillierte ID exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getDetailedExportDataset, selectedDetailedMember]);
+  }, [activeMosque.label, getDetailedExportDataset, memberMetadataById, resolveExportMajlisLabel, selectedDetailedMember, shouldIncludeGuestNameInExports]);
 
   const handleExportDetailed = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
