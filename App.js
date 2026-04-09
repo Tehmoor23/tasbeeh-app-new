@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -824,6 +824,7 @@ const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
       isPublic: Boolean(data?.advanced?.isPublic ?? data?.isPublic),
       includeTanzeems: sanitizedTanzeems.length ? sanitizedTanzeems : [...REGISTRATION_TANZEEM_OPTIONS],
       onlyEhlVoters: Boolean(data?.advanced?.onlyEhlVoters ?? data?.onlyEhlVoters),
+      allowDecline: Boolean(data?.advanced?.allowDecline ?? data?.allowDecline),
     },
   };
 };
@@ -1292,7 +1293,16 @@ async function deleteGlobalDocData(collection, id) {
 }
 
 async function deleteAllGlobalDocsInCollection(collection) {
-  const ids = await listGlobalDocIds(collection).catch(() => []);
+  let ids = [];
+  try {
+    ids = await listGlobalDocIds(collection);
+  } catch (error) {
+    return {
+      total: 0,
+      deleted: 0,
+      failed: [{ id: '__collection__', error: `list_failed:${String(error?.message || error || 'unknown')}` }],
+    };
+  }
   let deleted = 0;
   const failed = [];
   await Promise.all(ids.map(async (id) => {
@@ -1563,6 +1573,10 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [currentAccount, setCurrentAccount] = useState(null);
   const [guestActivation, setGuestActivation] = useState(null);
+  const [externalScopeOptions, setExternalScopeOptions] = useState([]);
+  const [externalScopeLoading, setExternalScopeLoading] = useState(false);
+  const [isExternalScopeModalVisible, setExternalScopeModalVisible] = useState(false);
+  const [externScopeHeaderTapCount, setExternScopeHeaderTapCount] = useState(0);
   const [externalMosqueNameInput, setExternalMosqueNameInput] = useState('');
   const [externalConfigSaving, setExternalConfigSaving] = useState(false);
   const [adminTapCount, setAdminTapCount] = useState(0);
@@ -1598,6 +1612,7 @@ function AppContent() {
   const [registrationEndDateInput, setRegistrationEndDateInput] = useState('');
   const [registrationIsPublicInput, setRegistrationIsPublicInput] = useState(false);
   const [registrationOnlyEhlVotersInput, setRegistrationOnlyEhlVotersInput] = useState(false);
+  const [registrationAllowDeclineInput, setRegistrationAllowDeclineInput] = useState(false);
   const [registrationIncludedTanzeemsInput, setRegistrationIncludedTanzeemsInput] = useState([...REGISTRATION_TANZEEM_OPTIONS]);
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
@@ -1608,7 +1623,10 @@ function AppContent() {
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
   const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
-  const isGuestMode = APP_MODE === 'guest';
+  const normalizedAppMode = APP_MODE === 'guest' ? 'extern' : APP_MODE;
+  const isExternMode = normalizedAppMode === 'extern' || normalizedAppMode === 'qr_extern';
+  const isQrExternMode = normalizedAppMode === 'qr_extern';
+  const isGuestMode = isExternMode;
   const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
 
 
@@ -1616,7 +1634,7 @@ function AppContent() {
     () => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart, attendanceCategory: qrAttendanceCategory }),
     [activeMosqueKey, qrAttendanceCategory, qrCycleStart],
   );
-  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.mosqueName || '');
+  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
   const qrMembersDirectory = isGuestMode
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
       const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
@@ -1631,7 +1649,7 @@ function AppContent() {
     qrMembersDirectory
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
       .map((entry) => entry.majlis)
-      .filter((value, index, arr) => value && arr.indexOf(value) === index)
+      .filter((value, index, arr) => value && value !== '-' && arr.indexOf(value) === index)
       .sort((a, b) => a.localeCompare(b, 'de'))
   ), [qrMembersDirectory, qrRegistrationTanzeem]);
   const qrRegistrationMemberChoices = useMemo(() => (
@@ -1686,9 +1704,10 @@ function AppContent() {
   }, [activeMosqueKey, currentAccount, guestActivation?.mosqueName, isGuestMode]);
   const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
-  const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
-  const shouldRestrictToQrView = APP_MODE === 'qr' && !currentAccount;
-  const shouldRestrictToRegistrationView = APP_MODE === 'registration' && !currentAccount;
+  const shouldRestrictToPrayerView = normalizedAppMode === 'display' && !currentAccount;
+  const shouldRestrictToQrView = (normalizedAppMode === 'qr' && !currentAccount)
+    || isQrExternMode;
+  const shouldRestrictToRegistrationView = normalizedAppMode === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
   const isGuestActivated = Boolean(guestActivation?.scopeKey);
   const guestRequiresConfig = isGuestMode && (!isGuestActivated || !String(guestActivation?.mosqueName || '').trim());
@@ -1747,6 +1766,61 @@ function AppContent() {
     if (isGuestMode && tab.key === 'stats') return Boolean(currentAccount);
     return true;
   }), [currentAccount, effectivePermissions.canEditSettings, isGuestMode]);
+
+  useEffect(() => {
+    if (!externScopeHeaderTapCount) return undefined;
+    const timer = setTimeout(() => setExternScopeHeaderTapCount(0), 1200);
+    return () => clearTimeout(timer);
+  }, [externScopeHeaderTapCount]);
+
+  const loadExternalScopeOptions = useCallback(async () => {
+    try {
+      setExternalScopeLoading(true);
+      const ids = await listGlobalDocIds(EXTERNAL_CONFIG_COLLECTION).catch(() => []);
+      const docs = await Promise.all(ids.map((id) => getGlobalDocData(EXTERNAL_CONFIG_COLLECTION, id).catch(() => null)));
+      const byScope = new Map();
+      docs.forEach((doc, index) => {
+        const fallbackId = String(ids[index] || '').trim();
+        const scopeKey = normalizeExternalScopeKey(doc?.scopeKey || doc?.mosqueName || doc?.accountNameKey || fallbackId);
+        const mosqueName = String(doc?.mosqueName || '').trim();
+        if (!scopeKey) return;
+        if (!byScope.has(scopeKey)) {
+          byScope.set(scopeKey, {
+            scopeKey,
+            mosqueName: mosqueName || scopeKey,
+            multipleMajalis: doc?.multipleMajalis !== false,
+            showNames: Boolean(doc?.showNames),
+          });
+        }
+      });
+      const options = Array.from(byScope.values()).sort((a, b) => String(a.mosqueName || a.scopeKey).localeCompare(String(b.mosqueName || b.scopeKey), 'de'));
+      setExternalScopeOptions(options);
+    } finally {
+      setExternalScopeLoading(false);
+    }
+  }, []);
+
+  const openExternalScopeModal = useCallback(async () => {
+    setExternalScopeModalVisible(true);
+    await loadExternalScopeOptions();
+  }, [loadExternalScopeOptions]);
+
+  const selectExternalScope = useCallback(async (option) => {
+    const payload = {
+      accountNameKey: String(option?.scopeKey || '').trim(),
+      scopeKey: normalizeExternalScopeKey(option?.scopeKey || ''),
+      mosqueName: String(option?.mosqueName || '').trim(),
+      multipleMajalis: option?.multipleMajalis !== false,
+      showNames: Boolean(option?.showNames),
+    };
+    if (!payload.scopeKey) return;
+    setGuestActivation(payload);
+    setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
+    await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(payload)).catch(() => {});
+    setExternalScopeModalVisible(false);
+    setToast(`Externe Moschee aktiv: ${payload.mosqueName || payload.scopeKey}`);
+  }, []);
+
 
   const getSecondaryAuth = useCallback(() => {
     if (!firebaseRuntime?.authApi) return null;
@@ -2142,15 +2216,34 @@ function AppContent() {
             const scopedCollectionResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
               deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${scopeKey}`)
             )));
+            await Promise.all([
+              deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${scopeKey}`, PRAYER_OVERRIDE_GLOBAL_DOC_ID).catch(() => {}),
+              deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${scopeKey}`, PRAYER_OVERRIDE_PENDING_DOC_ID).catch(() => {}),
+              deleteGlobalDocData(`${ANNOUNCEMENT_COLLECTION}_ext_${scopeKey}`, ANNOUNCEMENT_DOC_ID).catch(() => {}),
+            ]);
             return { scopeKey, scopedCollectionResults };
           }));
-          const failedDeletes = cleanupResults.flatMap((scopeResult) => (
+          const cleanupWarnings = cleanupResults.flatMap((scopeResult) => (
             scopeResult.scopedCollectionResults.flatMap((collectionResult) => (
-              (collectionResult.failed || []).map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
+              (collectionResult.failed || [])
+                .filter((failure) => String(failure?.id || '') === '__collection__')
+                .map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
             ))
           ));
-          await deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, docId);
-          if (fallbackScopeKey) await deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, fallbackScopeKey);
+          const failedDeletes = cleanupResults.flatMap((scopeResult) => (
+            scopeResult.scopedCollectionResults.flatMap((collectionResult) => (
+              (collectionResult.failed || [])
+                .filter((failure) => String(failure?.id || '') !== '__collection__')
+                .map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
+            ))
+          ));
+          const externalConfigDocIdsToDelete = new Set([docId, ...Array.from(scopeKeys).filter(Boolean)]);
+          await Promise.all(Array.from(externalConfigDocIdsToDelete).map((configDocId) => (
+            deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, configDocId)
+          )));
+          if (cleanupWarnings.length) {
+            console.warn('External scoped cleanup list warnings', cleanupWarnings);
+          }
           if (failedDeletes.length) {
             console.error('External scoped cleanup delete failures', failedDeletes);
             throw new Error('External scoped cleanup failed');
@@ -2179,6 +2272,86 @@ function AppContent() {
       : true;
     if (confirmed) performDelete();
   }, [isSuperAdmin, loadAdminAccounts]);
+
+  const resetGuestScopeData = useCallback(() => {
+    if (!isGuestMode) return;
+    const performReset = async () => {
+      const resolvedScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || externalMosqueNameInput || '');
+      if (!resolvedScopeKey) {
+        setExternalMosqueNameInput('');
+        setToast('Keine Local Amarat zum Zurücksetzen gefunden');
+        return;
+      }
+      try {
+        setExternalConfigSaving(true);
+        const cleanupResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
+          deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${resolvedScopeKey}`)
+        )));
+        await Promise.all([
+          deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${resolvedScopeKey}`, PRAYER_OVERRIDE_GLOBAL_DOC_ID).catch(() => {}),
+          deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${resolvedScopeKey}`, PRAYER_OVERRIDE_PENDING_DOC_ID).catch(() => {}),
+          deleteGlobalDocData(`${ANNOUNCEMENT_COLLECTION}_ext_${resolvedScopeKey}`, ANNOUNCEMENT_DOC_ID).catch(() => {}),
+        ]);
+        const cleanupWarnings = cleanupResults.flatMap((collectionResult) => (
+          (collectionResult.failed || [])
+            .filter((failure) => String(failure?.id || '') === '__collection__')
+            .map((failure) => ({ ...failure, scopeKey: resolvedScopeKey }))
+        ));
+        const failedDeletes = cleanupResults.flatMap((collectionResult) => (
+          (collectionResult.failed || [])
+            .filter((failure) => String(failure?.id || '') !== '__collection__')
+            .map((failure) => ({ ...failure, scopeKey: resolvedScopeKey }))
+        ));
+        if (cleanupWarnings.length) {
+          console.warn('Guest scope reset list warnings', cleanupWarnings);
+        }
+        if (failedDeletes.length) {
+          console.error('Guest scope reset cleanup failures', failedDeletes);
+          throw new Error('Guest scope reset cleanup failed');
+        }
+
+        const accountNameKey = currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || '');
+        const configDocIds = new Set([accountNameKey, resolvedScopeKey].filter(Boolean));
+        await Promise.all(Array.from(configDocIds).map((configId) => (
+          deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, configId).catch(() => {})
+        )));
+
+        await AsyncStorage.removeItem(STORAGE_KEYS.guestActivation).catch(() => {});
+        setGuestActivation(null);
+        setExternalMosqueNameInput('');
+        if (currentAccount?.nameKey) {
+          await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, currentAccount.nameKey, {
+            ...buildExternalAccountWritePayload(currentAccount),
+            externalMosqueName: '',
+            updatedAt: new Date().toISOString(),
+          }).catch(() => {});
+        }
+        setToast('Local Amarat zurückgesetzt und Daten gelöscht');
+      } catch (error) {
+        console.error('resetGuestScopeData failed', error);
+        setToast('Zurücksetzen fehlgeschlagen');
+      } finally {
+        setExternalConfigSaving(false);
+      }
+    };
+
+    const canUseAlert = Platform.OS !== 'web';
+    if (canUseAlert) {
+      Alert.alert(
+        'Local Amarat zurücksetzen',
+        'Sollen alle Daten dieser externen Amarat gelöscht und das Feld zurückgesetzt werden?',
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          { text: 'Zurücksetzen', style: 'destructive', onPress: performReset },
+        ],
+      );
+      return;
+    }
+    const confirmed = typeof globalThis?.confirm === 'function'
+      ? globalThis.confirm('Sollen alle Daten dieser externen Amarat gelöscht und das Feld zurückgesetzt werden?')
+      : true;
+    if (confirmed) performReset();
+  }, [currentAccount, externalMosqueNameInput, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin || account?.isExternalGuest) return;
@@ -2407,10 +2580,11 @@ function AppContent() {
       ...state,
       canAccess: Boolean(config && state.hasRange),
       isPublic: Boolean(config?.advanced?.isPublic),
-      onlyEhlVoters: Boolean(config?.advanced?.onlyEhlVoters),
+      onlyEhlVoters: !isGuestMode && Boolean(config?.advanced?.onlyEhlVoters),
+      allowDecline: Boolean(config?.advanced?.allowDecline),
       includeTanzeems: config?.advanced?.includeTanzeems || [...REGISTRATION_TANZEEM_OPTIONS],
     };
-  }, [activeRegistrationConfig, todayISO]);
+  }, [activeRegistrationConfig, isGuestMode, todayISO]);
   const availableDates = useMemo(() => Object.keys(RAMADAN_RAW).sort(), []);
   const isRamadanPeriodToday = todayISO <= RAMADAN_END_ISO;
   const selectedISO = useMemo(() => (isRamadanPeriodToday ? (RAMADAN_RAW[todayISO] ? todayISO : findClosestISO(todayISO, availableDates)) : null), [todayISO, availableDates, isRamadanPeriodToday]);
@@ -2580,9 +2754,9 @@ function AppContent() {
 
   useEffect(() => {
     if (attendanceMode !== 'registration') return;
-    const allowed = registrationWindow.canAccess && (APP_MODE === 'registration' ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
+    const allowed = registrationWindow.canAccess && (normalizedAppMode === 'registration' ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     if (!allowed) {
-      if (APP_MODE === 'registration') {
+      if (normalizedAppMode === 'registration') {
         setTerminalMode('tanzeem');
         setPendingRegistrationMember(null);
         return;
@@ -2997,11 +3171,12 @@ function AppContent() {
   }, [activeTab, effectivePermissions.canEditSettings]);
 
   useEffect(() => {
+    if (isQrExternMode) return;
     if (!isGuestMode) return;
     if (!currentAccount && !guestActivation?.scopeKey) {
       setAdminLoginVisible(true);
     }
-  }, [currentAccount, guestActivation?.scopeKey, isGuestMode]);
+  }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode]);
 
   useEffect(() => {
     if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
@@ -3289,6 +3464,21 @@ function AppContent() {
     });
   }, [activeMosqueKey, currentAccount, isGuestMode, onSelectMosque]);
 
+  const handleQrExternHeaderPress = useCallback(() => {
+    if (!isQrExternMode) {
+      handleMosqueSwitchTrigger();
+      return;
+    }
+    setExternScopeHeaderTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 3) {
+        setTimeout(() => { openExternalScopeModal(); }, 0);
+        return 0;
+      }
+      return next;
+    });
+  }, [handleMosqueSwitchTrigger, isQrExternMode, openExternalScopeModal]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -3377,6 +3567,7 @@ function AppContent() {
       setRegistrationEndDateInput('');
       setRegistrationIsPublicInput(false);
       setRegistrationOnlyEhlVotersInput(false);
+      setRegistrationAllowDeclineInput(false);
       setRegistrationIncludedTanzeemsInput([...REGISTRATION_TANZEEM_OPTIONS]);
       return;
     }
@@ -3386,11 +3577,12 @@ function AppContent() {
     setRegistrationStartDateInput(activeRegistrationConfig.startDate || '');
     setRegistrationEndDateInput(activeRegistrationConfig.endDate || '');
     setRegistrationIsPublicInput(Boolean(activeRegistrationConfig.advanced?.isPublic));
-    setRegistrationOnlyEhlVotersInput(Boolean(activeRegistrationConfig.advanced?.onlyEhlVoters));
+    setRegistrationOnlyEhlVotersInput(isGuestMode ? false : Boolean(activeRegistrationConfig.advanced?.onlyEhlVoters));
+    setRegistrationAllowDeclineInput(Boolean(activeRegistrationConfig.advanced?.allowDecline));
     setRegistrationIncludedTanzeemsInput(activeRegistrationConfig.advanced?.includeTanzeems?.length
       ? activeRegistrationConfig.advanced.includeTanzeems
       : [...REGISTRATION_TANZEEM_OPTIONS]);
-  }, [activeRegistrationConfig]);
+  }, [activeRegistrationConfig, isGuestMode]);
 
   const saveProgramForToday = async () => {
     if (!effectivePermissions.canEditSettings) { setToast('Keine Berechtigung'); return; }
@@ -3473,7 +3665,8 @@ function AppContent() {
       updatedAt: new Date().toISOString(),
       advanced: {
         isPublic: registrationIsPublicInput,
-        onlyEhlVoters: registrationOnlyEhlVotersInput,
+        onlyEhlVoters: isGuestMode ? false : registrationOnlyEhlVotersInput,
+        allowDecline: registrationAllowDeclineInput,
         includeTanzeems,
       },
     }, docId);
@@ -3594,7 +3787,7 @@ function AppContent() {
       setQrStatusTone('neutral');
     }
   }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
-  const guestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.mosqueName || '');
+  const guestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
   const membersDirectory = isGuestMode
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
       const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
@@ -3603,17 +3796,49 @@ function AppContent() {
     : MEMBER_DIRECTORY_DATA;
   const membersLoading = false;
   const showMemberNamesInGrid = isGuestMode ? Boolean(guestActivation?.showNames) : SHOW_MEMBER_NAMES_IN_ID_GRID;
+  const shouldIncludeGuestNameInExports = isGuestMode && Boolean(guestActivation?.showNames);
+  const guestMajlisFallbackLabel = String(guestActivation?.mosqueName || activeMosque.label || '').trim();
+  const formatGuestAmaratLabel = useCallback((value) => String(value || '')
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' '), []);
+  const resolveExportMajlisLabel = useCallback((majlisValue, amaratValue = '') => {
+    const rawMajlis = String(majlisValue || '').trim();
+    if (!isGuestMode) return rawMajlis || '—';
+    if (rawMajlis && rawMajlis !== '-') return rawMajlis;
+    if (guestMajlisFallbackLabel) return guestMajlisFallbackLabel;
+    const rawAmarat = String(amaratValue || '').trim();
+    if (rawAmarat) return formatGuestAmaratLabel(rawAmarat);
+    return rawMajlis || '—';
+  }, [formatGuestAmaratLabel, guestMajlisFallbackLabel, isGuestMode]);
+  const memberMetadataById = useMemo(() => membersDirectory.reduce((acc, entry) => {
+    const id = String(entry?.idNumber || '').trim();
+    if (!id || acc[id]) return acc;
+    acc[id] = {
+      name: String(entry?.name || '').trim(),
+      majlis: String(entry?.majlis || '').trim(),
+      amarat: String(entry?.amarat || '').trim(),
+    };
+    return acc;
+  }, {}), [membersDirectory]);
 
   const majlisChoices = useMemo(() => {
     if (isGuestMode && !hasMultipleMajalisInGuest) return ['-'];
     const allowedRegistration = new Set(registrationWindow.includeTanzeems || REGISTRATION_TANZEEM_OPTIONS);
-    const available = new Set(
+    const available = Array.from(new Set(
       membersDirectory
         .filter((entry) => (attendanceMode === 'registration' ? allowedRegistration.has(entry.tanzeem) : true))
         .filter((entry) => entry.tanzeem === selectedTanzeem)
-        .map((entry) => entry.majlis),
-    );
-    return TERMINAL_LOCATIONS.filter((majlisName) => available.has(majlisName));
+        .map((entry) => String(entry.majlis || '').trim())
+        .filter((entry) => entry && entry !== '-'),
+    )).sort((a, b) => a.localeCompare(b, 'de'));
+    if (isGuestMode) return available;
+    const availableSet = new Set(available);
+    return TERMINAL_LOCATIONS.filter((majlisName) => availableSet.has(majlisName));
   }, [attendanceMode, hasMultipleMajalisInGuest, isGuestMode, membersDirectory, registrationWindow.includeTanzeems, selectedTanzeem]);
 
   const memberChoices = useMemo(() => (
@@ -4609,19 +4834,31 @@ function AppContent() {
       XLSX.utils.book_append_sheet(workbook, topSheet, 'Gebete nach Majlis');
     }
     if (dataset.prayerLogRows.length) {
+      const protocolHeader = shouldIncludeGuestNameInExports
+        ? ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', 'Majlis']
+        : ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'];
       const protocolRows = [
-        ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'],
-        ...dataset.prayerLogRows.map((row) => [
-          formatIsoWithWeekday(row.dateISO),
-          formatGermanDateTime(row.timestamp),
-          STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayerKey)?.label || row.prayerKey,
-          row.idNumber || '—',
-          TANZEEM_LABELS[row.tanzeem] || row.tanzeem || '—',
-          row.majlis || '—',
-        ]),
+        protocolHeader,
+        ...dataset.prayerLogRows.map((row) => {
+          const metadata = memberMetadataById[String(row.idNumber || '').trim()] || {};
+          const values = [
+            formatIsoWithWeekday(row.dateISO),
+            formatGermanDateTime(row.timestamp),
+            STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayerKey)?.label || row.prayerKey,
+            row.idNumber || '—',
+          ];
+          if (shouldIncludeGuestNameInExports) values.push(metadata?.name || '—');
+          values.push(
+            TANZEEM_LABELS[row.tanzeem] || row.tanzeem || '—',
+            resolveExportMajlisLabel(row.majlis, metadata?.amarat),
+          );
+          return values;
+        }),
       ];
       const protocolSheet = XLSX.utils.aoa_to_sheet(protocolRows);
-      protocolSheet['!cols'] = [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
+      protocolSheet['!cols'] = shouldIncludeGuestNameInExports
+        ? [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 24 }]
+        : [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
       XLSX.utils.book_append_sheet(workbook, protocolSheet, 'Gebetsprotokoll');
     }
 
@@ -4683,7 +4920,7 @@ function AppContent() {
       dialogTitle: 'Statistik exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getStatsExportDataset]);
+  }, [activeMosque.label, getStatsExportDataset, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
 
   const handleExportStats = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -4740,7 +4977,7 @@ function AppContent() {
         const registeredByMajlis = membersDirectory
           .filter((entry) => (filterKey === 'total' ? true : entry.tanzeem === filterKey))
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -4753,7 +4990,7 @@ function AppContent() {
             return filterKey === 'total' ? true : tanzeem === filterKey;
           })
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -4881,7 +5118,7 @@ function AppContent() {
       dialogTitle: 'Programmdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -4902,7 +5139,7 @@ function AppContent() {
     const option = selectedRegistrationStatsOption;
     if (!option?.id) { setToast('Keine Anmeldungsdaten zum Export verfügbar'); return; }
     const activeTanzeems = option.advanced?.includeTanzeems || [];
-    const onlyEhlVoters = Boolean(option.advanced?.onlyEhlVoters);
+    const onlyEhlVoters = !isGuestMode && Boolean(option.advanced?.onlyEhlVoters);
 
     const registeredTotals = membersDirectory
       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, activeTanzeems, 'total', onlyEhlVoters))
@@ -4930,7 +5167,7 @@ function AppContent() {
         const registeredByMajlis = membersDirectory
           .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, activeTanzeems, filterKey, onlyEhlVoters))
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -4945,7 +5182,7 @@ function AppContent() {
             return filterKey === 'total' ? true : tanzeem === filterKey;
           })
           .reduce((acc, entry) => {
-            const majlis = String(entry?.majlis || '').trim();
+            const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
             if (!majlis) return acc;
             acc[majlis] = (acc[majlis] || 0) + 1;
             return acc;
@@ -4994,35 +5231,12 @@ function AppContent() {
       return;
     }
 
-    const selectedTanzeemEligibleCount = membersDirectory
-      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
-      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 1)
-      .length;
-    const selectedTanzeemNotAllowedCount = membersDirectory
-      .filter((entry) => activeTanzeems.includes(String(entry?.tanzeem || '').toLowerCase()))
-      .filter((entry) => normalizeVoterFlagValue(entry?.stimmberechtigt) === 0)
-      .length;
-    const selectedTanzeemPresentCount = activeTanzeems.reduce(
-      (sum, key) => sum + (Number(registrationStats?.byTanzeem?.[key]) || 0),
-      0,
-    );
-    const selectedTanzeemPotentialTotal = selectedTanzeemEligibleCount + selectedTanzeemNotAllowedCount;
-    const selectedTanzeemOverallRatio = formatRatioWithPercent(selectedTanzeemPresentCount, selectedTanzeemPotentialTotal);
-    const lastSelectedTanzeem = activeTanzeems[activeTanzeems.length - 1] || '';
-
     const workbook = XLSX.utils.book_new();
     const totalAcceptCount = Number(registrationStats?.total) || 0;
     const totalDeclineCount = Number(registrationStats?.declineTotal) || 0;
-    const tanzeemOverviewRows = activeTanzeems.flatMap((key, index) => {
-      const baseRow = [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])];
-      if (key !== lastSelectedTanzeem || index !== (activeTanzeems.length - 1)) return [baseRow];
-      return [
-        baseRow,
-        ['Ehl Voters (erlaubt)', String(selectedTanzeemEligibleCount)],
-        ['Ehl Voters (nicht erlaubte)', String(selectedTanzeemNotAllowedCount)],
-        ['Gesamtanteil Anmeldungen', selectedTanzeemOverallRatio],
-      ];
-    });
+    const tanzeemOverviewRows = activeTanzeems.map((key) => (
+      [TANZEEM_LABELS[key] || key, formatRatioWithPercent(Number(registrationStats?.byTanzeem?.[key]) || 0, registeredTotals[key])]
+    ));
     const overviewRows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
@@ -5053,7 +5267,7 @@ function AppContent() {
         return activeTanzeems.includes(tanzeem);
       })
       .reduce((acc, entry) => {
-        const majlis = String(entry?.majlis || '').trim();
+        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         if (!majlis) return acc;
         acc[majlis] = (acc[majlis] || 0) + 1;
         return acc;
@@ -5097,7 +5311,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungsdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, membersDirectory, registrationAttendanceEntries, registrationStats, selectedRegistrationStatsOption]);
+  }, [activeMosque.label, isGuestMode, membersDirectory, registrationAttendanceEntries, registrationStats, resolveExportMajlisLabel, selectedRegistrationStatsOption]);
 
   const handleExportRegistration = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5154,9 +5368,10 @@ function AppContent() {
     const memberRows = membersDirectory
       .filter((entry) => (normalizedFilter ? entry.tanzeem === normalizedFilter : true))
       .map((entry) => ({
+        name: String(entry?.name || '').trim(),
         idNumber: String(entry?.idNumber || '').trim(),
         tanzeem: String(entry?.tanzeem || '').toLowerCase(),
-        majlis: String(entry?.majlis || '').trim(),
+        majlis: resolveExportMajlisLabel(entry?.majlis, entry?.amarat),
       }))
       .sort((a, b) => {
         const tA = tanzeemOrder.indexOf(a.tanzeem);
@@ -5172,6 +5387,7 @@ function AppContent() {
         return {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
+          name: row.name,
           idNumber: row.idNumber,
           present: presentMap.has(key) ? 'Ja' : 'Nein',
           timestamp: presentMap.has(key) ? formatGermanDateTime(attendanceTimestampByKey[key]) : '—',
@@ -5184,6 +5400,9 @@ function AppContent() {
     }
 
     const workbook = XLSX.utils.book_new();
+    const idTableHeader = shouldIncludeGuestNameInExports
+      ? ['Majlis', 'Tanzeem', 'ID-Nummer', 'Name', 'Anwesend', 'Zeitstempel']
+      : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'];
     const rows = [
       ['Moschee', activeMosque.label],
       ['Datum', dateLabel],
@@ -5191,12 +5410,18 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'],
-      ...memberRows.map((row) => [row.majlis, row.tanzeemLabel, row.idNumber, row.present, row.timestamp]),
+      idTableHeader,
+      ...memberRows.map((row) => (
+        shouldIncludeGuestNameInExports
+          ? [row.majlis, row.tanzeemLabel, row.idNumber, row.name || '—', row.present, row.timestamp]
+          : [row.majlis, row.tanzeemLabel, row.idNumber, row.present, row.timestamp]
+      )),
     ];
 
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 24 }];
+    sheet['!cols'] = shouldIncludeGuestNameInExports
+      ? [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 24 }]
+      : [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const boldCellStyle = { font: { bold: true } };
@@ -5207,6 +5432,7 @@ function AppContent() {
     if (sheet.C7) sheet.C7.s = boldCellStyle;
     if (sheet.D7) sheet.D7.s = boldCellStyle;
     if (sheet.E7) sheet.E7.s = boldCellStyle;
+    if (shouldIncludeGuestNameInExports && sheet.F7) sheet.F7.s = boldCellStyle;
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
     const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
@@ -5247,7 +5473,7 @@ function AppContent() {
       dialogTitle: 'Programm-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
+  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, shouldIncludeGuestNameInExports, todayISO]);
 
   const handleExportProgramDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5271,7 +5497,7 @@ function AppContent() {
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     }).format(new Date());
     const allowedTanzeems = option.advanced?.includeTanzeems || [];
-    const onlyEhlVoters = Boolean(option.advanced?.onlyEhlVoters);
+    const onlyEhlVoters = !isGuestMode && Boolean(option.advanced?.onlyEhlVoters);
     const normalizedFilter = allowedTanzeems.includes(String(filterTanzeem || '').toLowerCase())
       ? String(filterTanzeem || '').toLowerCase()
       : '';
@@ -5302,9 +5528,10 @@ function AppContent() {
     const memberRows = membersDirectory
       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, normalizedFilter || 'total', onlyEhlVoters))
       .map((entry) => ({
+        name: String(entry?.name || '').trim(),
         idNumber: String(entry?.idNumber || '').trim(),
         tanzeem: String(entry?.tanzeem || '').toLowerCase(),
-        majlis: String(entry?.majlis || '').trim(),
+        majlis: resolveExportMajlisLabel(entry?.majlis, entry?.amarat),
         anwesend_2026_01_08: normalizeVoterFlagValue(entry?.anwesend_2026_01_08),
       }))
       .sort((a, b) => {
@@ -5327,6 +5554,7 @@ function AppContent() {
         return {
           majlis: row.majlis,
           tanzeemLabel: TANZEEM_LABELS[row.tanzeem] || row.tanzeem,
+          name: row.name,
           idNumber: row.idNumber,
           anwesend_2026_01_08: row.anwesend_2026_01_08,
           registeredAccept: hasAccept ? 'Ja' : (hasDecline ? 'Nein' : '-'),
@@ -5342,6 +5570,11 @@ function AppContent() {
     }
 
     const workbook = XLSX.utils.book_new();
+    const detailedHeader = isGuestMode
+      ? (shouldIncludeGuestNameInExports
+        ? ['Majlis', 'Tanzeem', 'ID-Nummer', 'Name', 'Zusage', 'Absage', 'Grund', 'Zeitstempel']
+        : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'])
+      : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'];
     const rows = [
       ['Moschee', activeMosque.label],
       ['Anmeldung', option.name || '—'],
@@ -5349,20 +5582,32 @@ function AppContent() {
       ['Filter Tanzeem', normalizedFilter ? (TANZEEM_LABELS[normalizedFilter] || normalizedFilter) : 'Alle'],
       ['Export Zeitstempel', exportTimestamp],
       [],
-      ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'],
-      ...memberRows.map((row) => [
-        row.majlis,
-        row.tanzeemLabel,
-        row.idNumber,
-        row.anwesend_2026_01_08 === 1 ? 'Ja' : (row.anwesend_2026_01_08 === 0 ? 'Nein' : '-'),
-        row.registeredAccept,
-        row.declined,
-        row.declineReason,
-        row.timestamp,
-      ]),
+      detailedHeader,
+      ...memberRows.map((row) => {
+        if (isGuestMode) {
+          if (shouldIncludeGuestNameInExports) {
+            return [row.majlis, row.tanzeemLabel, row.idNumber, row.name || '—', row.registeredAccept, row.declined, row.declineReason, row.timestamp];
+          }
+          return [row.majlis, row.tanzeemLabel, row.idNumber, row.registeredAccept, row.declined, row.declineReason, row.timestamp];
+        }
+        return [
+          row.majlis,
+          row.tanzeemLabel,
+          row.idNumber,
+          row.anwesend_2026_01_08 === 1 ? 'Ja' : (row.anwesend_2026_01_08 === 0 ? 'Nein' : '-'),
+          row.registeredAccept,
+          row.declined,
+          row.declineReason,
+          row.timestamp,
+        ];
+      }),
     ];
     const sheet = XLSX.utils.aoa_to_sheet(rows);
-    sheet['!cols'] = [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }];
+    sheet['!cols'] = isGuestMode
+      ? (shouldIncludeGuestNameInExports
+        ? [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 24 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }]
+        : [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }])
+      : [{ wch: 28 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 20 }, { wch: 12 }, { wch: 28 }, { wch: 24 }];
     XLSX.utils.book_append_sheet(workbook, sheet, 'Übersicht');
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
@@ -5392,7 +5637,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungs-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, membersDirectory, registrationAttendanceEntries, selectedRegistrationStatsOption]);
+  }, [activeMosque.label, isGuestMode, membersDirectory, registrationAttendanceEntries, resolveExportMajlisLabel, selectedRegistrationStatsOption, shouldIncludeGuestNameInExports]);
 
   const handleExportRegistrationDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5695,8 +5940,9 @@ function AppContent() {
       ['Zeitraum', `${startLabel} – ${endLabel}`],
       ['Export Zeitstempel', exportTimestamp],
       ['ID', selectedDetailedMember.idNumber],
+      ...(shouldIncludeGuestNameInExports ? [['Name', String(selectedDetailedMember?.name || memberMetadataById[String(selectedDetailedMember?.idNumber || '')]?.name || '—')]] : []),
       ['Tanzeem', TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—'],
-      ['Majlis', selectedDetailedMember.majlis || '—'],
+      ['Majlis', resolveExportMajlisLabel(selectedDetailedMember.majlis, selectedDetailedMember?.amarat)],
       ['Gesamt Gebete', Number(dataset.total) || 0],
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
@@ -5716,19 +5962,30 @@ function AppContent() {
     const prayerSheet = XLSX.utils.aoa_to_sheet(prayerRows);
     prayerSheet['!cols'] = [{ wch: 22 }, { wch: 32 }];
 
+    const logHeader = shouldIncludeGuestNameInExports
+      ? ['Datum', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', 'Majlis', 'Zeitstempel']
+      : ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis', 'Zeitstempel'];
     const logRows = [
-      ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis', 'Zeitstempel'],
-      ...dataset.logs.map((row) => [
-        formatIsoWithWeekday(row.date),
-        STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayer)?.label || row.prayer,
-        selectedDetailedMember.idNumber,
-        TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—',
-        selectedDetailedMember.majlis || '—',
-        formatGermanDateTime(row.timestamp),
-      ]),
+      logHeader,
+      ...dataset.logs.map((row) => {
+        const values = [
+          formatIsoWithWeekday(row.date),
+          STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayer)?.label || row.prayer,
+          selectedDetailedMember.idNumber,
+        ];
+        if (shouldIncludeGuestNameInExports) values.push(String(selectedDetailedMember?.name || memberMetadataById[String(selectedDetailedMember?.idNumber || '')]?.name || '—'));
+        values.push(
+          TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—',
+          resolveExportMajlisLabel(selectedDetailedMember.majlis, selectedDetailedMember?.amarat),
+          formatGermanDateTime(row.timestamp),
+        );
+        return values;
+      }),
     ];
     const logsSheet = XLSX.utils.aoa_to_sheet(logRows);
-    logsSheet['!cols'] = [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 24 }];
+    logsSheet['!cols'] = shouldIncludeGuestNameInExports
+      ? [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 24 }, { wch: 24 }]
+      : [{ wch: 22 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 24 }, { wch: 24 }];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete nach Tage');
@@ -5783,7 +6040,7 @@ function AppContent() {
       dialogTitle: 'Detaillierte ID exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getDetailedExportDataset, selectedDetailedMember]);
+  }, [activeMosque.label, getDetailedExportDataset, memberMetadataById, resolveExportMajlisLabel, selectedDetailedMember, shouldIncludeGuestNameInExports]);
 
   const handleExportDetailed = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -6248,7 +6505,7 @@ function AppContent() {
     const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
     const resolvedLocationName = String(locationName || selectedMember?.majlis || selectedMajlis || 'Gast').trim();
     const pathTanzeemKey = toLocationKey(effectiveTanzeem || '');
-    const locationKey = toLocationKey(resolvedLocationName || 'gast');
+    const locationKey = toLocationKey(resolvedLocationName || 'gast') || 'ohne_majlis';
     if (kind === 'member' && !pathTanzeemKey) {
       setToast('Tanzeem beim Mitglied fehlt');
       return { status: 'missing_tanzeem' };
@@ -6510,7 +6767,7 @@ function AppContent() {
   };
 
   const renderTerminal = () => {
-    const isRegistrationOnlyAppMode = APP_MODE === 'registration';
+    const isRegistrationOnlyAppMode = normalizedAppMode === 'registration';
     const isPrayerMode = attendanceMode === 'prayer';
     const isProgramMode = attendanceMode === 'program';
     const isRegistrationMode = attendanceMode === 'registration';
@@ -6521,7 +6778,6 @@ function AppContent() {
     const canAccessRegistrationMode = registrationWindow.canAccess && (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
     const registrationLockedByLogin = isRegistrationOnlyAppMode ? false : (registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount);
     const cycleAttendanceMode = () => {
-      if (isGuestMode) return isPrayerMode ? 'program' : 'prayer';
       if (isPrayerMode) return 'program';
       if (isProgramMode) return canAccessRegistrationMode ? 'registration' : 'prayer';
       return 'prayer';
@@ -6771,7 +7027,7 @@ function AppContent() {
             >
               <Text style={styles.registrationConfirmBtnText}>Anmelden</Text>
             </Pressable>
-            {registrationWindow.onlyEhlVoters && pendingRegistrationMember && pendingRegistrationVoterFlag === 1 ? (
+            {registrationWindow.allowDecline && pendingRegistrationMember && (!registrationWindow.onlyEhlVoters || pendingRegistrationVoterFlag === 1) ? (
               <>
                 <Pressable
                   style={({ pressed }) => [[styles.registrationConfirmBtn, { marginTop: 0, backgroundColor: '#000000' }], pressed && styles.buttonPressed]}
@@ -6888,7 +7144,7 @@ function AppContent() {
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
                     {visibleMemberChoices.map((member) => {
                       const isAlreadyCounted = shouldShowCountedIdHint && countedMemberIdsForSelection.has(String(member.idNumber || ''));
-                      const shouldUseRegistrationResponseBorders = shouldShowCountedIdHint && isRegistrationMode && registrationWindow.onlyEhlVoters;
+                      const shouldUseRegistrationResponseBorders = shouldShowCountedIdHint && isRegistrationMode && (registrationWindow.onlyEhlVoters || registrationWindow.allowDecline);
                       const registrationResponse = shouldUseRegistrationResponseBorders ? countedMemberResponsesForSelection.get(String(member.idNumber || '')) : '';
                       const responseBorderStyle = shouldUseRegistrationResponseBorders
                         ? (registrationResponse === 'decline'
@@ -6971,11 +7227,6 @@ function AppContent() {
 
         <View style={styles.privacyNoticeWrap}>
           <Text style={[styles.privacyNoticeText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.72)' : 'rgba(55, 65, 81, 0.72)' }]}>Mitgliedsdaten werden ausschließlich zur Anwesenheitserfassung und internen Organisation verarbeitet.</Text>
-          {!isRegistrationMode ? (
-            <Pressable onPress={() => setQrPageVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
-              <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>QR-Code anzeigen</Text>
-            </Pressable>
-          ) : null}
           <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
@@ -7006,7 +7257,7 @@ function AppContent() {
       ));
 
       const registeredByMajlis = directoryMembers.reduce((acc, entry) => {
-        const majlis = String(entry?.majlis || '').trim();
+        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         if (!majlis) return acc;
         acc[majlis] = (acc[majlis] || 0) + 1;
         return acc;
@@ -7019,7 +7270,7 @@ function AppContent() {
           return filterKey === 'total' ? true : tanzeem === filterKey;
         })
         .reduce((acc, entry) => {
-          const majlis = String(entry?.majlis || '').trim();
+          const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
           if (!majlis) return acc;
           acc[majlis] = (acc[majlis] || 0) + 1;
           return acc;
@@ -7347,12 +7598,12 @@ function AppContent() {
                   {(() => {
                     const filterKey = registrationMajlisFilter;
                     const allowedTanzeems = selectedRegistrationStatsOption.advanced?.includeTanzeems || [];
-                    const onlyEhlVoters = Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
+                    const onlyEhlVoters = !isGuestMode && Boolean(selectedRegistrationStatsOption.advanced?.onlyEhlVoters);
                     const includeAllAllowed = filterKey === 'total';
                     const registeredByMajlis = membersDirectory
                       .filter((entry) => shouldIncludeMemberInRegistrationBase(entry, allowedTanzeems, includeAllAllowed ? 'total' : filterKey, onlyEhlVoters))
                       .reduce((acc, entry) => {
-                        const majlis = String(entry?.majlis || '').trim();
+                        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
                         if (!majlis) return acc;
                         acc[majlis] = (acc[majlis] || 0) + 1;
                         return acc;
@@ -7366,7 +7617,7 @@ function AppContent() {
                         return includeAllAllowed ? true : tanzeem === filterKey;
                       })
                       .reduce((acc, entry) => {
-                        const majlis = String(entry?.majlis || '').trim();
+                        const majlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
                         if (!majlis) return acc;
                         acc[majlis] = (acc[majlis] || 0) + 1;
                         return acc;
@@ -8125,6 +8376,13 @@ function AppContent() {
           >
             <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{externalConfigSaving ? 'Speichert…' : 'Speichern'}</Text>
           </Pressable>
+          <Pressable
+            style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: '#B91C1C', opacity: externalConfigSaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+            disabled={externalConfigSaving}
+            onPress={resetGuestScopeData}
+          >
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: '#FFFFFF' }]}>Zurücksetzen & Daten löschen</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -8254,6 +8512,12 @@ function AppContent() {
               <View style={styles.mergeSwitchWrap}>
                 <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Nur Ehl-Voters</Text>
                 <Switch value={registrationOnlyEhlVotersInput} onValueChange={setRegistrationOnlyEhlVotersInput} />
+              </View>
+            ) : null}
+            {isGuestMode ? (
+              <View style={styles.mergeSwitchWrap}>
+                <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Abmeldung erlauben</Text>
+                <Switch value={registrationAllowDeclineInput} onValueChange={setRegistrationAllowDeclineInput} />
               </View>
             ) : null}
             <Text style={[styles.noteText, { color: theme.muted }]}>Berücksichtigte Tanzeem auswählen</Text>
@@ -8441,7 +8705,7 @@ function AppContent() {
           <Text style={[styles.quickSearchLinkText, { color: theme.muted }]}>« Kategorie wechseln »</Text>
         </Pressable>
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>{qrAttendanceCategory === 'program' ? 'QR-Code Programmerfassung' : 'QR-Code Gebetserfassung'}</Text>
-        <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
+        <Pressable onPress={handleQrExternHeaderPress} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
           <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
         </Pressable>
         {qrAttendanceCategory === 'program' ? (
@@ -8626,7 +8890,9 @@ function AppContent() {
     </ScrollView>
   );
 
-  const body = isGuestMode
+  const body = shouldRestrictToQrView
+    ? (isQrScanPageVisible ? renderQrScanPage() : renderQrPage())
+    : isGuestMode
     ? (activeTab === 'stats'
       ? (currentAccount ? renderStats() : renderPrayer())
       : activeTab === 'settings'
@@ -8634,8 +8900,6 @@ function AppContent() {
         : activeTab === 'terminal'
           ? renderTerminal()
           : renderPrayer())
-    : shouldRestrictToQrView
-    ? (isQrScanPageVisible ? renderQrScanPage() : renderQrPage())
     : shouldRestrictToRegistrationView
       ? renderTerminal()
     : shouldRestrictToPrayerView
@@ -8698,6 +8962,44 @@ function AppContent() {
                   <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
                 </Pressable>
               ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isExternalScopeModalVisible} animationType="fade" transparent onRequestClose={() => setExternalScopeModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Externe Moschee wählen</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Öffnen über 3x Klick auf den grünen Header.</Text>
+            {externalScopeLoading ? (
+              <ActivityIndicator size="small" color={theme.text} style={{ marginTop: 10 }} />
+            ) : externalScopeOptions.length === 0 ? (
+              <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Keine externen Moscheen gefunden.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 280, width: '100%', marginTop: 10 }} contentContainerStyle={{ gap: 8 }}>
+                {externalScopeOptions.map((option) => {
+                  const optionLabel = String(option?.mosqueName || option?.scopeKey || '').trim() || 'Extern';
+                  const isSelected = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '') === normalizeExternalScopeKey(option?.scopeKey || '');
+                  return (
+                    <Pressable
+                      key={`ext_scope_${option.scopeKey}`}
+                      onPress={() => selectExternalScope(option)}
+                      style={({ pressed }) => [[styles.statsExportOptionBtn, { borderColor: isSelected ? theme.button : theme.border, backgroundColor: isSelected ? theme.button : theme.bg }], pressed && styles.buttonPressed]}
+                    >
+                      <Text style={[styles.statsExportOptionBtnText, { color: isSelected ? theme.buttonText : theme.text }]}>{optionLabel}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <View style={styles.statsExportModalActions}>
+              <Pressable onPress={() => { loadExternalScopeOptions(); }} style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktualisieren</Text>
+              </Pressable>
+              <Pressable onPress={() => setExternalScopeModalVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
+                <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
+              </Pressable>
             </View>
           </View>
         </View>
