@@ -1606,6 +1606,12 @@ function AppContent() {
   const activeMosque = useMemo(() => {
     const base = getMosqueOptionByKey(activeMosqueKey);
     if (isGuestMode) {
+      if (!currentAccount) {
+        return {
+          ...base,
+          label: 'Extern',
+        };
+      }
       const guestLabel = String(guestActivation?.mosqueName || '').trim();
       return {
         ...base,
@@ -1613,7 +1619,7 @@ function AppContent() {
       };
     }
     return base;
-  }, [activeMosqueKey, guestActivation?.mosqueName, isGuestMode]);
+  }, [activeMosqueKey, currentAccount, guestActivation?.mosqueName, isGuestMode]);
   const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
@@ -2094,6 +2100,24 @@ function AppContent() {
     } catch (error) {
       console.error('updateManagedPermissions failed', error);
       setToast('Rechte konnten nicht aktualisiert werden');
+    }
+  }, [isSuperAdmin, loadAdminAccounts]);
+
+  const updateManagedExternalOptions = useCallback(async (account, nextOptions) => {
+    if (!isSuperAdmin || !account || !account?.isExternalGuest) return;
+    try {
+      const docId = normalizeAccountNameKey(account.nameKey || account.name);
+      await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, docId, {
+        ...account,
+        externalMultipleMajalis: Boolean(nextOptions?.externalMultipleMajalis),
+        externalShowNames: Boolean(nextOptions?.externalShowNames),
+        updatedAt: new Date().toISOString(),
+      });
+      await loadAdminAccounts();
+      setToast('Extern-Optionen aktualisiert ✓');
+    } catch (error) {
+      console.error('updateManagedExternalOptions failed', error);
+      setToast('Extern-Optionen konnten nicht aktualisiert werden');
     }
   }, [isSuperAdmin, loadAdminAccounts]);
 
@@ -8119,10 +8143,12 @@ function AppContent() {
               <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Öffentlich anzeigen</Text>
               <Switch value={registrationIsPublicInput} onValueChange={setRegistrationIsPublicInput} />
             </View>
-            <View style={styles.mergeSwitchWrap}>
-              <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Nur Ehl-Voters</Text>
-              <Switch value={registrationOnlyEhlVotersInput} onValueChange={setRegistrationOnlyEhlVotersInput} />
-            </View>
+            {!isGuestMode ? (
+              <View style={styles.mergeSwitchWrap}>
+                <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Nur Ehl-Voters</Text>
+                <Switch value={registrationOnlyEhlVotersInput} onValueChange={setRegistrationOnlyEhlVotersInput} />
+              </View>
+            ) : null}
             <Text style={[styles.noteText, { color: theme.muted }]}>Berücksichtigte Tanzeem auswählen</Text>
             <View style={styles.statsToggleRow}>
               {REGISTRATION_TANZEEM_OPTIONS.map((key) => {
@@ -8245,14 +8271,35 @@ function AppContent() {
                     </Pressable>
                   ) : null}
                 </View>
-                {!account.isSuperAdmin ? (
+                {!account.isSuperAdmin && account?.isExternalGuest ? (
+                  <View style={styles.statsToggleRow}>
+                    <Pressable
+                      onPress={() => updateManagedExternalOptions(account, {
+                        externalMultipleMajalis: !(account?.externalMultipleMajalis !== false),
+                        externalShowNames: Boolean(account?.externalShowNames),
+                      })}
+                      style={[styles.statsToggleBtn, { borderColor: (account?.externalMultipleMajalis !== false) ? theme.button : theme.border, backgroundColor: (account?.externalMultipleMajalis !== false) ? theme.button : theme.bg }]}
+                    >
+                      <Text style={[styles.statsToggleBtnText, { color: (account?.externalMultipleMajalis !== false) ? theme.buttonText : theme.text }]}>Mehrere Majlis</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => updateManagedExternalOptions(account, {
+                        externalMultipleMajalis: account?.externalMultipleMajalis !== false,
+                        externalShowNames: !Boolean(account?.externalShowNames),
+                      })}
+                      style={[styles.statsToggleBtn, { borderColor: Boolean(account?.externalShowNames) ? theme.button : theme.border, backgroundColor: Boolean(account?.externalShowNames) ? theme.button : theme.bg }]}
+                    >
+                      <Text style={[styles.statsToggleBtnText, { color: Boolean(account?.externalShowNames) ? theme.buttonText : theme.text }]}>Namen anzeigen</Text>
+                    </Pressable>
+                  </View>
+                ) : null}
+                {!account.isSuperAdmin && !account?.isExternalGuest ? (
                   <View style={styles.statsToggleRow}>
                     {[
                       ['canEditSettings', 'Settings'],
                       ['canViewIdStats', 'ID-Stats'],
                       ['canExportData', 'Export'],
                     ].map(([permKey, label]) => {
-                      if (account?.isExternalGuest) return null;
                       const isOn = Boolean(account?.permissions?.[permKey]);
                       return (
                         <Pressable
