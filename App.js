@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
+const APP_MODE = 'qr_extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -1573,6 +1573,10 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [currentAccount, setCurrentAccount] = useState(null);
   const [guestActivation, setGuestActivation] = useState(null);
+  const [externalScopeOptions, setExternalScopeOptions] = useState([]);
+  const [externalScopeLoading, setExternalScopeLoading] = useState(false);
+  const [isExternalScopeModalVisible, setExternalScopeModalVisible] = useState(false);
+  const [externScopeHeaderTapCount, setExternScopeHeaderTapCount] = useState(0);
   const [externalMosqueNameInput, setExternalMosqueNameInput] = useState('');
   const [externalConfigSaving, setExternalConfigSaving] = useState(false);
   const [adminTapCount, setAdminTapCount] = useState(0);
@@ -1622,7 +1626,6 @@ function AppContent() {
   const normalizedAppMode = APP_MODE === 'guest' ? 'extern' : APP_MODE;
   const isExternMode = normalizedAppMode === 'extern' || normalizedAppMode === 'qr_extern';
   const isQrExternMode = normalizedAppMode === 'qr_extern';
-  const [isQrExternUnlocked, setQrExternUnlocked] = useState(false);
   const isGuestMode = isExternMode;
   const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
 
@@ -1631,7 +1634,7 @@ function AppContent() {
     () => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart, attendanceCategory: qrAttendanceCategory }),
     [activeMosqueKey, qrAttendanceCategory, qrCycleStart],
   );
-  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.mosqueName || '');
+  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
   const qrMembersDirectory = isGuestMode
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
       const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
@@ -1703,7 +1706,7 @@ function AppContent() {
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = normalizedAppMode === 'display' && !currentAccount;
   const shouldRestrictToQrView = (normalizedAppMode === 'qr' && !currentAccount)
-    || (isQrExternMode && (Boolean(currentAccount) || isQrExternUnlocked));
+    || isQrExternMode;
   const shouldRestrictToRegistrationView = normalizedAppMode === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
   const isGuestActivated = Boolean(guestActivation?.scopeKey);
@@ -1763,6 +1766,61 @@ function AppContent() {
     if (isGuestMode && tab.key === 'stats') return Boolean(currentAccount);
     return true;
   }), [currentAccount, effectivePermissions.canEditSettings, isGuestMode]);
+
+  useEffect(() => {
+    if (!externScopeHeaderTapCount) return undefined;
+    const timer = setTimeout(() => setExternScopeHeaderTapCount(0), 1200);
+    return () => clearTimeout(timer);
+  }, [externScopeHeaderTapCount]);
+
+  const loadExternalScopeOptions = useCallback(async () => {
+    try {
+      setExternalScopeLoading(true);
+      const ids = await listGlobalDocIds(EXTERNAL_CONFIG_COLLECTION).catch(() => []);
+      const docs = await Promise.all(ids.map((id) => getGlobalDocData(EXTERNAL_CONFIG_COLLECTION, id).catch(() => null)));
+      const byScope = new Map();
+      docs.forEach((doc, index) => {
+        const fallbackId = String(ids[index] || '').trim();
+        const scopeKey = normalizeExternalScopeKey(doc?.scopeKey || doc?.mosqueName || doc?.accountNameKey || fallbackId);
+        const mosqueName = String(doc?.mosqueName || '').trim();
+        if (!scopeKey) return;
+        if (!byScope.has(scopeKey)) {
+          byScope.set(scopeKey, {
+            scopeKey,
+            mosqueName: mosqueName || scopeKey,
+            multipleMajalis: doc?.multipleMajalis !== false,
+            showNames: Boolean(doc?.showNames),
+          });
+        }
+      });
+      const options = Array.from(byScope.values()).sort((a, b) => String(a.mosqueName || a.scopeKey).localeCompare(String(b.mosqueName || b.scopeKey), 'de'));
+      setExternalScopeOptions(options);
+    } finally {
+      setExternalScopeLoading(false);
+    }
+  }, []);
+
+  const openExternalScopeModal = useCallback(async () => {
+    setExternalScopeModalVisible(true);
+    await loadExternalScopeOptions();
+  }, [loadExternalScopeOptions]);
+
+  const selectExternalScope = useCallback(async (option) => {
+    const payload = {
+      accountNameKey: String(option?.scopeKey || '').trim(),
+      scopeKey: normalizeExternalScopeKey(option?.scopeKey || ''),
+      mosqueName: String(option?.mosqueName || '').trim(),
+      multipleMajalis: option?.multipleMajalis !== false,
+      showNames: Boolean(option?.showNames),
+    };
+    if (!payload.scopeKey) return;
+    setGuestActivation(payload);
+    setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
+    await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(payload)).catch(() => {});
+    setExternalScopeModalVisible(false);
+    setToast(`Externe Moschee aktiv: ${payload.mosqueName || payload.scopeKey}`);
+  }, []);
+
 
   const getSecondaryAuth = useCallback(() => {
     if (!firebaseRuntime?.authApi) return null;
@@ -1927,7 +1985,6 @@ function AppContent() {
       }
       localSessionActiveRef.current = true;
       setCurrentAccount(fallbackAccount);
-      if (isQrExternMode) setQrExternUnlocked(true);
       setAdminLoginVisible(false);
       setLoginPasswordInput('');
       setToast(`Assalāmu ʿalaikum wa raḥmatullāhi wa barakātuhu, ${fallbackAccount.name || name}! 👋`);
@@ -1953,7 +2010,6 @@ function AppContent() {
       }
       localSessionActiveRef.current = false;
       setCurrentAccount(account);
-      if (isQrExternMode) setQrExternUnlocked(true);
       if (isGuestMode && account?.isExternalGuest) {
         const activationPayload = {
           accountNameKey: account.nameKey || docId,
@@ -1986,7 +2042,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [isGuestMode, isQrExternMode, loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
+  }, [isGuestMode, loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
 
   const logoutAccount = useCallback(async () => {
     localSessionActiveRef.current = false;
@@ -3115,15 +3171,12 @@ function AppContent() {
   }, [activeTab, effectivePermissions.canEditSettings]);
 
   useEffect(() => {
-    if (isQrExternMode) {
-      if (!isQrExternUnlocked) setAdminLoginVisible(true);
-      return;
-    }
+    if (isQrExternMode) return;
     if (!isGuestMode) return;
     if (!currentAccount && !guestActivation?.scopeKey) {
       setAdminLoginVisible(true);
     }
-  }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode, isQrExternUnlocked]);
+  }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode]);
 
   useEffect(() => {
     if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
@@ -3410,6 +3463,21 @@ function AppContent() {
       return 0;
     });
   }, [activeMosqueKey, currentAccount, isGuestMode, onSelectMosque]);
+
+  const handleQrExternHeaderPress = useCallback(() => {
+    if (!isQrExternMode) {
+      handleMosqueSwitchTrigger();
+      return;
+    }
+    setExternScopeHeaderTapCount((prev) => {
+      const next = prev + 1;
+      if (next >= 3) {
+        setTimeout(() => { openExternalScopeModal(); }, 0);
+        return 0;
+      }
+      return next;
+    });
+  }, [handleMosqueSwitchTrigger, isQrExternMode, openExternalScopeModal]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3719,7 +3787,7 @@ function AppContent() {
       setQrStatusTone('neutral');
     }
   }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
-  const guestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.mosqueName || '');
+  const guestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
   const membersDirectory = isGuestMode
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
       const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
@@ -8637,7 +8705,7 @@ function AppContent() {
           <Text style={[styles.quickSearchLinkText, { color: theme.muted }]}>« Kategorie wechseln »</Text>
         </Pressable>
         <Text style={[styles.qrPageTitle, { color: theme.text }]}>{qrAttendanceCategory === 'program' ? 'QR-Code Programmerfassung' : 'QR-Code Gebetserfassung'}</Text>
-        <Pressable onPress={handleMosqueSwitchTrigger} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
+        <Pressable onPress={handleQrExternHeaderPress} style={[styles.cityBadge, { backgroundColor: theme.chipBg }]}>
           <Text style={[styles.cityBadgeText, { color: theme.chipText }]}>{activeMosque.label}</Text>
         </Pressable>
         {qrAttendanceCategory === 'program' ? (
@@ -8889,11 +8957,49 @@ function AppContent() {
               <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: '#000000', backgroundColor: '#000000', opacity: authLoading ? 0.7 : 1 }]}> 
                 <Text style={[styles.statsExportOptionBtnText, { color: '#FFFFFF' }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
               </Pressable>
-              {(!isGuestMode || (Boolean(guestActivation?.scopeKey) && !isQrExternMode)) ? (
+              {(!isGuestMode || Boolean(guestActivation?.scopeKey)) ? (
                 <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
                   <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
                 </Pressable>
               ) : null}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isExternalScopeModalVisible} animationType="fade" transparent onRequestClose={() => setExternalScopeModalVisible(false)}>
+        <View style={styles.privacyModalBackdrop}>
+          <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Externe Moschee wählen</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Öffnen über 3x Klick auf den grünen Header.</Text>
+            {externalScopeLoading ? (
+              <ActivityIndicator size="small" color={theme.text} style={{ marginTop: 10 }} />
+            ) : externalScopeOptions.length === 0 ? (
+              <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 10 }]}>Keine externen Moscheen gefunden.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 280, width: '100%', marginTop: 10 }} contentContainerStyle={{ gap: 8 }}>
+                {externalScopeOptions.map((option) => {
+                  const optionLabel = String(option?.mosqueName || option?.scopeKey || '').trim() || 'Extern';
+                  const isSelected = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '') === normalizeExternalScopeKey(option?.scopeKey || '');
+                  return (
+                    <Pressable
+                      key={`ext_scope_${option.scopeKey}`}
+                      onPress={() => selectExternalScope(option)}
+                      style={({ pressed }) => [[styles.statsExportOptionBtn, { borderColor: isSelected ? theme.button : theme.border, backgroundColor: isSelected ? theme.button : theme.bg }], pressed && styles.buttonPressed]}
+                    >
+                      <Text style={[styles.statsExportOptionBtnText, { color: isSelected ? theme.buttonText : theme.text }]}>{optionLabel}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <View style={styles.statsExportModalActions}>
+              <Pressable onPress={() => { loadExternalScopeOptions(); }} style={[styles.statsExportOptionBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+                <Text style={[styles.statsExportOptionBtnText, { color: theme.text }]}>Aktualisieren</Text>
+              </Pressable>
+              <Pressable onPress={() => setExternalScopeModalVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
+                <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
+              </Pressable>
             </View>
           </View>
         </View>
