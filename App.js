@@ -2149,8 +2149,10 @@ function AppContent() {
               (collectionResult.failed || []).map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
             ))
           ));
-          await deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, docId);
-          if (fallbackScopeKey) await deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, fallbackScopeKey);
+          const externalConfigDocIdsToDelete = new Set([docId, ...Array.from(scopeKeys).filter(Boolean)]);
+          await Promise.all(Array.from(externalConfigDocIdsToDelete).map((configDocId) => (
+            deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, configDocId)
+          )));
           if (failedDeletes.length) {
             console.error('External scoped cleanup delete failures', failedDeletes);
             throw new Error('External scoped cleanup failed');
@@ -6248,7 +6250,7 @@ function AppContent() {
     const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
     const resolvedLocationName = String(locationName || selectedMember?.majlis || selectedMajlis || 'Gast').trim();
     const pathTanzeemKey = toLocationKey(effectiveTanzeem || '');
-    const locationKey = toLocationKey(resolvedLocationName || 'gast');
+    const locationKey = toLocationKey(resolvedLocationName || 'gast') || 'ohne_majlis';
     if (kind === 'member' && !pathTanzeemKey) {
       setToast('Tanzeem beim Mitglied fehlt');
       return { status: 'missing_tanzeem' };
