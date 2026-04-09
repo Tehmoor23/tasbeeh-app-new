@@ -354,7 +354,7 @@ const STORE_MEMBER_NAMES_IN_DB = false;
 const EXTERNAL_MEMBER_DIRECTORY_DATA = [
   { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' },
   { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' },
-  { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
+  { amarat: 'ham', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' },
 ].map((entry) => ({
   amarat: normalizeAccountNameKey(entry.amarat || ''),
   tanzeem: String(entry.tanzeem || '').trim().toLowerCase(),
