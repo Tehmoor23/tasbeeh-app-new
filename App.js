@@ -1543,6 +1543,7 @@ function AppContent() {
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
   const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
+  const isGuestMode = APP_MODE === 'guest';
 
 
   const qrScanUrl = useMemo(
@@ -1600,7 +1601,6 @@ function AppContent() {
   const shouldRestrictToPrayerView = APP_MODE === 'display' && !currentAccount;
   const shouldRestrictToQrView = APP_MODE === 'qr' && !currentAccount;
   const shouldRestrictToRegistrationView = APP_MODE === 'registration' && !currentAccount;
-  const isGuestMode = APP_MODE === 'guest';
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
   const isGuestActivated = Boolean(guestActivation?.scopeKey);
   const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
