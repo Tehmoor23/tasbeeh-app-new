@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'guest'; // 'full', 'guest', 'display', 'qr' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'guest', 'display', 'qr' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -3719,15 +3719,23 @@ function AppContent() {
   const showMemberNamesInGrid = isGuestMode ? Boolean(guestActivation?.showNames) : SHOW_MEMBER_NAMES_IN_ID_GRID;
   const shouldIncludeGuestNameInExports = isGuestMode && Boolean(guestActivation?.showNames);
   const guestMajlisFallbackLabel = String(guestActivation?.mosqueName || activeMosque.label || '').trim();
+  const formatGuestAmaratLabel = useCallback((value) => String(value || '')
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' '), []);
   const resolveExportMajlisLabel = useCallback((majlisValue, amaratValue = '') => {
     const rawMajlis = String(majlisValue || '').trim();
     if (!isGuestMode) return rawMajlis || '—';
     if (rawMajlis && rawMajlis !== '-') return rawMajlis;
-    const rawAmarat = String(amaratValue || '').trim();
-    if (rawAmarat) return rawAmarat;
     if (guestMajlisFallbackLabel) return guestMajlisFallbackLabel;
+    const rawAmarat = String(amaratValue || '').trim();
+    if (rawAmarat) return formatGuestAmaratLabel(rawAmarat);
     return rawMajlis || '—';
-  }, [guestMajlisFallbackLabel, isGuestMode]);
+  }, [formatGuestAmaratLabel, guestMajlisFallbackLabel, isGuestMode]);
   const memberMetadataById = useMemo(() => membersDirectory.reduce((acc, entry) => {
     const id = String(entry?.idNumber || '').trim();
     if (!id || acc[id]) return acc;
