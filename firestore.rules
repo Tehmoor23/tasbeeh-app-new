@@ -254,7 +254,9 @@ service cloud.firestore {
     match /attendance_qr_device_registrations/{deviceId} {
       allow read: if true;
       allow create, update: if isAllowedQrRegistrationDoc(deviceId);
-      allow delete: if false;
+      // needed for scoped external cleanups from App.js
+      // keeps non-extern (e.g. Frankfurt) registrations protected
+      allow delete: if resource.data.mosqueKey == 'external_guest';
     }
 
     // admin_accounts_global
