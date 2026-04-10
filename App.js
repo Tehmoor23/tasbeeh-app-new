@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'qr_extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -1550,6 +1550,7 @@ function AppContent() {
   const [qrLastAttendanceStatus, setQrLastAttendanceStatus] = useState('idle');
   const [qrLastAttendancePrayerKey, setQrLastAttendancePrayerKey] = useState('');
   const [qrLastAttendanceDateISO, setQrLastAttendanceDateISO] = useState('');
+  const [qrLastRuntimeHint, setQrLastRuntimeHint] = useState(null);
   const [qrFlowMode, setQrFlowMode] = useState('landing');
   const [qrRegistrationMode, setQrRegistrationMode] = useState('tanzeem');
   const [qrRegistrationTanzeem, setQrRegistrationTanzeem] = useState('');
@@ -1646,6 +1647,12 @@ function AppContent() {
     if (!qrRegistration?.idNumber) return null;
     return qrMembersDirectory.find((entry) => String(entry.idNumber) === String(qrRegistration.idNumber)) || null;
   }, [qrMembersDirectory, qrRegistration]);
+  const qrCurrentRegistrationMajlisLabel = useMemo(() => {
+    const rawMajlis = String(qrCurrentRegistrationMember?.majlis || '').trim();
+    if (rawMajlis && rawMajlis !== '-') return rawMajlis;
+    const fallbackAmarat = String(qrCurrentRegistrationMember?.amarat || guestActivation?.mosqueName || '').trim();
+    return fallbackAmarat || rawMajlis || '—';
+  }, [guestActivation?.mosqueName, qrCurrentRegistrationMember?.amarat, qrCurrentRegistrationMember?.majlis]);
   const qrRegistrationMajlisChoices = useMemo(() => (
     qrMembersDirectory
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
@@ -3801,7 +3808,13 @@ function AppContent() {
       if (!qrLiveProgramWindow.isActive) return `Programm ist noch nicht aktiv. Start: ${qrLiveProgramWindow.startTime || '—'}.`;
       return 'Bitte den QR-Code noch einmal scannen, um sich für das Programm einzutragen.';
     }
-    const currentContext = resolveQrPrayerContext();
+    if (qrLastAttendanceStatus === 'registered') {
+      return 'Bitte den QR-Code noch einmal scannen, um sich einzutragen.';
+    }
+    const hintContext = qrLastRuntimeHint && qrLastRuntimeHint.iso === qrLastAttendanceDateISO
+      ? qrLastRuntimeHint
+      : null;
+    const currentContext = hintContext || resolveQrPrayerContext();
     const currentPrayerKey = currentContext.prayerKey || '';
     const currentPrayerLabel = currentContext.prayerLabel || (currentPrayerKey ? getDisplayPrayerLabel(currentPrayerKey, currentContext.timesToday) : '');
     const isCurrentPrayerAlreadyHandled = Boolean(
@@ -3825,7 +3838,7 @@ function AppContent() {
     }
     if (currentContext.prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${currentContext.prayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
-  }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveProgramWindow, qrRegistration, qrRuntimeContext.iso, resolveQrPrayerContext]);
+  }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLastRuntimeHint, qrLiveProgramWindow, qrRegistration, qrRuntimeContext.iso, resolveQrPrayerContext]);
 
 
 
@@ -6294,6 +6307,15 @@ function AppContent() {
       setQrLastAttendanceStatus('registered');
       setQrLastAttendancePrayerKey('');
       setQrLastAttendanceDateISO('');
+      const registrationHintContext = resolveQrPrayerContext();
+      setQrLastRuntimeHint({
+        iso: registrationHintContext.iso,
+        prayerKey: registrationHintContext.prayerKey || '',
+        prayerLabel: registrationHintContext.prayerLabel || '',
+        isActive: Boolean(registrationHintContext.isActive),
+        prayerWindow: registrationHintContext.prayerWindow || null,
+        timesToday: registrationHintContext.timesToday || null,
+      });
       setQrStatusTone('positive');
       setQrStatusMessage('Erfolgreiche Registrierung. Bitte Browserdaten nicht löschen und möglichst immer denselben Browser verwenden.');
       setQrRegistrationSearchQuery('');
@@ -6304,7 +6326,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, ensureQrBrowserDeviceId, persistQrRegistration, qrBrowserDeviceId]);
+  }, [activeMosqueKey, ensureQrBrowserDeviceId, persistQrRegistration, qrBrowserDeviceId, resolveQrPrayerContext]);
 
   const handleQrScanFlow = useCallback(async (encodedPayload) => {
     if (!isWebRuntime || !encodedPayload) return;
@@ -6389,6 +6411,14 @@ function AppContent() {
       } catch {
         qrPrayerContext = resolveQrPrayerContext();
       }
+      setQrLastRuntimeHint({
+        iso: qrPrayerContext.iso,
+        prayerKey: qrPrayerContext.prayerKey || '',
+        prayerLabel: qrPrayerContext.prayerLabel || '',
+        isActive: Boolean(qrPrayerContext.isActive),
+        prayerWindow: qrPrayerContext.prayerWindow || null,
+        timesToday: qrPrayerContext.timesToday || null,
+      });
       setQrFlowMode('registered');
       if (payloadAttendanceCategory === 'prayer' && String(member.tanzeem || '').toLowerCase() === 'kinder') {
         setQrLastAttendanceStatus('invalid_tanzeem');
@@ -8874,7 +8904,7 @@ function AppContent() {
           </View>
         ) : null}
         {qrRegistration?.idNumber && qrCurrentRegistrationMember ? (
-          <Text style={[styles.qrRegisteredMeta, { color: theme.muted }]}>Registriert: {qrCurrentRegistrationMember.idNumber} · {TANZEEM_LABELS[qrCurrentRegistrationMember.tanzeem] || qrCurrentRegistrationMember.tanzeem} · {qrCurrentRegistrationMember.majlis}</Text>
+          <Text style={[styles.qrRegisteredMeta, { color: theme.muted }]}>Registriert: {qrCurrentRegistrationMember.idNumber} · {TANZEEM_LABELS[qrCurrentRegistrationMember.tanzeem] || qrCurrentRegistrationMember.tanzeem} · {qrCurrentRegistrationMajlisLabel}</Text>
         ) : null}
 
         {qrFlowMode === 'registered' ? (
