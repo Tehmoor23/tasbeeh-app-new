@@ -1269,18 +1269,29 @@ async function listGlobalDocIds(collection, pageSize = 300) {
   return ids;
 }
 
-async function findGlobalRegistrationByIdNumber(collection, idNumber, mosqueKey = DEFAULT_MOSQUE_KEY) {
+async function findGlobalRegistrationByIdNumber(
+  collection,
+  idNumber,
+  mosqueKey = DEFAULT_MOSQUE_KEY,
+  externalScopeKey = '',
+) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const targetIdNumber = String(idNumber || '').trim();
   const targetMosqueKey = getMosqueOptionByKey(mosqueKey).key;
+  const targetExternalScopeKey = normalizeExternalScopeKey(externalScopeKey);
   if (!targetIdNumber) return null;
   const docIds = await listGlobalDocIds(collection);
   for (const docId of docIds) {
     const registration = await getGlobalDocData(collection, docId);
     const registrationMosqueKey = getMosqueOptionByKey(registration?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+    const registrationExternalScopeKey = normalizeExternalScopeKey(registration?.externalScopeKey || '');
+    const externalScopeMatches = targetMosqueKey === EXTERNAL_MOSQUE_KEY
+      ? registrationExternalScopeKey === targetExternalScopeKey
+      : true;
     if (
       String(registration?.idNumber || '').trim() === targetIdNumber
       && registrationMosqueKey === targetMosqueKey
+      && externalScopeMatches
     ) {
       return {
         docId,
@@ -1424,14 +1435,23 @@ const formatQrCountdown = (seconds) => {
   const secs = safeSeconds % 60;
   return `${mins}:${String(secs).padStart(2, '0')}`;
 };
-const createQrPayload = ({ mosqueKey, cycleStart, attendanceCategory = 'prayer' }) => ({
-  type: 'prayer_attendance',
+const createQrPayload = ({
   mosqueKey,
-  attendanceCategory: normalizeQrAttendanceCategory(attendanceCategory),
   cycleStart,
-  expiresAt: cycleStart + QR_REFRESH_INTERVAL_MS,
-  version: 1,
-});
+  attendanceCategory = 'prayer',
+  externalScopeKey = '',
+}) => {
+  const normalizedExternalScopeKey = normalizeExternalScopeKey(externalScopeKey);
+  return {
+    type: 'prayer_attendance',
+    mosqueKey,
+    attendanceCategory: normalizeQrAttendanceCategory(attendanceCategory),
+    ...(normalizedExternalScopeKey ? { externalScopeKey: normalizedExternalScopeKey } : {}),
+    cycleStart,
+    expiresAt: cycleStart + QR_REFRESH_INTERVAL_MS,
+    version: 1,
+  };
+};
 const encodeQrPayload = (payload) => {
   try {
     return encodeURIComponent(JSON.stringify(payload));
@@ -1446,8 +1466,13 @@ const decodeQrPayload = (value) => {
     return null;
   }
 };
-const buildQrScanUrl = ({ mosqueKey, cycleStart, attendanceCategory = 'prayer' }) => {
-  const payload = createQrPayload({ mosqueKey, cycleStart, attendanceCategory });
+const buildQrScanUrl = ({
+  mosqueKey,
+  cycleStart,
+  attendanceCategory = 'prayer',
+  externalScopeKey = '',
+}) => {
+  const payload = createQrPayload({ mosqueKey, cycleStart, attendanceCategory, externalScopeKey });
   const encodedPayload = encodeQrPayload(payload);
   if (!encodedPayload) return '';
   if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
@@ -1568,6 +1593,7 @@ function AppContent() {
   const [qrRegistrationTanzeem, setQrRegistrationTanzeem] = useState('');
   const [qrRegistrationMajlis, setQrRegistrationMajlis] = useState('');
   const [qrRegistrationSearchQuery, setQrRegistrationSearchQuery] = useState('');
+  const [qrScanExternalScopeKey, setQrScanExternalScopeKey] = useState('');
   const [isQrQuickIdSearchVisible, setQrQuickIdSearchVisible] = useState(false);
   const [qrSubmitting, setQrSubmitting] = useState(false);
   const [qrAttendanceCategory, setQrAttendanceCategory] = useState('prayer');
@@ -1645,10 +1671,19 @@ function AppContent() {
 
 
   const qrScanUrl = useMemo(
-    () => buildQrScanUrl({ mosqueKey: activeMosqueKey, cycleStart: qrCycleStart, attendanceCategory: qrAttendanceCategory }),
-    [activeMosqueKey, qrAttendanceCategory, qrCycleStart],
+    () => buildQrScanUrl({
+      mosqueKey: activeMosqueKey,
+      cycleStart: qrCycleStart,
+      attendanceCategory: qrAttendanceCategory,
+      externalScopeKey: activeMosqueKey === EXTERNAL_MOSQUE_KEY
+        ? normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '')
+        : '',
+    }),
+    [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, qrAttendanceCategory, qrCycleStart],
   );
-  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+  const qrGuestAmaratScopeKey = normalizeExternalScopeKey(
+    qrScanExternalScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '',
+  );
   const qrMembersDirectory = isGuestMode
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
       const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
@@ -6298,13 +6333,30 @@ function AppContent() {
     }
     setQrSubmitting(true);
     try {
+      const targetExternalScopeKey = activeMosqueKey === EXTERNAL_MOSQUE_KEY
+        ? normalizeExternalScopeKey(qrScanExternalScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '')
+        : '';
       const existingRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId);
-      if (existingRegistration?.idNumber && String(existingRegistration.idNumber) !== String(member.idNumber)) {
+      const existingExternalScopeKey = normalizeExternalScopeKey(existingRegistration?.externalScopeKey || '');
+      const isExistingScopeDifferent = activeMosqueKey === EXTERNAL_MOSQUE_KEY
+        && existingExternalScopeKey
+        && targetExternalScopeKey
+        && existingExternalScopeKey !== targetExternalScopeKey;
+      if (
+        existingRegistration?.idNumber
+        && String(existingRegistration.idNumber) !== String(member.idNumber)
+        && !isExistingScopeDifferent
+      ) {
         setQrStatusTone('negative');
         setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
         return;
       }
-      const existingIdRegistration = await findGlobalRegistrationByIdNumber(QR_REGISTRATION_COLLECTION, member.idNumber, activeMosqueKey);
+      const existingIdRegistration = await findGlobalRegistrationByIdNumber(
+        QR_REGISTRATION_COLLECTION,
+        member.idNumber,
+        activeMosqueKey,
+        targetExternalScopeKey,
+      );
       if (existingIdRegistration?.registration?.idNumber && String(existingIdRegistration.docId) !== String(browserDeviceId)) {
         setQrStatusTone('negative');
         setQrStatusMessage('Diese ID ist in dieser Moschee bereits auf einem anderen Gerät/Browser registriert.');
@@ -6316,6 +6368,7 @@ function AppContent() {
         tanzeem: String(member.tanzeem || '').toLowerCase(),
         majlis: String(member.majlis || ''),
         mosqueKey: activeMosqueKey,
+        externalScopeKey: targetExternalScopeKey || '',
         updatedAt: new Date().toISOString(),
         createdAt: existingRegistration?.createdAt || new Date().toISOString(),
       };
@@ -6346,7 +6399,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, ensureQrBrowserDeviceId, persistQrRegistration, qrBrowserDeviceId, resolveQrPrayerContext]);
+  }, [activeMosqueKey, ensureQrBrowserDeviceId, guestActivation?.mosqueName, guestActivation?.scopeKey, persistQrRegistration, qrBrowserDeviceId, qrScanExternalScopeKey, resolveQrPrayerContext]);
 
   const handleQrScanFlow = useCallback(async (encodedPayload) => {
     if (!isWebRuntime || !encodedPayload) return;
@@ -6361,6 +6414,7 @@ function AppContent() {
     const payload = decodeQrPayload(encodedPayload);
     if (!payload || payload.type !== 'prayer_attendance') return;
     const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+    const payloadExternalScopeKey = normalizeExternalScopeKey(payload?.externalScopeKey || '');
     const payloadAttendanceCategory = normalizeQrAttendanceCategory(payload?.attendanceCategory || 'prayer');
     const nowMs = Date.now();
     if (Number(payload.expiresAt) <= nowMs) {
@@ -6370,7 +6424,13 @@ function AppContent() {
       return;
     }
     let qrPrayerContext = resolveQrPrayerContext();
-    let resolvedGuestScopeForScan = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+    let resolvedGuestScopeForScan = payloadExternalScopeKey
+      || normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+    if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY) {
+      setQrScanExternalScopeKey(resolvedGuestScopeForScan || '');
+    } else {
+      setQrScanExternalScopeKey('');
+    }
     setQrAttendanceCategory(payloadAttendanceCategory);
     setAttendanceMode(payloadAttendanceCategory);
     setQrScanPageVisible(true);
@@ -6391,7 +6451,24 @@ function AppContent() {
         setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
         return;
       }
-      const member = qrMembersDirectory.find((entry) => String(entry.idNumber) === String(registration.idNumber));
+      if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY && payloadExternalScopeKey) {
+        const registrationScopeKey = normalizeExternalScopeKey(registration?.externalScopeKey || '');
+        if (registrationScopeKey !== payloadExternalScopeKey) {
+          setQrFlowMode('register');
+          setQrRegistrationMode('tanzeem');
+          setQrQuickIdSearchVisible(false);
+          setQrStatusTone('neutral');
+          setQrStatusMessage('Für diese Amarat ist eine separate Registrierung erforderlich. Bitte jetzt einmalig registrieren.');
+          return;
+        }
+      }
+      const scopedMembersDirectory = isGuestMode
+        ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
+          const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
+          return !entryScope || !resolvedGuestScopeForScan || entryScope === resolvedGuestScopeForScan;
+        })
+        : MEMBER_DIRECTORY_DATA;
+      const member = scopedMembersDirectory.find((entry) => String(entry.idNumber) === String(registration.idNumber));
       if (!member) {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
