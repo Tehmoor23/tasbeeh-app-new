@@ -2195,6 +2195,36 @@ function AppContent() {
     }
   }, [adminManageExternalMultiMajlis, adminManageExternalShowNames, adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
 
+  const deleteQrRegistrationsForExternalScope = useCallback(async (scopeKey) => {
+    const normalizedScopeKey = normalizeExternalScopeKey(scopeKey || '');
+    if (!normalizedScopeKey) return { deleted: 0, failed: [] };
+
+    const scopeMembers = EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => (
+      normalizeExternalScopeKey(entry?.amarat || '') === normalizedScopeKey
+    ));
+    const scopedIdNumbers = new Set(scopeMembers.map((entry) => String(entry?.idNumber || '').trim()).filter(Boolean));
+
+    const registrationIds = await listGlobalDocIds(QR_REGISTRATION_COLLECTION).catch(() => []);
+    const failures = [];
+    let deleted = 0;
+    await Promise.all(registrationIds.map(async (registrationDocId) => {
+      try {
+        const registration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, registrationDocId).catch(() => null);
+        if (!registration) return;
+        const isExternalRegistration = String(registration?.mosqueKey || '') === EXTERNAL_MOSQUE_KEY;
+        if (!isExternalRegistration) return;
+        const registrationIdNumber = String(registration?.idNumber || '').trim();
+        const matchesScope = scopedIdNumbers.has(registrationIdNumber);
+        if (!matchesScope) return;
+        await deleteGlobalDocData(QR_REGISTRATION_COLLECTION, registrationDocId);
+        deleted += 1;
+      } catch (error) {
+        failures.push({ id: registrationDocId, error: String(error?.message || error || 'unknown') });
+      }
+    }));
+    return { deleted, failed: failures };
+  }, []);
+
   const deleteManagedAccount = useCallback((account) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin) return;
 
@@ -2217,12 +2247,13 @@ function AppContent() {
             const scopedCollectionResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
               deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${scopeKey}`)
             )));
+            const qrCleanupResult = await deleteQrRegistrationsForExternalScope(scopeKey);
             await Promise.all([
               deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${scopeKey}`, PRAYER_OVERRIDE_GLOBAL_DOC_ID).catch(() => {}),
               deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${scopeKey}`, PRAYER_OVERRIDE_PENDING_DOC_ID).catch(() => {}),
               deleteGlobalDocData(`${ANNOUNCEMENT_COLLECTION}_ext_${scopeKey}`, ANNOUNCEMENT_DOC_ID).catch(() => {}),
             ]);
-            return { scopeKey, scopedCollectionResults };
+            return { scopeKey, scopedCollectionResults, qrCleanupResult };
           }));
           const cleanupWarnings = cleanupResults.flatMap((scopeResult) => (
             scopeResult.scopedCollectionResults.flatMap((collectionResult) => (
@@ -2238,6 +2269,9 @@ function AppContent() {
                 .map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
             ))
           ));
+          const qrFailedDeletes = cleanupResults.flatMap((scopeResult) => (
+            (scopeResult.qrCleanupResult?.failed || []).map((failure) => ({ ...failure, scopeKey: scopeResult.scopeKey }))
+          ));
           const externalConfigDocIdsToDelete = new Set([docId, ...Array.from(scopeKeys).filter(Boolean)]);
           await Promise.all(Array.from(externalConfigDocIdsToDelete).map((configDocId) => (
             deleteGlobalDocData(EXTERNAL_CONFIG_COLLECTION, configDocId)
@@ -2248,6 +2282,10 @@ function AppContent() {
           if (failedDeletes.length) {
             console.error('External scoped cleanup delete failures', failedDeletes);
             throw new Error('External scoped cleanup failed');
+          }
+          if (qrFailedDeletes.length) {
+            console.error('External QR cleanup delete failures', qrFailedDeletes);
+            throw new Error('External QR cleanup failed');
           }
         }
         await deleteGlobalDocData(targetCollection, docId);
@@ -2272,7 +2310,7 @@ function AppContent() {
       ? globalThis.confirm(`Soll der Account ${account.name} gelöscht werden?`)
       : true;
     if (confirmed) performDelete();
-  }, [isSuperAdmin, loadAdminAccounts]);
+  }, [deleteQrRegistrationsForExternalScope, isSuperAdmin, loadAdminAccounts]);
 
   const resetGuestScopeData = useCallback(() => {
     if (!isGuestMode) return;
@@ -2288,6 +2326,7 @@ function AppContent() {
         const cleanupResults = await Promise.all(EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS.map((baseCollection) => (
           deleteAllGlobalDocsInCollection(`${baseCollection}_ext_${resolvedScopeKey}`)
         )));
+        const qrCleanupResult = await deleteQrRegistrationsForExternalScope(resolvedScopeKey);
         await Promise.all([
           deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${resolvedScopeKey}`, PRAYER_OVERRIDE_GLOBAL_DOC_ID).catch(() => {}),
           deleteGlobalDocData(`${PRAYER_OVERRIDE_COLLECTION}_ext_${resolvedScopeKey}`, PRAYER_OVERRIDE_PENDING_DOC_ID).catch(() => {}),
@@ -2310,6 +2349,10 @@ function AppContent() {
           console.error('Guest scope reset cleanup failures', failedDeletes);
           throw new Error('Guest scope reset cleanup failed');
         }
+        if ((qrCleanupResult?.failed || []).length) {
+          console.error('Guest scope reset QR cleanup failures', qrCleanupResult.failed);
+          throw new Error('Guest scope reset QR cleanup failed');
+        }
 
         const accountNameKey = currentAccount?.nameKey || normalizeAccountNameKey(currentAccount?.name || '');
         const configDocIds = new Set([accountNameKey, resolvedScopeKey].filter(Boolean));
@@ -2327,7 +2370,7 @@ function AppContent() {
             updatedAt: new Date().toISOString(),
           }).catch(() => {});
         }
-        setToast('Local Amarat zurückgesetzt und Daten gelöscht');
+        setToast(`Local Amarat zurückgesetzt und Daten gelöscht (${Number(qrCleanupResult?.deleted) || 0} QR-Registrierungen entfernt)`);
       } catch (error) {
         console.error('resetGuestScopeData failed', error);
         setToast('Zurücksetzen fehlgeschlagen');
@@ -2352,7 +2395,7 @@ function AppContent() {
       ? globalThis.confirm('Sollen alle Daten dieser externen Amarat gelöscht und das Feld zurückgesetzt werden?')
       : true;
     if (confirmed) performReset();
-  }, [currentAccount, externalMosqueNameInput, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode]);
+  }, [currentAccount, deleteQrRegistrationsForExternalScope, externalMosqueNameInput, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin || account?.isExternalGuest) return;
