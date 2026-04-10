@@ -6328,7 +6328,7 @@ function AppContent() {
       return;
     }
     let qrPrayerContext = resolveQrPrayerContext();
-
+    let resolvedGuestScopeForScan = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
     setQrAttendanceCategory(payloadAttendanceCategory);
     setAttendanceMode(payloadAttendanceCategory);
     setQrScanPageVisible(true);
@@ -6357,6 +6357,13 @@ function AppContent() {
         setQrStatusTone('negative');
         setQrStatusMessage('Die gespeicherte Registrierung wurde in der Mitgliederliste nicht gefunden. Bitte erneut registrieren.');
         return;
+      }
+      const scopeFromMember = normalizeExternalScopeKey(member?.amarat || '');
+      if (scopeFromMember) {
+        resolvedGuestScopeForScan = scopeFromMember;
+      }
+      if (String(payloadMosqueKey || activeMosqueKey) === EXTERNAL_MOSQUE_KEY && resolvedGuestScopeForScan) {
+        setActiveMosqueScope(EXTERNAL_MOSQUE_KEY, resolvedGuestScopeForScan);
       }
       try {
         const [remoteGlobalOverride, remotePendingOverride] = await Promise.all([
@@ -6403,6 +6410,7 @@ function AppContent() {
 
       const result = await countAttendanceRef.current?.(payloadAttendanceCategory, 'member', registration.majlis || member.majlis, member, {
         runtimeContext: qrPrayerContext,
+        guestScopeKey: resolvedGuestScopeForScan,
       });
       const activeQrPrayerKey = String(qrPrayerContext.prayerKey || result?.targetKeys?.[0] || '');
       const activeQrPrayerLabel = qrPrayerContext.prayerLabel || getDisplayPrayerLabel(activeQrPrayerKey, qrPrayerContext.timesToday);
@@ -6531,7 +6539,7 @@ function AppContent() {
     }
 
     if (isGuestMode) {
-      const resolvedGuestScope = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      const resolvedGuestScope = normalizeExternalScopeKey(options?.guestScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '');
       if (!resolvedGuestScope) {
         setToast('Bitte zuerst Local Amarat speichern');
         return { status: 'missing_guest_scope' };
