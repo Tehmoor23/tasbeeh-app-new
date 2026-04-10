@@ -1094,6 +1094,18 @@ const normalizeExternalScopeKey = (value) => String(value || '')
   .replace(/ß/g, 'ss')
   .replace(/\s+/g, '_')
   .replace(/[^a-z0-9_\-]/g, '');
+const formatExternalScopeLabel = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.includes('_')) {
+    return raw
+      .split('_')
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ');
+  }
+  return raw;
+};
 
 const buildExternalAccountWritePayload = (account, overrides = {}) => {
   const next = {
@@ -1650,9 +1662,11 @@ function AppContent() {
   const qrCurrentRegistrationMajlisLabel = useMemo(() => {
     const rawMajlis = String(qrCurrentRegistrationMember?.majlis || '').trim();
     if (rawMajlis && rawMajlis !== '-') return rawMajlis;
-    const fallbackAmarat = String(qrCurrentRegistrationMember?.amarat || guestActivation?.mosqueName || '').trim();
+    const scopeKeyFromMember = normalizeExternalScopeKey(qrCurrentRegistrationMember?.amarat || '');
+    const configuredScopeName = externalScopeOptions.find((option) => normalizeExternalScopeKey(option?.scopeKey || '') === scopeKeyFromMember)?.mosqueName || '';
+    const fallbackAmarat = String(configuredScopeName || guestActivation?.mosqueName || formatExternalScopeLabel(qrCurrentRegistrationMember?.amarat || '')).trim();
     return fallbackAmarat || rawMajlis || '—';
-  }, [guestActivation?.mosqueName, qrCurrentRegistrationMember?.amarat, qrCurrentRegistrationMember?.majlis]);
+  }, [externalScopeOptions, guestActivation?.mosqueName, qrCurrentRegistrationMember?.amarat, qrCurrentRegistrationMember?.majlis]);
   const qrRegistrationMajlisChoices = useMemo(() => (
     qrMembersDirectory
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
@@ -1828,6 +1842,12 @@ function AppContent() {
       setExternalScopeLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!isGuestMode) return;
+    if (externalScopeOptions.length) return;
+    loadExternalScopeOptions().catch(() => {});
+  }, [externalScopeOptions.length, isGuestMode, loadExternalScopeOptions]);
 
   const openExternalScopeModal = useCallback(async () => {
     setExternalScopeModalVisible(true);
