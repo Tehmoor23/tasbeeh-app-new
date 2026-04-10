@@ -6327,7 +6327,7 @@ function AppContent() {
       setQrScanPageVisible(true);
       return;
     }
-    const qrPrayerContext = resolveQrPrayerContext();
+    let qrPrayerContext = resolveQrPrayerContext();
 
     setQrAttendanceCategory(payloadAttendanceCategory);
     setAttendanceMode(payloadAttendanceCategory);
@@ -6338,6 +6338,7 @@ function AppContent() {
     try {
       if (payloadMosqueKey !== activeMosqueKey) {
         await onSelectMosque(payloadMosqueKey);
+        qrPrayerContext = resolveQrPrayerContext();
       }
       const registration = await loadStoredQrRegistration();
       if (!registration?.idNumber) {
@@ -6357,6 +6358,7 @@ function AppContent() {
         setQrStatusMessage('Die gespeicherte Registrierung wurde in der Mitgliederliste nicht gefunden. Bitte erneut registrieren.');
         return;
       }
+      qrPrayerContext = resolveQrPrayerContext();
       setQrFlowMode('registered');
       if (payloadAttendanceCategory === 'prayer' && String(member.tanzeem || '').toLowerCase() === 'kinder') {
         setQrLastAttendanceStatus('invalid_tanzeem');
