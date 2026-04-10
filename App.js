@@ -1676,10 +1676,16 @@ function AppContent() {
       cycleStart: qrCycleStart,
       attendanceCategory: qrAttendanceCategory,
       externalScopeKey: activeMosqueKey === EXTERNAL_MOSQUE_KEY
-        ? normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '')
+        ? normalizeExternalScopeKey(
+          guestActivation?.scopeKey
+          || guestActivation?.mosqueName
+          || currentAccount?.externalMosqueName
+          || currentAccount?.name
+          || '',
+        )
         : '',
     }),
-    [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, qrAttendanceCategory, qrCycleStart],
+    [activeMosqueKey, currentAccount?.externalMosqueName, currentAccount?.name, guestActivation?.mosqueName, guestActivation?.scopeKey, qrAttendanceCategory, qrCycleStart],
   );
   const qrGuestAmaratScopeKey = normalizeExternalScopeKey(
     qrScanExternalScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '',
@@ -6334,7 +6340,14 @@ function AppContent() {
     setQrSubmitting(true);
     try {
       const targetExternalScopeKey = activeMosqueKey === EXTERNAL_MOSQUE_KEY
-        ? normalizeExternalScopeKey(qrScanExternalScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '')
+        ? normalizeExternalScopeKey(
+          qrScanExternalScopeKey
+          || guestActivation?.scopeKey
+          || guestActivation?.mosqueName
+          || currentAccount?.externalMosqueName
+          || currentAccount?.name
+          || '',
+        )
         : '';
       const existingRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId);
       const existingExternalScopeKey = normalizeExternalScopeKey(existingRegistration?.externalScopeKey || '');
@@ -6399,7 +6412,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, ensureQrBrowserDeviceId, guestActivation?.mosqueName, guestActivation?.scopeKey, persistQrRegistration, qrBrowserDeviceId, qrScanExternalScopeKey, resolveQrPrayerContext]);
+  }, [activeMosqueKey, currentAccount?.externalMosqueName, currentAccount?.name, ensureQrBrowserDeviceId, guestActivation?.mosqueName, guestActivation?.scopeKey, persistQrRegistration, qrBrowserDeviceId, qrScanExternalScopeKey, resolveQrPrayerContext]);
 
   const handleQrScanFlow = useCallback(async (encodedPayload) => {
     if (!isWebRuntime || !encodedPayload) return;
@@ -6416,6 +6429,12 @@ function AppContent() {
     const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
     const payloadExternalScopeKey = normalizeExternalScopeKey(payload?.externalScopeKey || '');
     const payloadAttendanceCategory = normalizeQrAttendanceCategory(payload?.attendanceCategory || 'prayer');
+    if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY && !payloadExternalScopeKey) {
+      setQrStatusTone('negative');
+      setQrStatusMessage('Dieser externe QR-Code hat keinen Amarat-Scope. Bitte einen aktuellen externen QR-Code verwenden.');
+      setQrScanPageVisible(true);
+      return;
+    }
     const nowMs = Date.now();
     if (Number(payload.expiresAt) <= nowMs) {
       setQrStatusTone('negative');
@@ -6425,7 +6444,13 @@ function AppContent() {
     }
     let qrPrayerContext = resolveQrPrayerContext();
     let resolvedGuestScopeForScan = payloadExternalScopeKey
-      || normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      || normalizeExternalScopeKey(
+        guestActivation?.scopeKey
+        || guestActivation?.mosqueName
+        || currentAccount?.externalMosqueName
+        || currentAccount?.name
+        || '',
+      );
     if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY) {
       setQrScanExternalScopeKey(resolvedGuestScopeForScan || '');
     } else {
@@ -6588,7 +6613,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, availableDates, getRuntimePrayerContext, loadStoredQrRegistration, onSelectMosque, resolveQrPrayerContext]);
+  }, [activeMosqueKey, availableDates, currentAccount?.externalMosqueName, currentAccount?.name, getRuntimePrayerContext, guestActivation?.mosqueName, guestActivation?.scopeKey, loadStoredQrRegistration, onSelectMosque, resolveQrPrayerContext]);
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
