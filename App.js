@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'extern'; // 'full', 'extern', 'display', 'qr', 'qr_extern' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -1627,6 +1627,7 @@ function AppContent() {
   const isExternMode = normalizedAppMode === 'extern' || normalizedAppMode === 'qr_extern';
   const isQrExternMode = normalizedAppMode === 'qr_extern';
   const isGuestMode = isExternMode;
+  const activeExternalScopeDependency = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
   const hasMultipleMajalisInGuest = isGuestMode ? (guestActivation?.multipleMajalis !== false) : true;
 
 
@@ -1652,11 +1653,24 @@ function AppContent() {
       .filter((value, index, arr) => value && value !== '-' && arr.indexOf(value) === index)
       .sort((a, b) => a.localeCompare(b, 'de'))
   ), [qrMembersDirectory, qrRegistrationTanzeem]);
+  const hasQrMajlisChoicesForTanzeem = useCallback((tanzeemKey) => {
+    const normalizedTanzeem = String(tanzeemKey || '').trim().toLowerCase();
+    if (!normalizedTanzeem) return false;
+    return qrMembersDirectory.some((entry) => (
+      String(entry?.tanzeem || '').trim().toLowerCase() === normalizedTanzeem
+      && String(entry?.majlis || '').trim()
+      && String(entry?.majlis || '').trim() !== '-'
+    ));
+  }, [qrMembersDirectory]);
+  const shouldUseQrMajlisSelection = hasMultipleMajalisInGuest && hasQrMajlisChoicesForTanzeem(qrRegistrationTanzeem);
   const qrRegistrationMemberChoices = useMemo(() => (
     qrMembersDirectory
-      .filter((entry) => entry.tanzeem === qrRegistrationTanzeem && (isGuestMode && !hasMultipleMajalisInGuest ? true : entry.majlis === qrRegistrationMajlis))
+      .filter((entry) => (
+        entry.tanzeem === qrRegistrationTanzeem
+        && (isGuestMode && !shouldUseQrMajlisSelection ? true : entry.majlis === qrRegistrationMajlis)
+      ))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber), 'de'))
-  ), [hasMultipleMajalisInGuest, isGuestMode, qrMembersDirectory, qrRegistrationMajlis, qrRegistrationTanzeem]);
+  ), [isGuestMode, qrMembersDirectory, qrRegistrationMajlis, qrRegistrationTanzeem, shouldUseQrMajlisSelection]);
   const qrRegistrationTanzeemOptions = useMemo(
     () => (qrAttendanceCategory === 'program' ? PROGRAM_TANZEEM_OPTIONS : TANZEEM_OPTIONS),
     [qrAttendanceCategory],
@@ -1671,6 +1685,13 @@ function AppContent() {
       .slice(0, 24);
   }, [qrMembersDirectory, qrRegistrationSearchDigits, qrRegistrationTanzeemOptions]);
   const isQrExternScopeSelected = Boolean(normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || ''));
+
+  useEffect(() => {
+    if (qrRegistrationMode !== 'majlis') return;
+    if (shouldUseQrMajlisSelection) return;
+    setQrRegistrationMode('idSelection');
+    setQrRegistrationMajlis('-');
+  }, [qrRegistrationMode, shouldUseQrMajlisSelection]);
 
 
 
@@ -2901,13 +2922,13 @@ function AppContent() {
       unsubGlobal();
       unsubPending();
     };
-  }, [activeMosqueKey, overrideDisplayDateISO]);
+  }, [activeExternalScopeDependency, activeMosqueKey, overrideDisplayDateISO]);
 
   useEffect(() => {
     setOverrideEditDayOffset(0);
     overrideEditDayOffsetRef.current = 0;
     setOverrideMetaTapCount(0);
-  }, [activeMosqueKey]);
+  }, [activeExternalScopeDependency, activeMosqueKey]);
 
   useEffect(() => {
     overrideEditDayOffsetRef.current = overrideEditDayOffset;
@@ -2939,7 +2960,7 @@ function AppContent() {
     };
 
     rolloutPendingOverride();
-  }, [pendingPrayerOverride, todayISO, activeMosqueKey]);
+  }, [activeExternalScopeDependency, pendingPrayerOverride, todayISO, activeMosqueKey]);
 
   const onOverrideMetaPress = () => {
     setOverrideMetaTapCount((prev) => {
@@ -3371,7 +3392,7 @@ function AppContent() {
 
     loadMosqueAnnouncement();
     return () => { cancelled = true; };
-  }, [activeMosqueKey, firebaseRuntime]);
+  }, [activeExternalScopeDependency, activeMosqueKey, firebaseRuntime]);
 
   const onToggleDarkMode = async (value, applyGlobally = false) => {
     Animated.sequence([
@@ -3569,7 +3590,7 @@ function AppContent() {
       cancelled = true;
       unsubscribe();
     };
-  }, [todayISO, activeMosqueKey]);
+  }, [activeExternalScopeDependency, todayISO, activeMosqueKey]);
 
   useEffect(() => {
     const todayConfig = programConfigByDate[todayISO] || null;
@@ -8873,7 +8894,12 @@ function AppContent() {
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
                 <View style={styles.tanzeemRow}>
                   {qrRegistrationTanzeemOptions.map((tanzeem) => (
-                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationTanzeem(tanzeem); setQrRegistrationMajlis(hasMultipleMajalisInGuest ? '' : '-'); setQrRegistrationMode(hasMultipleMajalisInGuest ? 'majlis' : 'idSelection'); }}>
+                    <Pressable key={`qr_${tanzeem}`} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => {
+                      const useMajlisSelection = hasMultipleMajalisInGuest && hasQrMajlisChoicesForTanzeem(tanzeem);
+                      setQrRegistrationTanzeem(tanzeem);
+                      setQrRegistrationMajlis(useMajlisSelection ? '' : '-');
+                      setQrRegistrationMode(useMajlisSelection ? 'majlis' : 'idSelection');
+                    }}>
                       <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                     </Pressable>
                   ))}
@@ -8905,7 +8931,7 @@ function AppContent() {
                 <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{qrRegistrationMajlis} · {TANZEEM_LABELS[qrRegistrationTanzeem] || ''}</Text>
-                <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMode(hasMultipleMajalisInGuest ? 'majlis' : 'tanzeem')}>
+                <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMode(shouldUseQrMajlisSelection ? 'majlis' : 'tanzeem')}>
                   <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
                 </Pressable>
                 {qrRegistrationMemberChoices.length === 0 ? (
