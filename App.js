@@ -6363,6 +6363,9 @@ function AppContent() {
           getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadMosqueKey || activeMosqueKey).catch(() => null),
           getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, payloadMosqueKey || activeMosqueKey).catch(() => null),
         ]);
+        if (!remoteGlobalOverride && !remotePendingOverride) {
+          throw new Error('no-remote-override');
+        }
         const normalizedGlobalOverride = normalizePrayerOverride(remoteGlobalOverride);
         const normalizedPendingOverride = normalizePendingPrayerOverride(remotePendingOverride);
         const runtimeFromGlobal = getRuntimePrayerContext(normalizedGlobalOverride, availableDates);
