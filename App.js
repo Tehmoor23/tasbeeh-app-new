@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
+const APP_MODE = 'extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -6358,7 +6358,27 @@ function AppContent() {
         setQrStatusMessage('Die gespeicherte Registrierung wurde in der Mitgliederliste nicht gefunden. Bitte erneut registrieren.');
         return;
       }
-      qrPrayerContext = resolveQrPrayerContext();
+      try {
+        const [remoteGlobalOverride, remotePendingOverride] = await Promise.all([
+          getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_GLOBAL_DOC_ID, payloadMosqueKey || activeMosqueKey).catch(() => null),
+          getDocDataForMosque(PRAYER_OVERRIDE_COLLECTION, PRAYER_OVERRIDE_PENDING_DOC_ID, payloadMosqueKey || activeMosqueKey).catch(() => null),
+        ]);
+        const normalizedGlobalOverride = normalizePrayerOverride(remoteGlobalOverride);
+        const normalizedPendingOverride = normalizePendingPrayerOverride(remotePendingOverride);
+        const runtimeFromGlobal = getRuntimePrayerContext(normalizedGlobalOverride, availableDates);
+        const runtimeOverride = normalizedPendingOverride?.dateISO === runtimeFromGlobal.iso
+          ? normalizePrayerOverride(normalizedPendingOverride)
+          : normalizedGlobalOverride;
+        const runtimeContext = getRuntimePrayerContext(runtimeOverride, availableDates);
+        qrPrayerContext = {
+          ...runtimeContext,
+          prayerKey: runtimeContext.prayerWindow?.prayerKey || null,
+          prayerLabel: runtimeContext.prayerWindow?.prayerLabel || null,
+          isActive: Boolean(runtimeContext.prayerWindow?.isActive),
+        };
+      } catch {
+        qrPrayerContext = resolveQrPrayerContext();
+      }
       setQrFlowMode('registered');
       if (payloadAttendanceCategory === 'prayer' && String(member.tanzeem || '').toLowerCase() === 'kinder') {
         setQrLastAttendanceStatus('invalid_tanzeem');
@@ -6430,7 +6450,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, loadStoredQrRegistration, onSelectMosque, prayerOverrideReady, resolveQrPrayerContext]);
+  }, [activeMosqueKey, availableDates, getRuntimePrayerContext, loadStoredQrRegistration, onSelectMosque, resolveQrPrayerContext]);
 
   useEffect(() => {
     if (!isWebRuntime || typeof window === 'undefined') return undefined;
