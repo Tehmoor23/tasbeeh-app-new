@@ -5499,19 +5499,23 @@ function AppContent() {
     const presentMap = new Set(
       programAttendanceEntries
         .filter((entry) => String(entry?.idNumber || '') !== 'guest')
-        .map((entry) => [
-          String(entry?.idNumber || ''),
-          String(entry?.tanzeem || '').toLowerCase(),
-          String(entry?.majlis || '').trim(),
-        ].join('||')),
+        .map((entry) => {
+          const resolvedMajlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
+          return [
+            String(entry?.idNumber || ''),
+            String(entry?.tanzeem || '').toLowerCase(),
+            String(resolvedMajlis || '').trim(),
+          ].join('||');
+        }),
     );
     const attendanceTimestampByKey = programAttendanceEntries
       .filter((entry) => String(entry?.idNumber || '') !== 'guest')
       .reduce((acc, entry) => {
+        const resolvedMajlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         const key = [
           String(entry?.idNumber || ''),
           String(entry?.tanzeem || '').toLowerCase(),
-          String(entry?.majlis || '').trim(),
+          String(resolvedMajlis || '').trim(),
         ].join('||');
         const timestamp = String(entry?.timestamp || '');
         const existing = String(acc[key] || '');
@@ -5664,10 +5668,11 @@ function AppContent() {
     }, {});
     const attendanceResponseByKey = registrationAttendanceEntries
       .reduce((acc, entry) => {
+        const resolvedMajlis = resolveExportMajlisLabel(entry?.majlis, entry?.amarat);
         const key = [
           String(entry?.idNumber || ''),
           String(entry?.tanzeem || '').toLowerCase(),
-          String(entry?.majlis || '').trim(),
+          String(resolvedMajlis || '').trim(),
         ].join('||');
         const response = String(entry?.registrationResponse || '').trim().toLowerCase() === 'decline' ? 'decline' : 'accept';
         const reason = String(entry?.declineReason || '').trim();
