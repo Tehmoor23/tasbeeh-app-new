@@ -2715,7 +2715,7 @@ function AppContent() {
       canAccess: Boolean(config && state.hasRange),
       isPublic: Boolean(config?.advanced?.isPublic),
       onlyEhlVoters: !isGuestMode && Boolean(config?.advanced?.onlyEhlVoters),
-      allowDecline: Boolean(config?.advanced?.allowDecline),
+      allowDecline: isGuestMode ? Boolean(config?.advanced?.allowDecline) : true,
       loginEnabled: !isGuestMode && Boolean(config?.advanced?.loginEnabled),
       includeTanzeems: config?.advanced?.includeTanzeems || [...REGISTRATION_TANZEEM_OPTIONS],
     };
