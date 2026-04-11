@@ -3967,6 +3967,15 @@ function AppContent() {
     () => isGuestMode && membersDirectory.some((entry) => isMissingMajlisValue(entry?.majlis)),
     [isGuestMode, membersDirectory],
   );
+  const exportMosqueNameForFile = useMemo(() => {
+    const rawName = isGuestMode
+      ? String(guestActivation?.mosqueName || activeMosque.label || 'Local Amarat').trim()
+      : (activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh');
+    const token = String(rawName || 'Moschee')
+      .replace(/\s+/g, '_')
+      .replace(/[^A-Za-z0-9_\-]/g, '');
+    return token || 'Moschee';
+  }, [activeMosque.key, activeMosque.label, guestActivation?.mosqueName, isGuestMode]);
   const memberMetadataById = useMemo(() => membersDirectory.reduce((acc, entry) => {
     const id = String(entry?.idNumber || '').trim();
     if (!id || acc[id]) return acc;
@@ -5030,10 +5039,9 @@ function AppContent() {
     });
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
     const safeStart = startLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
     const safeEnd = endLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
-    const fileName = `Stats_${mosqueNameForFile}_${safeStart}_${safeEnd}.xlsx`;
+    const fileName = `Stats_${exportMosqueNameForFile}_${safeStart}_${safeEnd}.xlsx`;
 
     if (Platform.OS === 'web') {
       if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
@@ -5073,7 +5081,7 @@ function AppContent() {
       dialogTitle: 'Statistik exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getStatsExportDataset, hasGuestEntriesWithoutMajlis, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
+  }, [activeMosque.label, exportMosqueNameForFile, getStatsExportDataset, hasGuestEntriesWithoutMajlis, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
 
   const handleExportStats = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5236,9 +5244,8 @@ function AppContent() {
     });
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
     const safeDate = dateLabel.replace(/[,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
-    const fileName = `Programm_Stats_${mosqueNameForFile}_${safeDate}.xlsx`;
+    const fileName = `Programm_Stats_${exportMosqueNameForFile}_${safeDate}.xlsx`;
 
     if (Platform.OS === 'web') {
       if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
@@ -5272,7 +5279,7 @@ function AppContent() {
       dialogTitle: 'Programmdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, hasGuestEntriesWithoutMajlis, membersDirectory, programAttendanceEntries, programStats, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
+  }, [activeMosque.key, activeMosque.label, exportMosqueNameForFile, hasGuestEntriesWithoutMajlis, membersDirectory, programAttendanceEntries, programStats, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5595,10 +5602,9 @@ function AppContent() {
     if (shouldIncludeGuestNameInExports && sheet.F7) sheet.F7.s = boldCellStyle;
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-    const mosqueNameForFile = activeMosque.key === 'nuur_moschee' ? 'Nuur_Moschee' : 'Bait_Us_Sabuh';
     const safeDate = dateLabel.replace(/[\,\s]+/g, '_').replace(/[^a-zA-Z0-9._-äöüÄÖÜß]/g, '');
     const tanzeemFile = normalizedFilter ? `_${normalizedFilter}` : '_alle';
-    const fileName = `Programm_ID_Uebersicht_${mosqueNameForFile}${tanzeemFile}_${safeDate}.xlsx`;
+    const fileName = `Programm_ID_Uebersicht_${exportMosqueNameForFile}${tanzeemFile}_${safeDate}.xlsx`;
 
     if (Platform.OS === 'web') {
       if (!globalThis.atob) throw new Error('Base64 Dekodierung auf Web nicht verfügbar');
@@ -5633,7 +5639,7 @@ function AppContent() {
       dialogTitle: 'Programm-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, hasGuestEntriesWithoutMajlis, membersDirectory, programAttendanceEntries, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, shouldIncludeGuestNameInExports, todayISO]);
+  }, [activeMosque.key, activeMosque.label, exportMosqueNameForFile, hasGuestEntriesWithoutMajlis, membersDirectory, programAttendanceEntries, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, shouldIncludeGuestNameInExports, todayISO]);
 
   const handleExportProgramDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
