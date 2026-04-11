@@ -351,6 +351,7 @@ const EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS = [
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 // EXTERNAL MEMBER DIRECTORY DATA - EDIT HERE
+//const EXTERNAL_MEMBER_DIRECTORY_DATA = [{ amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' }].map((entry) => ({ amarat: normalizeAccountNameKey(entry.amarat || ''), tanzeem: String(entry.tanzeem || '').trim().toLowerCase(), majlis: String(entry.majlis || '').trim(), idNumber: String(entry.idNumber || '').trim(), name: String(entry.name || '').trim(), }));
 const EXTERNAL_MEMBER_DIRECTORY_DATA = [
   { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' },
   { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' },
@@ -5919,7 +5920,7 @@ function AppContent() {
     return membersDirectory
       .filter((entry) => entry.tanzeem === detailedFlowTanzeem && entry.majlis === detailedFlowMajlis)
       .filter((entry) => (
-        statsMode !== 'registration'
+        statsMode !== 'registration' || isGuestMode
           ? true
           : normalizeVoterFlagValue(entry?.stimmberechtigt) !== '-'
       ))
@@ -5933,7 +5934,7 @@ function AppContent() {
         hasActiveFlow: Boolean(activeItemName),
       }))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber)));
-  }, [membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, selectedProgramConfig, selectedProgramStatsOption, selectedRegistrationStatsOption, programAttendanceEntries, registrationAttendanceEntries, statsMode]);
+  }, [isGuestMode, membersDirectory, detailedFlowTanzeem, detailedFlowMajlis, detailedIdSearchQuery, selectedProgramConfig, selectedProgramStatsOption, selectedRegistrationStatsOption, programAttendanceEntries, registrationAttendanceEntries, statsMode]);
 
   const detailedCurrentWeekIsos = useMemo(() => {
     const selectedWeekStartDate = parseISO(selectedStatsWeekStartISO || '');
