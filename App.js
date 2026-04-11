@@ -49,7 +49,7 @@ const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementTex
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'qr_extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
+const APP_MODE = 'extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -353,6 +353,7 @@ const STORE_MEMBER_NAMES_IN_DB = false;
 // EXTERNAL MEMBER DIRECTORY DATA - EDIT HERE
 //const EXTERNAL_MEMBER_DIRECTORY_DATA = [{ amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: 'Test', idNumber: '99999', name: 'Ahmad Khan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: 'Test', idNumber: '99998', name: 'Ali Raza' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '99997', name: 'Zaid Ahmad' }].map((entry) => ({ amarat: normalizeAccountNameKey(entry.amarat || ''), tanzeem: String(entry.tanzeem || '').trim().toLowerCase(), majlis: String(entry.majlis || '').trim(), idNumber: String(entry.idNumber || '').trim(), name: String(entry.name || '').trim(), }));
 const EXTERNAL_MEMBER_DIRECTORY_DATA = [{ amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '54349', name: 'Abdul Wahid' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '52095', name: 'Atiq ur Rehman' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '43664', name: 'Ahmad, Mahmood' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '43643', name: 'Ahmad, Rasheed' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '44444', name: 'Ahmad, Zubair' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '35377', name: 'Ahmed, Mirza Abdul Karim' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '26571', name: 'Ahmed, Rafiq' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '18860', name: 'Akram, Mohammad' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '49476', name: 'Cheema, Muhammad Afzal' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '44641', name: 'Faiz, Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '47025', name: 'Hamayat, Ahmed' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '48906', name: 'Hunjra, Rafaqat Ali' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '41667', name: 'Malik Saleem ud Din Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '60056', name: 'Muhammad, Afzaal' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '35872', name: 'Rana Faheem' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '49392', name: 'Shad, Abdul Rasheed' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '43778', name: 'Shad, Abdul Sami' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '39395', name: 'Sheikh, Omar Sharif' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '30233', name: 'Ullah, Ehsan' }, { amarat: 'bad schwalbach', tanzeem: 'Ansar', majlis: '-', idNumber: '21479', name: 'Waraich, Basharat Ahmad #' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '54016', name: 'Ahmad, Adnan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '64458', name: 'Ahmad, Faiq' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '58815', name: 'Ahmad, Junaid' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '48407', name: 'Ahmad, Noman' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '42599', name: 'Ahmad, Rashid' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '44612', name: 'Ahmad, Shamshad' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '59748', name: 'Ahmad, Waleed' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '50709', name: 'Ahmad, Shayan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '50710', name: 'Ahmad, Ayaan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '39860', name: 'Ahmed, Atiq' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '39861', name: 'Ahmed, Anieq' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '14634', name: 'Ajmal, Zieshan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '18865', name: 'Akram, Ajmal Chaudhry' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '18864', name: 'Akram, Akmal' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '56837', name: 'Asif, Mahmood' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '47024', name: 'Athwal, Nabi Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '45342', name: 'Cheema, Basil Rehan' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '44644', name: 'Faiz, Khurram Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '44645', name: 'Faiz, Fateh Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '52018', name: 'Ahmad, Afzal' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '66701', name: 'Ali, Ziafat' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '58675', name: 'Khan, Talal' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '42561', name: 'Ahmad, Noor ud Din' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '31377', name: 'Nadeem, Danial' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '53112', name: 'Nagi, Umer Rasheed' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '35875', name: 'Rana Aleim' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '59492', name: 'Rehman, Saqib' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '13705', name: 'Riaz, Shahid' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '51251', name: 'Shad, Abdul Raffay' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '39397', name: 'Sheikh, Shoaib Umar' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '21483', name: 'Waraich, Fraset Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '21482', name: 'Waraich, Shojahat Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Khuddam', majlis: '-', idNumber: '45258', name: 'Warraich, Wajahat Ibrahim' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '50711', name: 'Ahmad, Amaan' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '48297', name: 'Malik, Daniyal Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '56823', name: 'Nagi, Samar Ibrahim' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '65036', name: 'Riaz, Haris' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '51534', name: 'Shad, Rayasat Ahmad' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '51252', name: ', Noor Ul Shammas' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '58717', name: 'Sheikh, Muhammad Ibrahim' }, { amarat: 'bad schwalbach', tanzeem: 'Atfal', majlis: '-', idNumber: '43270', name: 'Ullah, Dayan' }].map((entry) => ({ amarat: normalizeAccountNameKey(entry.amarat || ''), tanzeem: String(entry.tanzeem || '').trim().toLowerCase(), majlis: String(entry.majlis || '').trim(), idNumber: String(entry.idNumber || '').trim(), name: String(entry.name || '').trim(), }));
+
 
 const RAMADAN_END_ISO = '2026-03-19';
 
@@ -780,6 +781,11 @@ const normalizeRegistrationShortDate = (value) => {
     if (day >= 1 && day <= 31 && month >= 1 && month <= 12) return `${pad(day)}.${pad(month)}`;
   }
   return '';
+};
+
+const isMissingMajlisValue = (value) => {
+  const raw = String(value || '').trim();
+  return !raw || raw === '-';
 };
 const registrationShortDateToKey = (value) => {
   const normalized = normalizeRegistrationShortDate(value);
@@ -3946,6 +3952,13 @@ function AppContent() {
     if (rawAmarat) return formatGuestAmaratLabel(rawAmarat);
     return rawMajlis || '—';
   }, [formatGuestAmaratLabel, guestMajlisFallbackLabel, isGuestMode]);
+  const getLocationLabel = useCallback((majlisValue) => (
+    isGuestMode && isMissingMajlisValue(majlisValue) ? 'Jamaat' : 'Majlis'
+  ), [isGuestMode]);
+  const hasGuestEntriesWithoutMajlis = useMemo(
+    () => isGuestMode && membersDirectory.some((entry) => isMissingMajlisValue(entry?.majlis)),
+    [isGuestMode, membersDirectory],
+  );
   const memberMetadataById = useMemo(() => membersDirectory.reduce((acc, entry) => {
     const id = String(entry?.idNumber || '').trim();
     if (!id || acc[id]) return acc;
@@ -4944,6 +4957,7 @@ function AppContent() {
     ];
     const prayerSheet = XLSX.utils.aoa_to_sheet(prayerRows);
     prayerSheet['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+    const locationHeaderLabel = hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis';
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
     XLSX.utils.book_append_sheet(workbook, daySheet, 'Gebete nach Tage');
@@ -4951,7 +4965,7 @@ function AppContent() {
 
     if (dataset.topMajlisRows.length) {
       const topRows = [
-        ['Majlis', 'Gebete diese Woche', 'davon Ansar', 'davon Khuddam', 'davon Atfal'],
+        [locationHeaderLabel, 'Gebete diese Woche', 'davon Ansar', 'davon Khuddam', 'davon Atfal'],
         ...dataset.topMajlisRows.map((row) => [
           row.majlis,
           Number(row.gebeteDieseWoche) || 0,
@@ -4962,12 +4976,12 @@ function AppContent() {
       ];
       const topSheet = XLSX.utils.aoa_to_sheet(topRows);
       topSheet['!cols'] = [{ wch: 30 }, { wch: 22 }, { wch: 14 }, { wch: 16 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(workbook, topSheet, 'Gebete nach Majlis');
+      XLSX.utils.book_append_sheet(workbook, topSheet, `Gebete nach ${locationHeaderLabel}`);
     }
     if (dataset.prayerLogRows.length) {
       const protocolHeader = shouldIncludeGuestNameInExports
-        ? ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', 'Majlis']
-        : ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis'];
+        ? ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', locationHeaderLabel]
+        : ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', locationHeaderLabel];
       const protocolRows = [
         protocolHeader,
         ...dataset.prayerLogRows.map((row) => {
@@ -4994,7 +5008,7 @@ function AppContent() {
     }
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Gebete nach Tage', 'Gebete nach Gebetszeiten', 'Gebete nach Majlis', 'Gebetsprotokoll'].forEach((sheetName) => {
+    ['Übersicht', 'Gebete nach Tage', 'Gebete nach Gebetszeiten', `Gebete nach ${locationHeaderLabel}`, 'Gebetsprotokoll'].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws) return;
       const ref = ws['!ref'];
@@ -5051,7 +5065,7 @@ function AppContent() {
       dialogTitle: 'Statistik exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getStatsExportDataset, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
+  }, [activeMosque.label, getStatsExportDataset, hasGuestEntriesWithoutMajlis, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
 
   const handleExportStats = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5186,9 +5200,10 @@ function AppContent() {
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 28 }, { wch: 36 }];
+    const locationHeaderLabel = hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis';
 
     const majlisAttendanceSheetRows = [
-      ['Majlis', 'Gesamt', ...activeTanzeems.map((key) => TANZEEM_LABELS[key] || key)],
+      [locationHeaderLabel, 'Gesamt', ...activeTanzeems.map((key) => TANZEEM_LABELS[key] || key)],
       ...majlisAttendanceRows.map((row) => [
         row.majlis,
         formatRatioWithPercent(row.totalPresent, row.totalRegistered),
@@ -5199,10 +5214,10 @@ function AppContent() {
     majlisAttendanceSheet['!cols'] = [{ wch: 28 }, ...Array.from({ length: 1 + activeTanzeems.length }, () => ({ wch: 24 }))];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Anwesenheit');
+    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, `${locationHeaderLabel} Anwesenheit`);
 
     const boldCellStyle = { font: { bold: true } };
-    ['Übersicht', 'Majlis Anwesenheit'].forEach((sheetName) => {
+    ['Übersicht', `${locationHeaderLabel} Anwesenheit`].forEach((sheetName) => {
       const ws = workbook.Sheets[sheetName];
       if (!ws || !ws['!ref']) return;
       const range = XLSX.utils.decode_range(ws['!ref']);
@@ -5249,7 +5264,7 @@ function AppContent() {
       dialogTitle: 'Programmdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, programStats, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
+  }, [activeMosque.key, activeMosque.label, hasGuestEntriesWithoutMajlis, membersDirectory, programAttendanceEntries, programStats, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, todayISO]);
 
   const handleExportProgram = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5379,9 +5394,10 @@ function AppContent() {
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
     overviewSheet['!cols'] = [{ wch: 24 }, { wch: 36 }];
+    const locationHeaderLabel = hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis';
 
     const majlisAttendanceSheetRows = [
-      ['Majlis', 'Gesamt', ...activeTanzeems.map((key) => TANZEEM_LABELS[key] || key)],
+      [locationHeaderLabel, 'Gesamt', ...activeTanzeems.map((key) => TANZEEM_LABELS[key] || key)],
       ...majlisAttendanceRows.map((row) => [
         row.majlis,
         formatRatioWithPercent(row.totalPresent, row.totalRegistered),
@@ -5404,18 +5420,18 @@ function AppContent() {
         return acc;
       }, {});
     const majlisDeclineSheetRows = [
-      ['Majlis', 'Absagen'],
+      [locationHeaderLabel, 'Absagen'],
       ...Object.entries(majlisDeclineRows)
         .map(([majlis, count]) => [majlis, Number(count) || 0])
         .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]))),
     ];
 
     XLSX.utils.book_append_sheet(workbook, overviewSheet, 'Übersicht');
-    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, 'Majlis Zusagen');
+    XLSX.utils.book_append_sheet(workbook, majlisAttendanceSheet, `${locationHeaderLabel} Zusagen`);
     if (majlisDeclineSheetRows.length > 1) {
       const majlisDeclineSheet = XLSX.utils.aoa_to_sheet(majlisDeclineSheetRows);
       majlisDeclineSheet['!cols'] = [{ wch: 28 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(workbook, majlisDeclineSheet, 'Majlis Absagen');
+      XLSX.utils.book_append_sheet(workbook, majlisDeclineSheet, `${locationHeaderLabel} Absagen`);
     }
 
     const base64 = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
@@ -5442,7 +5458,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungsdaten exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, isGuestMode, membersDirectory, registrationAttendanceEntries, registrationStats, resolveExportMajlisLabel, selectedRegistrationStatsOption]);
+  }, [activeMosque.label, hasGuestEntriesWithoutMajlis, isGuestMode, membersDirectory, registrationAttendanceEntries, registrationStats, resolveExportMajlisLabel, selectedRegistrationStatsOption]);
 
   const handleExportRegistration = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5531,9 +5547,10 @@ function AppContent() {
     }
 
     const workbook = XLSX.utils.book_new();
+    const locationHeaderLabel = hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis';
     const idTableHeader = shouldIncludeGuestNameInExports
-      ? ['Majlis', 'Tanzeem', 'ID-Nummer', 'Name', 'Anwesend', 'Zeitstempel']
-      : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'];
+      ? [locationHeaderLabel, 'Tanzeem', 'ID-Nummer', 'Name', 'Anwesend', 'Zeitstempel']
+      : [locationHeaderLabel, 'Tanzeem', 'ID-Nummer', 'Anwesend', 'Zeitstempel'];
     const rows = [
       ['Moschee', activeMosque.label],
       ['Datum', dateLabel],
@@ -5604,7 +5621,7 @@ function AppContent() {
       dialogTitle: 'Programm-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.key, activeMosque.label, membersDirectory, programAttendanceEntries, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, shouldIncludeGuestNameInExports, todayISO]);
+  }, [activeMosque.key, activeMosque.label, hasGuestEntriesWithoutMajlis, membersDirectory, programAttendanceEntries, resolveExportMajlisLabel, selectedProgramConfig, selectedProgramConfigDateISO, selectedProgramStatsOption, shouldIncludeGuestNameInExports, todayISO]);
 
   const handleExportProgramDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -5701,10 +5718,11 @@ function AppContent() {
     }
 
     const workbook = XLSX.utils.book_new();
+    const locationHeaderLabel = hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis';
     const detailedHeader = isGuestMode
       ? (shouldIncludeGuestNameInExports
-        ? ['Majlis', 'Tanzeem', 'ID-Nummer', 'Name', 'Zusage', 'Absage', 'Grund', 'Zeitstempel']
-        : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'])
+        ? [locationHeaderLabel, 'Tanzeem', 'ID-Nummer', 'Name', 'Zusage', 'Absage', 'Grund', 'Zeitstempel']
+        : [locationHeaderLabel, 'Tanzeem', 'ID-Nummer', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'])
       : ['Majlis', 'Tanzeem', 'ID-Nummer', 'Anwesend am 08.01.2026', 'Zusage', 'Absage', 'Grund', 'Zeitstempel'];
     const rows = [
       ['Moschee', activeMosque.label],
@@ -5768,7 +5786,7 @@ function AppContent() {
       dialogTitle: 'Anmeldungs-ID-Übersicht exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, isGuestMode, membersDirectory, registrationAttendanceEntries, resolveExportMajlisLabel, selectedRegistrationStatsOption, shouldIncludeGuestNameInExports]);
+  }, [activeMosque.label, hasGuestEntriesWithoutMajlis, isGuestMode, membersDirectory, registrationAttendanceEntries, resolveExportMajlisLabel, selectedRegistrationStatsOption, shouldIncludeGuestNameInExports]);
 
   const handleExportRegistrationDetailedIds = useCallback(async () => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -6073,7 +6091,7 @@ function AppContent() {
       ['ID', selectedDetailedMember.idNumber],
       ...(shouldIncludeGuestNameInExports ? [['Name', String(selectedDetailedMember?.name || memberMetadataById[String(selectedDetailedMember?.idNumber || '')]?.name || '—')]] : []),
       ['Tanzeem', TANZEEM_LABELS[selectedDetailedMember.tanzeem] || selectedDetailedMember.tanzeem || '—'],
-      ['Majlis', resolveExportMajlisLabel(selectedDetailedMember.majlis, selectedDetailedMember?.amarat)],
+      [getLocationLabel(selectedDetailedMember?.majlis), resolveExportMajlisLabel(selectedDetailedMember.majlis, selectedDetailedMember?.amarat)],
       ['Gesamt Gebete', Number(dataset.total) || 0],
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
@@ -6094,8 +6112,8 @@ function AppContent() {
     prayerSheet['!cols'] = [{ wch: 22 }, { wch: 32 }];
 
     const logHeader = shouldIncludeGuestNameInExports
-      ? ['Datum', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', 'Majlis', 'Zeitstempel']
-      : ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', 'Majlis', 'Zeitstempel'];
+      ? ['Datum', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', getLocationLabel(selectedDetailedMember?.majlis), 'Zeitstempel']
+      : ['Datum', 'Gebetszeit', 'ID', 'Tanzeem', getLocationLabel(selectedDetailedMember?.majlis), 'Zeitstempel'];
     const logRows = [
       logHeader,
       ...dataset.logs.map((row) => {
@@ -6171,7 +6189,7 @@ function AppContent() {
       dialogTitle: 'Detaillierte ID exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, getDetailedExportDataset, memberMetadataById, resolveExportMajlisLabel, selectedDetailedMember, shouldIncludeGuestNameInExports]);
+  }, [activeMosque.label, getDetailedExportDataset, getLocationLabel, memberMetadataById, resolveExportMajlisLabel, selectedDetailedMember, shouldIncludeGuestNameInExports]);
 
   const handleExportDetailed = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -7150,7 +7168,7 @@ function AppContent() {
                         }}
                         style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
                       >
-                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${resolveExportMajlisLabel(member.majlis, member?.amarat)}`}</Text>
                       </Pressable>
                     ))}
                   </View>
@@ -7188,13 +7206,13 @@ function AppContent() {
           </>
         ) : terminalMode === 'majlis' ? (
           <>
-            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>{`Bitte wählen Sie Ihre ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'}`}</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی مجلس منتخب کریں</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setTerminalMode('tanzeem'); setSelectedTanzeem(''); setSelectedMajlis(''); }}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
             {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-            {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Majlis-Daten für diese Tanzeem gefunden.</Text> : null}
+            {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{`Keine ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'}-Daten für diese Tanzeem gefunden.`}</Text> : null}
             <View style={styles.gridWrap}>
               {majlisChoices.map((loc) => (
                 <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
@@ -7225,7 +7243,7 @@ function AppContent() {
                 <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Ausgewählte ID</Text>
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{pendingRegistrationMember.idNumber}</Text>
                 <Text style={[styles.noteText, { color: theme.muted }]}>
-                  {`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${pendingRegistrationMember.majlis}${
+                  {`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${resolveExportMajlisLabel(pendingRegistrationMember.majlis, pendingRegistrationMember?.amarat)}${
                     (pendingRegistrationVoterFlag === 1 || pendingRegistrationVoterFlag === 0) ? ' · Ehl-Voter' : ' · Nicht-Ehl-Voter'
                   }`}
                 </Text>
@@ -7734,7 +7752,7 @@ function AppContent() {
 
               <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                 <View style={styles.statsCardHeaderRow}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anwesenheit nach Majlis (Programm)</Text>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{`Anwesenheit nach ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'} (Programm)`}</Text>
                   <Pressable
                     onPress={() => setProgramMajlisFilter((prev) => {
                       const options = ['total', ...PROGRAM_TANZEEM_OPTIONS];
@@ -7822,7 +7840,7 @@ function AppContent() {
                   </View>
                 </View>
                 <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Zusagen nach Majlis</Text>
+                  <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{`Zusagen nach ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'}`}</Text>
                   <View style={styles.statsToggleRow}>
                     <Pressable
                       onPress={() => setRegistrationMajlisFilter((prev) => {
@@ -8275,7 +8293,7 @@ function AppContent() {
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <View style={styles.statsCardHeaderRow}>
                       <View>
-                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Anzahl der Gebete nach Majlis</Text>
+                        <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{`Anzahl der Gebete nach ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'}`}</Text>
                         <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsMajlisRange)}</Text>
                       </View>
                     </View>
@@ -9058,9 +9076,9 @@ function AppContent() {
                           onPress={() => handleQrMemberRegistration(member)}
                           style={({ pressed }) => [[styles.quickSearchResultCard, { borderColor: theme.border, backgroundColor: theme.bg }], pressed && styles.buttonPressed]}
                         >
-                          <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${member.majlis}`}</Text>
-                        </Pressable>
-                      ))}
+                        <Text style={[styles.quickSearchResultText, { color: theme.text }]}>{`${member.idNumber} · ${TANZEEM_LABELS[member.tanzeem] || member.tanzeem} · ${resolveExportMajlisLabel(member.majlis, member?.amarat)}`}</Text>
+                      </Pressable>
+                    ))}
                     </View>
                   )}
                 </View>
@@ -9087,7 +9105,7 @@ function AppContent() {
               </>
             ) : qrRegistrationMode === 'majlis' ? (
               <>
-                <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre Majlis</Text>
+                <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>{`Bitte wählen Sie Ihre ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'}`}</Text>
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی مجلس منتخب کریں</Text>
                 <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setQrRegistrationMode('tanzeem'); setQrRegistrationMajlis(''); }}>
                   <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
@@ -9459,7 +9477,7 @@ function AppContent() {
 
                   <View style={[styles.detailedGuideCard, { borderColor: theme.border, backgroundColor: theme.card }]}> 
                     <Text style={[styles.detailedGuideTitle, { color: theme.text }]}>Bitte zuerst auswählen</Text>
-                    <Text style={[styles.detailedGuideText, { color: theme.muted }]}>Flow: Tanzeem → Majlis → ID Suche</Text>
+                    <Text style={[styles.detailedGuideText, { color: theme.muted }]}>{`Flow: Tanzeem → ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'} → ID Suche`}</Text>
                   </View>
                   <View style={styles.statsToggleRow}>
                     {(statsMode === 'program'
@@ -9482,7 +9500,7 @@ function AppContent() {
 
                   {detailedFlowTanzeem ? (
                     <View style={styles.detailedIdSectionWrap}>
-                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Majlis</Text>
+                      <Text style={[styles.statsCardTitle, { color: theme.muted }]}>{getLocationLabel(detailedFlowMajlis || detailedMajlisOptions[0])}</Text>
                       <View style={styles.detailedIdChipsWrap}>
                         {detailedMajlisOptions.map((majlis) => {
                           const isActive = detailedFlowMajlis === majlis;
@@ -9492,7 +9510,7 @@ function AppContent() {
                               onPress={() => setDetailedFlowMajlis(majlis)}
                               style={[styles.detailedIdChip, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
                             >
-                              <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{majlis}</Text>
+                              <Text style={{ color: isActive ? theme.buttonText : theme.text, fontWeight: '700' }}>{resolveExportMajlisLabel(majlis)}</Text>
                             </Pressable>
                           );
                         })}
@@ -9526,11 +9544,11 @@ function AppContent() {
                         style={[styles.detailedIdRow, { borderColor: theme.border, backgroundColor: theme.card }]}
                       >
                         {statsMode === 'program' || statsMode === 'registration' ? (
-                          <Text style={{ color: theme.text, fontWeight: '700' }}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${member.majlis}`}</Text>
+                          <Text style={{ color: theme.text, fontWeight: '700' }}>{`${member.idNumber} ${TANZEEM_LABELS[member.tanzeem]} ${resolveExportMajlisLabel(member.majlis, member?.amarat)}`}</Text>
                         ) : (
                           <>
                             <Text style={{ color: theme.text, fontWeight: '700' }}>{member.idNumber}</Text>
-                            <Text style={{ color: theme.muted, fontSize: 12 }}>{`${TANZEEM_LABELS[member.tanzeem]} · ${member.majlis}`}</Text>
+                            <Text style={{ color: theme.muted, fontSize: 12 }}>{`${TANZEEM_LABELS[member.tanzeem]} · ${resolveExportMajlisLabel(member.majlis, member?.amarat)}`}</Text>
                           </>
                         )}
                         {statsMode === 'program' || statsMode === 'registration' ? (
@@ -9564,7 +9582,7 @@ function AppContent() {
                   </View>
                   </>) : null}
                   {!detailedFlowTanzeem || !detailedFlowMajlis ? (
-                    <Text style={[styles.detailedGuideHint, { color: theme.button }]}>Bitte Tanzeem und Majlis auswählen, dann erscheinen die IDs.</Text>
+                    <Text style={[styles.detailedGuideHint, { color: theme.button }]}>{`Bitte Tanzeem und ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'} auswählen, dann erscheinen die IDs.`}</Text>
                   ) : null}
                 </>
               ) : (
@@ -9586,7 +9604,7 @@ function AppContent() {
 
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>ID {selectedDetailedMember.idNumber}</Text>
-                    <Text style={{ color: theme.text, fontWeight: '700', marginTop: 4 }}>{selectedDetailedMember.majlis}</Text>
+                    <Text style={{ color: theme.text, fontWeight: '700', marginTop: 4 }}>{`${getLocationLabel(selectedDetailedMember?.majlis)}: ${resolveExportMajlisLabel(selectedDetailedMember?.majlis, selectedDetailedMember?.amarat)}`}</Text>
                     <Text style={[styles.noteText, { color: theme.muted, marginTop: 2 }]}>{TANZEEM_LABELS[selectedDetailedMember.tanzeem]}</Text>
                   </View>
 
