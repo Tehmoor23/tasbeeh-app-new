@@ -823,6 +823,7 @@ const normalizeRegistrationConfig = (data, fallbackDocId = '') => {
       includeTanzeems: sanitizedTanzeems.length ? sanitizedTanzeems : [...REGISTRATION_TANZEEM_OPTIONS],
       onlyEhlVoters: Boolean(data?.advanced?.onlyEhlVoters ?? data?.onlyEhlVoters),
       allowDecline: Boolean(data?.advanced?.allowDecline ?? data?.allowDecline),
+      loginEnabled: Boolean(data?.advanced?.loginEnabled ?? data?.loginEnabled),
     },
   };
 };
@@ -1650,6 +1651,7 @@ function AppContent() {
   const [registrationIsPublicInput, setRegistrationIsPublicInput] = useState(false);
   const [registrationOnlyEhlVotersInput, setRegistrationOnlyEhlVotersInput] = useState(false);
   const [registrationAllowDeclineInput, setRegistrationAllowDeclineInput] = useState(false);
+  const [registrationLoginEnabledInput, setRegistrationLoginEnabledInput] = useState(false);
   const [registrationIncludedTanzeemsInput, setRegistrationIncludedTanzeemsInput] = useState([...REGISTRATION_TANZEEM_OPTIONS]);
   const [isRegistrationAdvancedVisible, setRegistrationAdvancedVisible] = useState(false);
   const [pendingRegistrationMember, setPendingRegistrationMember] = useState(null);
@@ -2002,10 +2004,11 @@ function AppContent() {
     }
     const docId = normalizeAccountNameKey(name);
     const targetAccountCollection = isGuestMode ? ADMIN_EXTERNAL_ACCOUNTS_COLLECTION : ADMIN_ACCOUNTS_COLLECTION;
+    const strictInternalCollectionLogin = normalizedAppMode === 'registration' && !isGuestMode;
     const localAccountLogin = async () => {
       const existing = await getGlobalDocData(targetAccountCollection, docId).catch(() => null);
       const isDefaultSuperAdmin = normalizeAccountNameKey(name) === normalizeAccountNameKey(SUPER_ADMIN_NAME) && password === SUPER_ADMIN_DEFAULT_PASSWORD;
-      if (!existing && !isDefaultSuperAdmin) {
+      if (!existing && (strictInternalCollectionLogin || !isDefaultSuperAdmin)) {
         return false;
       }
       const fallbackAccount = existing || {
@@ -2023,7 +2026,7 @@ function AppContent() {
       const matchesStoredPassword = hasStoredLocalPasswordHash
         ? String(existing.localPasswordHash) === String(passwordHash)
         : (hasStoredLocalPassword ? String(existing.localPassword) === String(password) : false);
-      const allowDefaultSuperAdminPassword = Boolean(fallbackAccount?.isSuperAdmin) && !hasAnyStoredLocalSecret;
+      const allowDefaultSuperAdminPassword = !strictInternalCollectionLogin && Boolean(fallbackAccount?.isSuperAdmin) && !hasAnyStoredLocalSecret;
       const matchesLocalPassword = matchesStoredPassword
         || (allowDefaultSuperAdminPassword && isDefaultSuperAdmin);
       if (!matchesLocalPassword) return false;
@@ -2041,7 +2044,7 @@ function AppContent() {
         fallbackAccount.localPassword = null;
       }
 
-      if (!existing && isDefaultSuperAdmin) {
+      if (!existing && isDefaultSuperAdmin && !strictInternalCollectionLogin) {
         const defaultHash = await hashLocalPassword(SUPER_ADMIN_DEFAULT_PASSWORD, docId);
         await setGlobalDocData(targetAccountCollection, docId, {
           ...fallbackAccount,
@@ -2130,7 +2133,7 @@ function AppContent() {
     } finally {
       setAuthLoading(false);
     }
-  }, [isGuestMode, loginNameInput, loginPasswordInput, resolveAccountMosquePreference]);
+  }, [isGuestMode, loginNameInput, loginPasswordInput, normalizedAppMode, resolveAccountMosquePreference]);
 
   const logoutAccount = useCallback(async () => {
     localSessionActiveRef.current = false;
@@ -2713,6 +2716,7 @@ function AppContent() {
       isPublic: Boolean(config?.advanced?.isPublic),
       onlyEhlVoters: !isGuestMode && Boolean(config?.advanced?.onlyEhlVoters),
       allowDecline: Boolean(config?.advanced?.allowDecline),
+      loginEnabled: !isGuestMode && Boolean(config?.advanced?.loginEnabled),
       includeTanzeems: config?.advanced?.includeTanzeems || [...REGISTRATION_TANZEEM_OPTIONS],
     };
   }, [activeRegistrationConfig, isGuestMode, todayISO]);
@@ -3310,6 +3314,13 @@ function AppContent() {
   }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode]);
 
   useEffect(() => {
+    if (normalizedAppMode !== 'registration') return;
+    if (!registrationWindow.canAccess || !registrationWindow.loginEnabled) return;
+    if (currentAccount) return;
+    setAdminLoginVisible(true);
+  }, [currentAccount, normalizedAppMode, registrationWindow.canAccess, registrationWindow.loginEnabled]);
+
+  useEffect(() => {
     if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
       setActiveTab('gebetsplan');
     }
@@ -3699,6 +3710,7 @@ function AppContent() {
       setRegistrationIsPublicInput(false);
       setRegistrationOnlyEhlVotersInput(false);
       setRegistrationAllowDeclineInput(false);
+      setRegistrationLoginEnabledInput(false);
       setRegistrationIncludedTanzeemsInput([...REGISTRATION_TANZEEM_OPTIONS]);
       return;
     }
@@ -3710,6 +3722,7 @@ function AppContent() {
     setRegistrationIsPublicInput(Boolean(activeRegistrationConfig.advanced?.isPublic));
     setRegistrationOnlyEhlVotersInput(isGuestMode ? false : Boolean(activeRegistrationConfig.advanced?.onlyEhlVoters));
     setRegistrationAllowDeclineInput(Boolean(activeRegistrationConfig.advanced?.allowDecline));
+    setRegistrationLoginEnabledInput(!isGuestMode && Boolean(activeRegistrationConfig.advanced?.loginEnabled));
     setRegistrationIncludedTanzeemsInput(activeRegistrationConfig.advanced?.includeTanzeems?.length
       ? activeRegistrationConfig.advanced.includeTanzeems
       : [...REGISTRATION_TANZEEM_OPTIONS]);
@@ -3798,6 +3811,7 @@ function AppContent() {
         isPublic: registrationIsPublicInput,
         onlyEhlVoters: isGuestMode ? false : registrationOnlyEhlVotersInput,
         allowDecline: registrationAllowDeclineInput,
+        loginEnabled: isGuestMode ? false : registrationLoginEnabledInput,
         includeTanzeems,
       },
     }, docId);
@@ -7045,12 +7059,17 @@ function AppContent() {
     const isPrayerMode = attendanceMode === 'prayer';
     const isProgramMode = attendanceMode === 'program';
     const isRegistrationMode = attendanceMode === 'registration';
-    const hasActiveAttendanceWindow = !guestRequiresConfig && (isPrayerMode ? prayerWindow.isActive : (isProgramMode ? programWindow.isActive : registrationWindow.isOpen));
     const modeSubTitle = isPrayerMode
       ? 'Erfassung der Gebetsanwesenheit'
       : (isProgramMode ? 'Erfassung der Programmanwesenheit' : 'Erfassung von Anmeldungen');
-    const canAccessRegistrationMode = registrationWindow.canAccess && (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
-    const registrationLockedByLogin = isRegistrationOnlyAppMode ? false : (registrationWindow.canAccess && !registrationWindow.isPublic && !currentAccount);
+    const registrationNeedsLogin = Boolean(registrationWindow.loginEnabled);
+    const hasRegistrationLoginAccess = registrationNeedsLogin ? Boolean(currentAccount) : (isRegistrationOnlyAppMode ? true : (registrationWindow.isPublic || Boolean(currentAccount)));
+    const canAccessRegistrationMode = registrationWindow.canAccess && hasRegistrationLoginAccess;
+    const registrationLockedByLogin = registrationWindow.canAccess && registrationNeedsLogin && !currentAccount;
+    const hasActiveAttendanceWindow = !guestRequiresConfig
+      && (isPrayerMode
+        ? prayerWindow.isActive
+        : (isProgramMode ? programWindow.isActive : (registrationWindow.isOpen && canAccessRegistrationMode)));
     const cycleAttendanceMode = () => {
       if (isPrayerMode) return 'program';
       if (isProgramMode) return canAccessRegistrationMode ? 'registration' : 'prayer';
@@ -8794,6 +8813,12 @@ function AppContent() {
                 <Switch value={registrationAllowDeclineInput} onValueChange={setRegistrationAllowDeclineInput} />
               </View>
             ) : null}
+            {!isGuestMode ? (
+              <View style={styles.mergeSwitchWrap}>
+                <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Login aktivieren</Text>
+                <Switch value={registrationLoginEnabledInput} onValueChange={setRegistrationLoginEnabledInput} />
+              </View>
+            ) : null}
             <Text style={[styles.noteText, { color: theme.muted }]}>Berücksichtigte Tanzeem auswählen</Text>
             <View style={styles.statsToggleRow}>
               {REGISTRATION_TANZEEM_OPTIONS.map((key) => {
@@ -9228,11 +9253,19 @@ function AppContent() {
       ) : null}
 
 
-      <Modal visible={isAdminLoginVisible} animationType="fade" transparent onRequestClose={() => setAdminLoginVisible(false)}>
+      <Modal
+        visible={isAdminLoginVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          if (normalizedAppMode === 'registration' && registrationWindow.canAccess && registrationWindow.loginEnabled && !currentAccount) return;
+          setAdminLoginVisible(false);
+        }}
+      >
         <View style={styles.privacyModalBackdrop}>
           <View style={[styles.statsExportModalCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
             <Text style={[styles.statsExportModalTitle, { color: theme.text }]}>Account Login</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isGuestMode ? 'Externer Zugang' : 'Interner Zugang'}</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{isGuestMode ? 'Externer Zugang' : 'Interner Zugang (Frankfurt)'}</Text>
             <View style={styles.mergeInputWrap}>
               <TextInput value={loginNameInput} onChangeText={setLoginNameInput} placeholder="Name" placeholderTextColor={theme.muted} autoCapitalize="none" style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
               <TextInput value={loginPasswordInput} onChangeText={setLoginPasswordInput} placeholder="Passwort" placeholderTextColor={theme.muted} autoCapitalize="none" secureTextEntry style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]} />
@@ -9241,7 +9274,8 @@ function AppContent() {
               <Pressable onPress={loginWithHiddenModal} disabled={authLoading} style={[styles.statsExportOptionBtn, { borderColor: '#000000', backgroundColor: '#000000', opacity: authLoading ? 0.7 : 1 }]}> 
                 <Text style={[styles.statsExportOptionBtnText, { color: '#FFFFFF' }]}>{authLoading ? 'Prüft…' : 'Einloggen'}</Text>
               </Pressable>
-              {(!isGuestMode || Boolean(guestActivation?.scopeKey)) ? (
+              {(!isGuestMode || Boolean(guestActivation?.scopeKey))
+                && !(normalizedAppMode === 'registration' && registrationWindow.canAccess && registrationWindow.loginEnabled && !currentAccount) ? (
                 <Pressable onPress={() => setAdminLoginVisible(false)} style={[styles.statsExportCloseBtn, { borderColor: theme.border }]}>
                   <Text style={[styles.statsExportCloseBtnText, { color: theme.text }]}>Schließen</Text>
                 </Pressable>
