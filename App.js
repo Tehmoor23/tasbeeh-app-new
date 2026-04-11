@@ -5804,6 +5804,9 @@ function AppContent() {
   }, [detailedFlowTanzeem, detailedRegistrationExporting, effectivePermissions.canExportData, writeRegistrationDetailedIdWorkbook]);
 
   function formatMajlisName(locationKey) {
+    if (isGuestMode && String(locationKey || '').trim() === 'ohne_majlis') {
+      return resolveExportMajlisLabel('-');
+    }
     if (MAJLIS_LABELS[locationKey]) return MAJLIS_LABELS[locationKey];
     return String(locationKey || '')
       .split('_')
@@ -7244,12 +7247,12 @@ function AppContent() {
                 <Text style={[styles.statsBigValue, { color: theme.text }]}>{pendingRegistrationMember.idNumber}</Text>
                 <Text style={[styles.noteText, { color: theme.muted }]}>
                   {`${TANZEEM_LABELS[pendingRegistrationMember.tanzeem] || pendingRegistrationMember.tanzeem} · ${resolveExportMajlisLabel(pendingRegistrationMember.majlis, pendingRegistrationMember?.amarat)}${
-                    (pendingRegistrationVoterFlag === 1 || pendingRegistrationVoterFlag === 0) ? ' · Ehl-Voter' : ' · Nicht-Ehl-Voter'
+                    isGuestMode ? '' : ((pendingRegistrationVoterFlag === 1 || pendingRegistrationVoterFlag === 0) ? ' · Ehl-Voter' : ' · Nicht-Ehl-Voter')
                   }`}
                 </Text>
               </View>
             ) : null}
-            {registrationWindow.onlyEhlVoters && pendingRegistrationMember ? (
+            {registrationWindow.onlyEhlVoters && !isGuestMode && pendingRegistrationMember ? (
               <View style={[styles.registrationVoterInfoCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                 {pendingRegistrationVoterFlag === 1 ? (
                   <>
@@ -7373,7 +7376,7 @@ function AppContent() {
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{selectedMajlis} · {TANZEEM_LABELS[selectedTanzeem] || ''}</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{`${resolveExportMajlisLabel(selectedMajlis)} · ${TANZEEM_LABELS[selectedTanzeem] || ''}`}</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'tanzeem')}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
@@ -8453,7 +8456,7 @@ function AppContent() {
                       let previousCount = null;
                       return weekRankingRows.map((row) => {
                         const tanzeemLabel = TANZEEM_LABELS[row.tanzeem] || (row.tanzeem ? row.tanzeem.charAt(0).toUpperCase() + row.tanzeem.slice(1) : '—');
-                        const majlisLabel = row.majlis || '—';
+                        const majlisLabel = resolveExportMajlisLabel(row.majlis);
                         const descriptor = statsWeekRankingFilter === 'total'
                           ? `${row.idNumber} (${tanzeemLabel} · ${majlisLabel})`
                           : `${row.idNumber} (${majlisLabel})`;
