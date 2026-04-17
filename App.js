@@ -366,7 +366,7 @@ const INTERNAL_RESET_CATEGORIES = [
   },
   {
     key: 'qr',
-    label: 'QR-Code',
+    label: 'QR-Geräte',
     collections: [QR_REGISTRATION_COLLECTION],
   },
 ];
