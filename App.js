@@ -7700,7 +7700,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode) && (!isQuickIdSearchVisible || quickSearchDigits.length === 0)) ? (
+        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode)) ? (
           <View style={[styles.terminalInlineQrCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
             <Text style={[styles.terminalInlineQrTitle, { color: theme.text }]}>
               {isProgramMode ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}
