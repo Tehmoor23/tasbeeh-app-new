@@ -7728,6 +7728,9 @@ function AppContent() {
                 />
               ) : null}
             </View>
+            <View style={[styles.terminalInlineQrTimerChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#111827' : '#F9FAFB' }]}>
+              <Text style={[styles.terminalInlineQrTimerText, { color: theme.text }]}>Aktualisierung in {formatQrCountdown(qrCountdownSeconds)}</Text>
+            </View>
           </View>
         ) : null}
 
@@ -10219,6 +10222,8 @@ const styles = StyleSheet.create({
   terminalInlineQrHint: { marginTop: 4, fontSize: 12, fontWeight: '600', textAlign: 'center' },
   terminalInlineQrImageWrap: { marginTop: 10, borderWidth: 1, borderRadius: 12, padding: 8 },
   terminalInlineQrImage: { width: 180, height: 180 },
+  terminalInlineQrTimerChip: { marginTop: 10, borderWidth: 1, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 12 },
+  terminalInlineQrTimerText: { fontSize: 12, fontWeight: '800', textAlign: 'center' },
   tabLabel: { fontSize: 9, textAlign: 'center', width: '100%' },
   tabLabelTablet: { fontSize: 12 },
   tabLabelTabletWebCompact: { fontSize: 10 },
