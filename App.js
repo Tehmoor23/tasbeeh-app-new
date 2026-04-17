@@ -9456,10 +9456,10 @@ function AppContent() {
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       {!shouldRestrictToPrayerView && !shouldRestrictToQrView && !shouldRestrictToRegistrationView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount) || isGuestMode) ? (
-        <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 4), minHeight: 52 + Math.max(insets.bottom, 4) }]}>
+        <View style={[styles.tabBar, isTablet && styles.tabBarTablet, isTablet && Platform.OS === 'web' && styles.tabBarTabletWebCompact, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, isTablet && Platform.OS === 'web' ? 2 : 4), minHeight: (isTablet && Platform.OS === 'web' ? 44 : 52) + Math.max(insets.bottom, isTablet && Platform.OS === 'web' ? 2 : 4) }]}>
           {visibleTabs.map((tab) => (
-            <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect(styles.tabItem)}>
-              <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
+            <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect([styles.tabItem, isTablet && Platform.OS === 'web' && styles.tabItemTabletWebCompact])}>
+              <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, isTablet && Platform.OS === 'web' && styles.tabLabelTabletWebCompact, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
             </Pressable>
           ))}
         </View>
@@ -10151,7 +10151,9 @@ const styles = StyleSheet.create({
   announcementActionBtn: { flex: 1 },
   tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 52, paddingHorizontal: 6 },
   tabBarTablet: { minHeight: 72, paddingHorizontal: 16 },
+  tabBarTabletWebCompact: { minHeight: 44, paddingHorizontal: 10 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 4 },
+  tabItemTabletWebCompact: { paddingVertical: 5 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
   qrPageCard: { alignItems: 'center', paddingVertical: 22, gap: 14 },
   qrPageTitle: { textAlign: 'center', fontSize: 24, fontWeight: '800' },
@@ -10172,6 +10174,7 @@ const styles = StyleSheet.create({
   qrDeviceHintText: { textAlign: 'center', fontSize: 13, lineHeight: 20, fontWeight: '600' },
   tabLabel: { fontSize: 9, textAlign: 'center', width: '100%' },
   tabLabelTablet: { fontSize: 12 },
+  tabLabelTabletWebCompact: { fontSize: 10 },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
