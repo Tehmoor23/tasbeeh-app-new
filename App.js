@@ -7345,7 +7345,7 @@ function AppContent() {
           <>
             {isQuickIdSearchVisible ? (
               <>
-                <Pressable onPress={() => { setQuickIdSearchVisible(false); setQuickIdSearchQuery(''); }} style={withPressEffect(styles.quickSearchLinkWrap)}>
+                <Pressable onPress={() => setQuickIdSearchVisible(false)} style={withPressEffect(styles.quickSearchLinkWrap)}>
                   <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Schließen</Text>
                 </Pressable>
                 <View style={[styles.quickSearchPanel, { borderColor: '#000000', backgroundColor: theme.card }]}>
@@ -7700,7 +7700,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode) && (!isQuickIdSearchVisible || quickSearchDigits.length === 0)) ? (
+        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode)) ? (
           <View style={[styles.terminalInlineQrCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
             <Text style={[styles.terminalInlineQrTitle, { color: theme.text }]}>
               {isProgramMode ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}
