@@ -348,6 +348,28 @@ const EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS = [
   PROGRAM_ATTENDANCE_COLLECTION,
   REGISTRATION_ATTENDANCE_COLLECTION,
 ];
+const INTERNAL_RESET_CATEGORIES = [
+  {
+    key: 'prayer',
+    label: 'Gebetsdaten',
+    collections: ['attendance_daily', MEMBER_DIRECTORY_COLLECTION],
+  },
+  {
+    key: 'program',
+    label: 'Programmdaten',
+    collections: [PROGRAM_CONFIG_COLLECTION, PROGRAM_DAILY_COLLECTION, PROGRAM_DAILY_COLLECTION_LEGACY, PROGRAM_ATTENDANCE_COLLECTION],
+  },
+  {
+    key: 'registration',
+    label: 'Anmeldedaten',
+    collections: [REGISTRATION_CONFIG_COLLECTION, REGISTRATION_DAILY_COLLECTION, REGISTRATION_ATTENDANCE_COLLECTION],
+  },
+  {
+    key: 'qr',
+    label: 'QR-Code',
+    collections: [QR_REGISTRATION_COLLECTION],
+  },
+];
 const SHOW_MEMBER_NAMES_IN_ID_GRID = false;
 const STORE_MEMBER_NAMES_IN_DB = false;
 // EXTERNAL MEMBER DIRECTORY DATA - EDIT HERE
@@ -1197,6 +1219,28 @@ async function listDocIds(collection, pageSize = 300) {
   return ids;
 }
 
+async function listDocIdsForMosque(collection, mosqueKey, pageSize = 300) {
+  if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
+  const scopedCollection = resolveScopedCollectionForMosque(collection, mosqueKey);
+  let pageToken = '';
+  const ids = [];
+  do {
+    const tokenPart = pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '';
+    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/${scopedCollection}?pageSize=${pageSize}${tokenPart}&key=${FIREBASE_CONFIG.apiKey}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('Firestore list failed');
+    const json = await res.json();
+    const docs = Array.isArray(json.documents) ? json.documents : [];
+    docs.forEach((doc) => {
+      const fullName = String(doc?.name || '');
+      const id = fullName.split('/').pop();
+      if (id) ids.push(id);
+    });
+    pageToken = String(json.nextPageToken || '');
+  } while (pageToken);
+  return ids;
+}
+
 
 async function setDocData(collection, id, data) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
@@ -1330,6 +1374,30 @@ async function deleteAllGlobalDocsInCollection(collection) {
   await Promise.all(ids.map(async (id) => {
     try {
       await deleteGlobalDocData(collection, id);
+      deleted += 1;
+    } catch (error) {
+      failed.push({ id, error: String(error?.message || error || 'delete_failed') });
+    }
+  }));
+  return { total: ids.length, deleted, failed };
+}
+
+async function deleteAllDocsInCollectionForMosque(collection, mosqueKey) {
+  let ids = [];
+  try {
+    ids = await listDocIdsForMosque(collection, mosqueKey);
+  } catch (error) {
+    return {
+      total: 0,
+      deleted: 0,
+      failed: [{ id: '__collection__', error: `list_failed:${String(error?.message || error || 'unknown')}` }],
+    };
+  }
+  let deleted = 0;
+  const failed = [];
+  await Promise.all(ids.map(async (id) => {
+    try {
+      await deleteDocDataForMosque(collection, id, mosqueKey);
       deleted += 1;
     } catch (error) {
       failed.push({ id, error: String(error?.message || error || 'delete_failed') });
@@ -1631,6 +1699,12 @@ function AppContent() {
   const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
   const [mosquePreferenceSaving, setMosquePreferenceSaving] = useState(false);
   const [passwordChangeInput, setPasswordChangeInput] = useState('');
+  const [dbResetSelectionByCategory, setDbResetSelectionByCategory] = useState(() => (
+    INTERNAL_RESET_CATEGORIES.reduce((acc, category) => ({ ...acc, [category.key]: [] }), {})
+  ));
+  const [dbResetLoadingByCategory, setDbResetLoadingByCategory] = useState(() => (
+    INTERNAL_RESET_CATEGORIES.reduce((acc, category) => ({ ...acc, [category.key]: false }), {})
+  ));
 
   const [programNameInput, setProgramNameInput] = useState('');
   const [programSubtitleInput, setProgramSubtitleInput] = useState('');
@@ -2486,6 +2560,103 @@ function AppContent() {
       : true;
     if (confirmed) performReset();
   }, [currentAccount, deleteQrRegistrationsForExternalScope, externalMosqueNameInput, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode]);
+
+  const internalMosqueOptions = useMemo(
+    () => MOSQUE_OPTIONS.filter((option) => option.key !== EXTERNAL_MOSQUE_KEY),
+    [],
+  );
+
+  const toggleDbResetMosqueSelection = useCallback((categoryKey, mosqueKey) => {
+    setDbResetSelectionByCategory((prev) => {
+      const current = Array.isArray(prev?.[categoryKey]) ? prev[categoryKey] : [];
+      const exists = current.includes(mosqueKey);
+      return {
+        ...prev,
+        [categoryKey]: exists
+          ? current.filter((key) => key !== mosqueKey)
+          : [...current, mosqueKey],
+      };
+    });
+  }, []);
+
+  const runInternalDbReset = useCallback((category) => {
+    if (isGuestMode) return;
+    const selectedMosqueKeys = Array.isArray(dbResetSelectionByCategory?.[category.key]) ? dbResetSelectionByCategory[category.key] : [];
+    if (!selectedMosqueKeys.length) {
+      setToast('Bitte mindestens eine Moschee auswählen');
+      return;
+    }
+
+    const performReset = async () => {
+      try {
+        setDbResetLoadingByCategory((prev) => ({ ...prev, [category.key]: true }));
+        let deletedCount = 0;
+        let failureCount = 0;
+
+        if (category.key === 'qr') {
+          const registrationIds = await listGlobalDocIds(QR_REGISTRATION_COLLECTION).catch(() => []);
+          const registrationRows = await Promise.all(
+            registrationIds.map((id) => getGlobalDocData(QR_REGISTRATION_COLLECTION, id).catch(() => null)),
+          );
+          const deleteTargets = registrationIds.filter((id, index) => {
+            const mosqueKey = getMosqueOptionByKey(registrationRows[index]?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+            return selectedMosqueKeys.includes(mosqueKey);
+          });
+          await Promise.all(deleteTargets.map(async (id) => {
+            try {
+              await deleteGlobalDocData(QR_REGISTRATION_COLLECTION, id);
+              deletedCount += 1;
+            } catch (error) {
+              failureCount += 1;
+            }
+          }));
+        } else {
+          const collectionResults = await Promise.all(
+            selectedMosqueKeys.flatMap((mosqueKey) => (
+              category.collections.map((collection) => deleteAllDocsInCollectionForMosque(collection, mosqueKey))
+            )),
+          );
+          collectionResults.forEach((result) => {
+            deletedCount += Number(result?.deleted) || 0;
+            failureCount += Array.isArray(result?.failed) ? result.failed.length : 0;
+          });
+        }
+
+        setToast(
+          failureCount
+            ? `${category.label}: ${deletedCount} Einträge gelöscht, ${failureCount} Fehler`
+            : `${category.label}: ${deletedCount} Einträge gelöscht ✓`,
+        );
+      } catch (error) {
+        console.error('runInternalDbReset failed', error);
+        setToast(`${category.label} konnte nicht gelöscht werden`);
+      } finally {
+        setDbResetLoadingByCategory((prev) => ({ ...prev, [category.key]: false }));
+      }
+    };
+
+    const selectedLabels = internalMosqueOptions
+      .filter((option) => selectedMosqueKeys.includes(option.key))
+      .map((option) => option.label)
+      .join(', ');
+    const confirmText = `${category.label} für folgende Moscheen löschen: ${selectedLabels}?`;
+    const canUseAlert = Platform.OS !== 'web';
+    if (canUseAlert) {
+      Alert.alert(
+        `${category.label} löschen`,
+        confirmText,
+        [
+          { text: 'Abbrechen', style: 'cancel' },
+          { text: 'Löschen', style: 'destructive', onPress: performReset },
+        ],
+      );
+      return;
+    }
+    const confirmed = typeof globalThis?.confirm === 'function'
+      ? globalThis.confirm(confirmText)
+      : true;
+    if (confirmed) performReset();
+  }, [dbResetSelectionByCategory, internalMosqueOptions, isGuestMode]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin || account?.isExternalGuest) return;
@@ -8433,6 +8604,7 @@ function AppContent() {
                     )}
                   </View>
 
+                  {currentAccount ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking (Gebete)</Text>
                     <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsWeekRankingRange)}</Text>
@@ -8506,6 +8678,7 @@ function AppContent() {
                       });
                     })()}
                   </View>
+                  ) : null}
 
                   {effectivePermissions.canViewIdStats ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
@@ -8989,6 +9162,46 @@ function AppContent() {
         </View>
       ) : null}
 
+      {!isGuestMode ? (
+        <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>DB-Reset (Intern)</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Löscht Einträge der gewählten Kategorie(n) pro ausgewählter Moschee.</Text>
+          {INTERNAL_RESET_CATEGORIES.map((category) => {
+            const selected = Array.isArray(dbResetSelectionByCategory?.[category.key]) ? dbResetSelectionByCategory[category.key] : [];
+            const isLoading = Boolean(dbResetLoadingByCategory?.[category.key]);
+            return (
+              <View key={category.key} style={[styles.statsCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
+                <Text style={[styles.statsCardTitle, { color: theme.text }]}>{category.label}</Text>
+                <View style={styles.statsToggleRow}>
+                  {internalMosqueOptions.map((mosque) => {
+                    const isActive = selected.includes(mosque.key);
+                    return (
+                      <Pressable
+                        key={`${category.key}_${mosque.key}`}
+                        onPress={() => toggleDbResetMosqueSelection(category.key, mosque.key)}
+                        style={[styles.statsToggleBtn, { borderColor: isActive ? theme.button : theme.border, backgroundColor: isActive ? theme.button : theme.bg }]}
+                      >
+                        <Text style={[styles.statsToggleBtnText, { color: isActive ? theme.buttonText : theme.text }]}>{mosque.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Pressable
+                  style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: '#B91C1C', opacity: isLoading ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+                  onPress={() => runInternalDbReset(category)}
+                  disabled={isLoading}
+                >
+                  <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: '#FFFFFF' }]}>
+                    {isLoading ? 'Löscht…' : `${category.label} löschen`}
+                  </Text>
+                </Pressable>
+              </View>
+            );
+          })}
+          <Text style={[styles.noteText, { color: theme.muted }]}>Hinweis: Es werden Einträge gelöscht, Collections bleiben bestehen.</Text>
+        </View>
+      ) : null}
+
       <View style={styles.appMetaWrap}>
         <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.1.0</Text>
         <Text style={[styles.appMetaCopyright, { color: theme.muted }]}>© 2026 Tehmoor Bhatti. All rights reserved.</Text>
@@ -9243,7 +9456,7 @@ function AppContent() {
       <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       {!shouldRestrictToPrayerView && !shouldRestrictToQrView && !shouldRestrictToRegistrationView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount) || isGuestMode) ? (
-        <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 6), minHeight: 60 + Math.max(insets.bottom, 6) }]}>
+        <View style={[styles.tabBar, isTablet && styles.tabBarTablet, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 4), minHeight: 52 + Math.max(insets.bottom, 4) }]}>
           {visibleTabs.map((tab) => (
             <Pressable key={tab.key} onPress={() => handleTabPress(tab.key)} style={withPressEffect(styles.tabItem)}>
               <Text numberOfLines={1} style={[styles.tabLabel, isTablet && styles.tabLabelTablet, { color: activeTab === tab.key ? theme.text : theme.muted, fontWeight: activeTab === tab.key ? '700' : '500' }]}>{tab.label}</Text>
@@ -9936,9 +10149,9 @@ const styles = StyleSheet.create({
   announcementActions: { flexDirection: 'row', gap: 10, marginTop: 2 },
   announcementActionsTablet: { marginTop: 6, gap: 12 },
   announcementActionBtn: { flex: 1 },
-  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 60, paddingHorizontal: 8 },
-  tabBarTablet: { minHeight: 82, paddingHorizontal: 20 },
-  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 4 },
+  tabBar: { flexDirection: 'row', borderTopWidth: 1, minHeight: 52, paddingHorizontal: 6 },
+  tabBarTablet: { minHeight: 72, paddingHorizontal: 16 },
+  tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8, paddingHorizontal: 4 },
   buttonPressed: { transform: [{ scale: 0.96 }], opacity: 0.9 },
   qrPageCard: { alignItems: 'center', paddingVertical: 22, gap: 14 },
   qrPageTitle: { textAlign: 'center', fontSize: 24, fontWeight: '800' },
@@ -9957,8 +10170,8 @@ const styles = StyleSheet.create({
   qrRegisteredMeta: { textAlign: 'center', fontSize: 12, fontWeight: '600' },
   qrDeviceHintCard: { borderWidth: 1, borderRadius: 14, padding: 12 },
   qrDeviceHintText: { textAlign: 'center', fontSize: 13, lineHeight: 20, fontWeight: '600' },
-  tabLabel: { fontSize: 10, textAlign: 'center', width: '100%' },
-  tabLabelTablet: { fontSize: 14 },
+  tabLabel: { fontSize: 9, textAlign: 'center', width: '100%' },
+  tabLabelTablet: { fontSize: 12 },
   toast: { position: 'absolute', bottom: 68, alignSelf: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10 },
   bigTerminalBtn: { borderRadius: 18, minHeight: 120, alignItems: 'center', justifyContent: 'center' },
   bigTerminalText: { fontSize: 34, fontWeight: '800' },
