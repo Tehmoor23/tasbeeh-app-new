@@ -6878,6 +6878,17 @@ function AppContent() {
     window.sessionStorage?.removeItem(STORAGE_KEYS.qrActivePage);
   }, [isQrPageVisible, isQrScanPageVisible]);
 
+  useEffect(() => {
+    if (activeTab !== 'terminal') return;
+    if (attendanceMode === 'program' && qrAttendanceCategory !== 'program') {
+      setQrAttendanceCategory('program');
+      return;
+    }
+    if (attendanceMode === 'prayer' && qrAttendanceCategory !== 'prayer') {
+      setQrAttendanceCategory('prayer');
+    }
+  }, [activeTab, attendanceMode, qrAttendanceCategory]);
+
   const handleTabPress = useCallback((tabKey) => {
     setActiveTab(tabKey);
     setQrPageVisible(false);
@@ -7687,6 +7698,37 @@ function AppContent() {
                       : 'Anmeldung ist aktuell nicht aktiv.')))}
             </Text>
           </>
+        ) : null}
+
+        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode)) ? (
+          <View style={[styles.terminalInlineQrCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+            <Text style={[styles.terminalInlineQrTitle, { color: theme.text }]}>
+              {isProgramMode ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}
+            </Text>
+            <Text style={[styles.terminalInlineQrHint, { color: theme.muted }]}>
+              {isProgramMode
+                ? 'Direkt scannen oder manuell eintragen.'
+                : 'Direkt scannen oder manuell eintragen.'}
+            </Text>
+            <View style={[styles.terminalInlineQrImageWrap, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              {qrImageUri ? (
+                <Image
+                  source={{ uri: qrImageUri }}
+                  style={styles.terminalInlineQrImage}
+                  resizeMode="contain"
+                  onLoad={() => { if (qrPendingImageUri === qrImageUri) setQrPendingImageUri(''); }}
+                />
+              ) : <ActivityIndicator size="small" color={theme.text} />}
+              {qrPendingImageUri ? (
+                <Image
+                  source={{ uri: qrPendingImageUri }}
+                  style={styles.qrCodePreloadImage}
+                  resizeMode="contain"
+                  onLoad={() => { setQrImageUri(qrPendingImageUri); setQrPendingImageUri(''); }}
+                />
+              ) : null}
+            </View>
+          </View>
         ) : null}
 
         <View style={styles.privacyNoticeWrap}>
@@ -10172,6 +10214,11 @@ const styles = StyleSheet.create({
   qrRegisteredMeta: { textAlign: 'center', fontSize: 12, fontWeight: '600' },
   qrDeviceHintCard: { borderWidth: 1, borderRadius: 14, padding: 12 },
   qrDeviceHintText: { textAlign: 'center', fontSize: 13, lineHeight: 20, fontWeight: '600' },
+  terminalInlineQrCard: { marginTop: 14, borderWidth: 1, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 12, alignItems: 'center' },
+  terminalInlineQrTitle: { fontSize: 14, fontWeight: '800', textAlign: 'center' },
+  terminalInlineQrHint: { marginTop: 4, fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  terminalInlineQrImageWrap: { marginTop: 10, borderWidth: 1, borderRadius: 12, padding: 8 },
+  terminalInlineQrImage: { width: 180, height: 180 },
   tabLabel: { fontSize: 9, textAlign: 'center', width: '100%' },
   tabLabelTablet: { fontSize: 12 },
   tabLabelTabletWebCompact: { fontSize: 10 },
