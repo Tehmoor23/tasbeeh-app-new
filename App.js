@@ -6902,6 +6902,32 @@ function AppContent() {
     inactivityLastInteractionRef.current = Date.now();
   }, []);
 
+  const scrollTerminalToTop = useCallback(() => {
+    const run = () => {
+      terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+      if (Platform.OS === 'web' && globalThis?.window?.scrollTo) {
+        globalThis.window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
+    };
+    if (Platform.OS === 'web' && typeof globalThis?.requestAnimationFrame === 'function') {
+      globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(run));
+      return;
+    }
+    setTimeout(run, 0);
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const listener = () => recordTerminalInteraction();
+    const webTarget = globalThis?.window;
+    if (!webTarget?.addEventListener) return;
+    const events = ['wheel', 'scroll', 'touchmove', 'mousemove', 'mousedown', 'keydown'];
+    events.forEach((eventName) => webTarget.addEventListener(eventName, listener, { passive: true }));
+    return () => {
+      events.forEach((eventName) => webTarget.removeEventListener(eventName, listener));
+    };
+  }, [recordTerminalInteraction]);
+
   useEffect(() => {
     const loadTerminalInactivityConfig = async () => {
       const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
@@ -6975,13 +7001,11 @@ function AppContent() {
       setIdSearchQuery('');
       setQrPageVisible(false);
       setQrScanPageVisible(false);
-      setTimeout(() => {
-        terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
-      }, 0);
+      scrollTerminalToTop();
       inactivityLastInteractionRef.current = Date.now();
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentAccount, normalizedAppMode, prayerWindow.isActive, programWindow.isActive, terminalInactivityEnabledInput, terminalInactivityTimeoutInput]);
+  }, [currentAccount, normalizedAppMode, prayerWindow.isActive, programWindow.isActive, scrollTerminalToTop, terminalInactivityEnabledInput, terminalInactivityTimeoutInput]);
 
   const handleTabPress = useCallback((tabKey) => {
     recordTerminalInteraction();
