@@ -37,6 +37,7 @@ const STORAGE_KEYS = {
   qrActivePage: '@tasbeeh_qr_active_page',
   guestActivation: '@tasbeeh_guest_activation',
   guestExternalConfig: '@tasbeeh_guest_external_config',
+  terminalInactivityConfig: '@tasbeeh_terminal_inactivity_config',
 };
 
 const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
@@ -46,6 +47,7 @@ const QR_COUNTDOWN_SECONDS = Math.floor(QR_REFRESH_INTERVAL_MS / 1000);
 
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
+const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `${STORAGE_KEYS.terminalInactivityConfig}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}:${normalizeExternalScopeKey(externalScopeKey || 'default') || 'default'}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
@@ -335,6 +337,8 @@ const PROGRAM_CONFIG_COLLECTION = 'program_configs';
 const REGISTRATION_ATTENDANCE_COLLECTION = 'attendance_registration_entries';
 const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
 const REGISTRATION_CONFIG_COLLECTION = 'registration_configs';
+const TERMINAL_INACTIVITY_CONFIG_COLLECTION = 'terminal_inactivity_configs';
+const TERMINAL_INACTIVITY_CONFIG_DOC_ID = 'default';
 const EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS = [
   PRAYER_OVERRIDE_COLLECTION,
   ANNOUNCEMENT_COLLECTION,
@@ -1732,6 +1736,11 @@ function AppContent() {
   const [registrationConfirmFromQuickSearch, setRegistrationConfirmFromQuickSearch] = useState(false);
   const [registrationDeclineConfirmVisible, setRegistrationDeclineConfirmVisible] = useState(false);
   const [registrationDeclineReasonInput, setRegistrationDeclineReasonInput] = useState('');
+  const [terminalInactivityEnabledInput, setTerminalInactivityEnabledInput] = useState(true);
+  const [terminalInactivityTimeoutInput, setTerminalInactivityTimeoutInput] = useState('90');
+  const [terminalInactivityScopeInput, setTerminalInactivityScopeInput] = useState('global');
+  const [terminalInactivitySaving, setTerminalInactivitySaving] = useState(false);
+  const inactivityLastInteractionRef = useRef(Date.now());
   const [idSearchQuery, setIdSearchQuery] = useState('');
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
@@ -6889,11 +6898,94 @@ function AppContent() {
     }
   }, [activeTab, attendanceMode, qrAttendanceCategory]);
 
+  const recordTerminalInteraction = useCallback(() => {
+    inactivityLastInteractionRef.current = Date.now();
+  }, []);
+
+  useEffect(() => {
+    const loadTerminalInactivityConfig = async () => {
+      const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      const localStorageKey = getTerminalInactivityStorageKey(activeMosqueKey, externalScopeKey);
+      const [localRaw, globalConfig] = await Promise.all([
+        AsyncStorage.getItem(localStorageKey).catch(() => null),
+        getDocData(TERMINAL_INACTIVITY_CONFIG_COLLECTION, TERMINAL_INACTIVITY_CONFIG_DOC_ID).catch(() => null),
+      ]);
+      const localConfig = localRaw ? (() => { try { return JSON.parse(localRaw); } catch { return null; } })() : null;
+      const preferredConfig = localConfig?.scope === 'device'
+        ? localConfig
+        : (globalConfig || localConfig || null);
+      const timeoutSeconds = Math.max(15, Number(preferredConfig?.timeoutSeconds) || 90);
+      setTerminalInactivityEnabledInput(Boolean(preferredConfig?.enabled ?? true));
+      setTerminalInactivityTimeoutInput(String(timeoutSeconds));
+      setTerminalInactivityScopeInput(preferredConfig?.scope === 'device' ? 'device' : 'global');
+      inactivityLastInteractionRef.current = Date.now();
+    };
+    if (normalizedAppMode !== 'full') return;
+    loadTerminalInactivityConfig();
+  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, normalizedAppMode]);
+
+  const saveTerminalInactivityConfig = useCallback(async () => {
+    const timeoutSeconds = Math.max(15, Number(String(terminalInactivityTimeoutInput || '').replace(/[^0-9]/g, '')) || 90);
+    const payload = {
+      enabled: Boolean(terminalInactivityEnabledInput),
+      timeoutSeconds,
+      scope: terminalInactivityScopeInput === 'device' ? 'device' : 'global',
+      updatedAt: new Date().toISOString(),
+    };
+    const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+    const localStorageKey = getTerminalInactivityStorageKey(activeMosqueKey, externalScopeKey);
+    try {
+      setTerminalInactivitySaving(true);
+      if (payload.scope === 'device') {
+        await AsyncStorage.setItem(localStorageKey, JSON.stringify(payload));
+      } else {
+        await setDocData(TERMINAL_INACTIVITY_CONFIG_COLLECTION, TERMINAL_INACTIVITY_CONFIG_DOC_ID, payload);
+      }
+      setTerminalInactivityTimeoutInput(String(timeoutSeconds));
+      setToast(payload.scope === 'device' ? 'Inactivity-Reset für dieses Gerät gespeichert ✓' : 'Inactivity-Reset global gespeichert ✓');
+      inactivityLastInteractionRef.current = Date.now();
+    } catch (error) {
+      console.error('saveTerminalInactivityConfig failed', error);
+      setToast('Inactivity-Reset konnte nicht gespeichert werden');
+    } finally {
+      setTerminalInactivitySaving(false);
+    }
+  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, terminalInactivityEnabledInput, terminalInactivityScopeInput, terminalInactivityTimeoutInput]);
+
+  useEffect(() => {
+    if (normalizedAppMode !== 'full') return;
+    const timeoutSeconds = Math.max(15, Number(String(terminalInactivityTimeoutInput || '').replace(/[^0-9]/g, '')) || 90);
+    const exactlyOneAttendanceWindowActive = prayerWindow.isActive !== programWindow.isActive;
+    const shouldRun = Boolean(terminalInactivityEnabledInput)
+      && !currentAccount
+      && exactlyOneAttendanceWindowActive;
+    if (!shouldRun) return;
+
+    const timer = setInterval(() => {
+      const elapsedMs = Date.now() - inactivityLastInteractionRef.current;
+      if (elapsedMs < timeoutSeconds * 1000) return;
+      setActiveTab('terminal');
+      setAttendanceMode(prayerWindow.isActive ? 'prayer' : 'program');
+      setTerminalMode('tanzeem');
+      setSelectedTanzeem('');
+      setSelectedMajlis('');
+      setPendingRegistrationMember(null);
+      setQuickIdSearchVisible(false);
+      setQuickIdSearchQuery('');
+      setIdSearchQuery('');
+      setQrPageVisible(false);
+      setQrScanPageVisible(false);
+      inactivityLastInteractionRef.current = Date.now();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [currentAccount, normalizedAppMode, prayerWindow.isActive, programWindow.isActive, terminalInactivityEnabledInput, terminalInactivityTimeoutInput]);
+
   const handleTabPress = useCallback((tabKey) => {
+    recordTerminalInteraction();
     setActiveTab(tabKey);
     setQrPageVisible(false);
     setQrScanPageVisible(false);
-  }, []);
+  }, [recordTerminalInteraction]);
 
   const countAttendance = async (modeType, kind, locationName, selectedMember = null, options = {}) => {
     const nowTs = Date.now();
@@ -7345,7 +7437,7 @@ function AppContent() {
           <>
             {isQuickIdSearchVisible ? (
               <>
-                <Pressable onPress={() => { setQuickIdSearchVisible(false); setQuickIdSearchQuery(''); }} style={withPressEffect(styles.quickSearchLinkWrap)}>
+                <Pressable onPress={() => setQuickIdSearchVisible(false)} style={withPressEffect(styles.quickSearchLinkWrap)}>
                   <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Schließen</Text>
                 </Pressable>
                 <View style={[styles.quickSearchPanel, { borderColor: '#000000', backgroundColor: theme.card }]}>
@@ -7700,7 +7792,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode) && (!isQuickIdSearchVisible || quickSearchDigits.length === 0)) ? (
+        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode)) ? (
           <View style={[styles.terminalInlineQrCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
             <Text style={[styles.terminalInlineQrTitle, { color: theme.text }]}>
               {isProgramMode ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}
@@ -8844,6 +8936,56 @@ function AppContent() {
       </View>
       ) : null}
 
+      {normalizedAppMode === 'full' ? (
+        <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Kiosk Inactivity Reset</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Automatischer Rücksprung zur Anwesenheit bei Inaktivität.</Text>
+
+          <View style={styles.mergeSwitchWrap}>
+            <Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Funktion aktivieren</Text>
+            <Switch value={terminalInactivityEnabledInput} onValueChange={setTerminalInactivityEnabledInput} />
+          </View>
+
+          <View style={styles.mergeInputWrap}>
+            <TextInput
+              value={terminalInactivityTimeoutInput}
+              onChangeText={(value) => setTerminalInactivityTimeoutInput(String(value || '').replace(/[^0-9]/g, ''))}
+              placeholder="Timeout in Sekunden (mind. 15)"
+              placeholderTextColor={theme.muted}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              autoCapitalize="none"
+              style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+            />
+          </View>
+
+          <View style={styles.statsToggleRow}>
+            <Pressable
+              onPress={() => setTerminalInactivityScopeInput('global')}
+              style={[styles.statsToggleBtn, { borderColor: terminalInactivityScopeInput === 'global' ? theme.button : theme.border, backgroundColor: terminalInactivityScopeInput === 'global' ? theme.button : theme.bg }]}
+            >
+              <Text style={[styles.statsToggleBtnText, { color: terminalInactivityScopeInput === 'global' ? theme.buttonText : theme.text }]}>Global</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => setTerminalInactivityScopeInput('device')}
+              style={[styles.statsToggleBtn, { borderColor: terminalInactivityScopeInput === 'device' ? theme.button : theme.border, backgroundColor: terminalInactivityScopeInput === 'device' ? theme.button : theme.bg }]}
+            >
+              <Text style={[styles.statsToggleBtnText, { color: terminalInactivityScopeInput === 'device' ? theme.buttonText : theme.text }]}>Nur dieses Gerät</Text>
+            </Pressable>
+          </View>
+
+          <Text style={[styles.noteText, { color: theme.muted }]}>Aktiv nur bei offenem Gebets-/Programmfenster und wenn niemand eingeloggt ist.</Text>
+
+          <Pressable
+            style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: terminalInactivitySaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+            disabled={terminalInactivitySaving}
+            onPress={saveTerminalInactivityConfig}
+          >
+            <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{terminalInactivitySaving ? 'Speichert…' : 'Speichern'}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {isGuestMode ? (
         <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
           <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Local Amarat / Moschee</Text>
@@ -9484,7 +9626,15 @@ function AppContent() {
             : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.bg }]}>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: theme.bg }]}
+      onTouchStart={recordTerminalInteraction}
+      onStartShouldSetResponderCapture={() => {
+        recordTerminalInteraction();
+        return false;
+      }}
+      onMouseDown={Platform.OS === 'web' ? recordTerminalInteraction : undefined}
+    >
       <StatusBar style={isDarkMode ? 'light' : 'dark'} />
       <Text style={[styles.basmalaText, { color: theme.muted }]}>بِسۡمِ اللّٰہِ الرَّحۡمٰنِ الرَّحِیۡمِ</Text>
       <Pressable style={styles.logoWrap} onPress={handleLogoPress}>
