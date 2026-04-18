@@ -52,7 +52,7 @@ const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `$
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
 const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
-const SECRET_QR_APP_URL = ''; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
+const SECRET_QR_APP_URL = 'https://qr-terminal.web.app'; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -4127,6 +4127,27 @@ function AppContent() {
     if (currentContext.prayerWindow?.nextLabel) return `Gebetsfenster geschlossen. Nächstes Gebet: ${currentContext.prayerWindow.nextLabel}.`;
     return 'Gebetsfenster geschlossen.';
   }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLastRuntimeHint, qrLiveProgramWindow, qrRegistration, qrRuntimeContext.iso, resolveQrPrayerContext]);
+  const qrScanContextHint = useMemo(() => {
+    if (qrAttendanceCategory === 'program') {
+      if (qrLiveProgramWindow.isActive) {
+        return `Aktuell findet das Programm ${qrLiveProgramWindow.label || 'Programm'} statt.`;
+      }
+      if (!qrLiveProgramWindow.isConfigured) {
+        return 'Aktuell ist kein Programm hinterlegt.';
+      }
+      return `Programm ist derzeit nicht aktiv. Start: ${qrLiveProgramWindow.startTime || '—'}.`;
+    }
+    if (qrLivePrayerWindow.isActive && qrLivePrayerWindow.prayerKey) {
+      return `Aktuell findet das ${getDisplayPrayerLabel(qrLivePrayerWindow.prayerKey, qrLiveTimesToday)} Gebet statt.`;
+    }
+    if (qrLivePrayerWindow.nextLabel) {
+      return `Aktuell ist kein Gebetsfenster aktiv. Nächstes Gebet: ${qrLivePrayerWindow.nextLabel}.`;
+    }
+    return 'Aktuell ist kein Gebetsfenster aktiv.';
+  }, [qrAttendanceCategory, qrLivePrayerWindow.isActive, qrLivePrayerWindow.nextLabel, qrLivePrayerWindow.prayerKey, qrLiveProgramWindow.isActive, qrLiveProgramWindow.isConfigured, qrLiveProgramWindow.label, qrLiveProgramWindow.startTime, qrLiveTimesToday]);
+  const qrScanRegistrationHint = qrRegistration?.idNumber
+    ? 'Dieser Browser ist bereits registriert.'
+    : 'Dieser Browser ist noch nicht registriert.';
 
 
 
@@ -9531,7 +9552,14 @@ function AppContent() {
 
     <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false}>
       <View style={[styles.dayCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
-        <Text style={[styles.qrPageTitle, { color: theme.text }]}>{qrAttendanceCategory === 'program' ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}</Text>
+        <Text style={[styles.qrPageTitle, { color: theme.text }]}>QR Anwesenheit</Text>
+        {isSecretMode ? (
+          <View style={[styles.qrDeviceHintCard, { borderColor: theme.border, backgroundColor: theme.bg }]}> 
+            <Text style={[styles.qrDeviceHintText, { color: theme.text }]}>{qrScanContextHint}</Text>
+            <Text style={[styles.qrDeviceHintText, { color: theme.text }]}>{qrScanRegistrationHint}</Text>
+            <Text style={[styles.qrDeviceHintText, { color: theme.text }]}>Bitte scannen Sie den QR-Code am Terminal, um die Eintragung zu starten.</Text>
+          </View>
+        ) : null}
         {qrSubmitting ? <ActivityIndicator size="small" color={theme.text} /> : null}
         {qrStatusMessage ? (
           <View style={[styles.qrStatusCard, qrStatusTone === 'negative' ? styles.qrStatusCardNegative : qrStatusTone === 'positive' ? styles.qrStatusCardPositive : null, { borderColor: theme.border }]}> 
