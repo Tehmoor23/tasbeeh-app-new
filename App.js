@@ -38,6 +38,7 @@ const STORAGE_KEYS = {
   guestActivation: '@tasbeeh_guest_activation',
   guestExternalConfig: '@tasbeeh_guest_external_config',
   terminalInactivityConfig: '@tasbeeh_terminal_inactivity_config',
+  prayerOverrideCache: '@tasbeeh_prayer_override_cache',
 };
 
 const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
@@ -48,6 +49,7 @@ const QR_COUNTDOWN_SECONDS = Math.floor(QR_REFRESH_INTERVAL_MS / 1000);
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `${STORAGE_KEYS.terminalInactivityConfig}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}:${normalizeExternalScopeKey(externalScopeKey || 'default') || 'default'}`;
+const getPrayerOverrideCacheStorageKey = (mosqueKey, externalScopeKey = '') => `${STORAGE_KEYS.prayerOverrideCache}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}:${normalizeExternalScopeKey(externalScopeKey || 'default') || 'default'}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
@@ -323,6 +325,14 @@ const FIXED_TIMES = {
   maghrib: '18:45',
   ishaa: '20:00',
   jumma: '13:15',
+};
+const EMPTY_TIMES = {
+  fajr: '',
+  sohar: '',
+  asr: '',
+  maghrib: '',
+  ishaa: '',
+  jumma: '',
 };
 
 const PRAYER_OVERRIDE_COLLECTION = 'prayer_time_overrides';
@@ -2909,9 +2919,10 @@ function AppContent() {
 
   const baseTimesToday = useMemo(() => buildPrayerTimes(selectedRaw, isRamadanPeriodToday), [selectedRaw, isRamadanPeriodToday]);
   const timesToday = useMemo(() => {
+    if (normalizedAppMode === 'full' && !prayerOverrideReady) return { ...EMPTY_TIMES };
     const withManual = applyManualPrayerAdjustments(baseTimesToday, prayerOverride);
     return applyPrayerTimeOverride(withManual, prayerOverride);
-  }, [baseTimesToday, prayerOverride]);
+  }, [baseTimesToday, normalizedAppMode, prayerOverride, prayerOverrideReady]);
   const isRamadanPeriodTomorrow = useMemo(() => tomorrowISO <= RAMADAN_END_ISO, [tomorrowISO]);
   const tomorrowRaw = useMemo(() => (isRamadanPeriodTomorrow ? (RAMADAN_RAW[tomorrowISO] || null) : null), [tomorrowISO, isRamadanPeriodTomorrow]);
   const timesTomorrow = useMemo(() => buildPrayerTimes(tomorrowRaw, isRamadanPeriodTomorrow), [tomorrowRaw, isRamadanPeriodTomorrow]);
@@ -3084,8 +3095,11 @@ function AppContent() {
 
   useEffect(() => {
     let cancelled = false;
+    let hasAppliedCache = false;
+    let hasAppliedRemote = false;
     setPrayerOverrideReady(false);
     setOverrideLoading(true);
+    const overrideCacheKey = getPrayerOverrideCacheStorageKey(activeMosqueKey, activeExternalScopeDependency);
     const applyEditableOverride = (baseOverride, pendingOverride) => {
       const isTomorrowEdit = overrideEditDayOffset === 1;
       const hasPendingForDisplayDate = pendingOverride?.dateISO === overrideDisplayDateISO;
@@ -3107,9 +3121,32 @@ function AppContent() {
       setPrayerOverrideReady(true);
       setOverrideLoading(false);
     };
-    const applyFromData = (globalData, pendingData) => {
+    const applyFromData = (globalData, pendingData, persistCache = true) => {
+      if (persistCache) hasAppliedRemote = true;
       applyEditableOverride(normalizePrayerOverride(globalData), normalizePendingPrayerOverride(pendingData));
+      if (persistCache) {
+        AsyncStorage.setItem(overrideCacheKey, JSON.stringify({
+          globalOverride: normalizePrayerOverride(globalData),
+          pendingOverride: normalizePendingPrayerOverride(pendingData),
+          updatedAt: new Date().toISOString(),
+        })).catch(() => {});
+      }
     };
+    const applyFromCache = async () => {
+      const cachedRaw = await AsyncStorage.getItem(overrideCacheKey).catch(() => null);
+      if (!cachedRaw || cancelled) return;
+      let parsed = null;
+      try {
+        parsed = JSON.parse(cachedRaw);
+      } catch {
+        parsed = null;
+      }
+      if (!parsed || cancelled || hasAppliedRemote) return;
+      hasAppliedCache = true;
+      applyFromData(parsed?.globalOverride || null, parsed?.pendingOverride || null, false);
+    };
+
+    applyFromCache();
 
     if (!firebaseRuntime || !hasFirebaseConfig()) {
       Promise.all([
@@ -3119,6 +3156,9 @@ function AppContent() {
         .then(([globalData, pendingData]) => applyFromData(globalData, pendingData))
         .catch(() => {
           if (!cancelled) {
+            if (!hasAppliedCache) {
+              applyFromData(null, null, false);
+            }
             setPrayerOverrideReady(true);
             setOverrideLoading(false);
             setToast('Override konnte nicht geladen werden');
@@ -3145,6 +3185,9 @@ function AppContent() {
       },
       () => {
         if (!cancelled) {
+          if (!hasAppliedCache) {
+            applyFromData(null, null, false);
+          }
           setPrayerOverrideReady(true);
           setOverrideLoading(false);
           setToast('Override konnte nicht geladen werden');
@@ -3160,6 +3203,9 @@ function AppContent() {
       },
       () => {
         if (!cancelled) {
+          if (!hasAppliedCache) {
+            applyFromData(null, null, false);
+          }
           setPrayerOverrideReady(true);
           setOverrideLoading(false);
           setToast('Override konnte nicht geladen werden');
