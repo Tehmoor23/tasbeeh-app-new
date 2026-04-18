@@ -51,7 +51,8 @@ const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `$
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
+const SECRET_QR_APP_URL = ''; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
   { key: 'nuur_moschee', label: 'Nuur-Moschee', suffix: 'NUUR' },
@@ -1548,12 +1549,19 @@ const buildQrScanUrl = ({
   cycleStart,
   attendanceCategory = 'prayer',
   externalScopeKey = '',
+  scanBaseUrl = '',
 }) => {
   const payload = createQrPayload({ mosqueKey, cycleStart, attendanceCategory, externalScopeKey });
   const encodedPayload = encodeQrPayload(payload);
   if (!encodedPayload) return '';
   if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
-  const url = new URL(window.location.href);
+  const preferredScanBaseUrl = String(scanBaseUrl || '').trim();
+  let url;
+  try {
+    url = preferredScanBaseUrl ? new URL(preferredScanBaseUrl) : new URL(window.location.href);
+  } catch {
+    url = new URL(window.location.href);
+  }
   url.searchParams.set(QR_SCAN_PARAM, encodedPayload);
   return url.toString();
 };
@@ -1752,6 +1760,7 @@ function AppContent() {
   const [quickIdSearchQuery, setQuickIdSearchQuery] = useState('');
   const [isQuickIdSearchVisible, setQuickIdSearchVisible] = useState(false);
   const normalizedAppMode = APP_MODE === 'guest' ? 'extern' : APP_MODE;
+  const isSecretMode = normalizedAppMode === 'secret';
   const isExternMode = normalizedAppMode === 'extern' || normalizedAppMode === 'qr_extern';
   const isQrExternMode = normalizedAppMode === 'qr_extern';
   const isGuestMode = isExternMode;
@@ -1773,6 +1782,7 @@ function AppContent() {
           || '',
         )
         : '',
+      scanBaseUrl: SECRET_QR_APP_URL,
     }),
     [activeMosqueKey, currentAccount?.externalMosqueName, currentAccount?.name, guestActivation?.mosqueName, guestActivation?.scopeKey, qrAttendanceCategory, qrCycleStart],
   );
@@ -1878,7 +1888,7 @@ function AppContent() {
   const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = normalizedAppMode === 'display' && !currentAccount;
-  const shouldRestrictToQrView = (normalizedAppMode === 'qr' && !currentAccount)
+  const shouldRestrictToQrView = ((normalizedAppMode === 'qr' || isSecretMode) && !currentAccount)
     || isQrExternMode;
   const shouldRestrictToRegistrationView = normalizedAppMode === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
@@ -3527,10 +3537,15 @@ function AppContent() {
 
   useEffect(() => {
     if (!shouldRestrictToQrView) return;
+    if (isSecretMode) {
+      setQrScanPageVisible(true);
+      setQrPageVisible(false);
+      return;
+    }
     if (!isQrScanPageVisible) {
       setQrPageVisible(true);
     }
-  }, [isQrScanPageVisible, shouldRestrictToQrView]);
+  }, [isQrScanPageVisible, isSecretMode, shouldRestrictToQrView]);
 
   useEffect(() => {
     if (isSuperAdmin) loadAdminAccounts();
