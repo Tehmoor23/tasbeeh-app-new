@@ -1678,6 +1678,7 @@ function AppContent() {
   const [qrRegistrationTanzeem, setQrRegistrationTanzeem] = useState('');
   const [qrRegistrationMajlis, setQrRegistrationMajlis] = useState('');
   const [qrRegistrationSearchQuery, setQrRegistrationSearchQuery] = useState('');
+  const [qrRegistrationFlowSearchQuery, setQrRegistrationFlowSearchQuery] = useState('');
   const [qrScanExternalScopeKey, setQrScanExternalScopeKey] = useState('');
   const [isQrQuickIdSearchVisible, setQrQuickIdSearchVisible] = useState(false);
   const [qrSubmitting, setQrSubmitting] = useState(false);
@@ -1837,6 +1838,7 @@ function AppContent() {
     [qrAttendanceCategory],
   );
   const qrRegistrationSearchDigits = String(qrRegistrationSearchQuery || '').replace(/[^0-9]/g, '');
+  const qrRegistrationFlowSearchDigits = String(qrRegistrationFlowSearchQuery || '').replace(/[^0-9]/g, '');
   const qrRegistrationSearchResults = useMemo(() => {
     if (qrRegistrationSearchDigits.length < 4) return [];
     const allowed = new Set(qrRegistrationTanzeemOptions);
@@ -1845,6 +1847,10 @@ function AppContent() {
       .filter((entry) => String(entry.idNumber || '').includes(qrRegistrationSearchDigits))
       .slice(0, 24);
   }, [qrMembersDirectory, qrRegistrationSearchDigits, qrRegistrationTanzeemOptions]);
+  const qrRegistrationFilteredMemberChoices = useMemo(() => {
+    if (!qrRegistrationFlowSearchDigits) return qrRegistrationMemberChoices;
+    return qrRegistrationMemberChoices.filter((entry) => String(entry?.idNumber || '').includes(qrRegistrationFlowSearchDigits));
+  }, [qrRegistrationFlowSearchDigits, qrRegistrationMemberChoices]);
   const isQrExternScopeSelected = Boolean(normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || ''));
 
   useEffect(() => {
@@ -1853,6 +1859,11 @@ function AppContent() {
     setQrRegistrationMode('idSelection');
     setQrRegistrationMajlis('-');
   }, [qrRegistrationMode, shouldUseQrMajlisSelection]);
+
+  useEffect(() => {
+    if (qrRegistrationMode === 'idSelection') return;
+    setQrRegistrationFlowSearchQuery('');
+  }, [qrRegistrationMode]);
 
 
 
@@ -9639,14 +9650,26 @@ function AppContent() {
                 <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
                 <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{qrRegistrationMajlis} · {TANZEEM_LABELS[qrRegistrationTanzeem] || ''}</Text>
+                <TextInput
+                  value={qrRegistrationFlowSearchQuery}
+                  onChangeText={(value) => setQrRegistrationFlowSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
+                  placeholder="ID-Nummer filtern"
+                  placeholderTextColor={theme.muted}
+                  keyboardType="number-pad"
+                  inputMode="numeric"
+                  returnKeyType="done"
+                  style={[styles.idSearchInput, { marginTop: 6, color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                />
                 <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setQrRegistrationMode(shouldUseQrMajlisSelection ? 'majlis' : 'tanzeem')}>
                   <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
                 </Pressable>
-                {qrRegistrationMemberChoices.length === 0 ? (
-                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text>
+                {qrRegistrationFilteredMemberChoices.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>
+                    {qrRegistrationFlowSearchDigits ? 'Keine passende ID gefunden.' : 'Keine ID-Nummern verfügbar.'}
+                  </Text>
                 ) : (
                   <View style={[styles.gridWrap, styles.idGridWrap]}>
-                    {qrRegistrationMemberChoices.map((member) => (
+                    {qrRegistrationFilteredMemberChoices.map((member) => (
                       <Pressable
                         key={`qr_member_${member.tanzeem}_${member.majlis}_${member.idNumber}`}
                         style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
