@@ -9659,14 +9659,6 @@ function AppContent() {
             ? renderStats()
             : (effectivePermissions.canEditSettings ? renderSettings() : renderPrayer());
   const isPrayerTimeBootstrapPending = !prayerOverrideReady;
-  const bodyWithBootstrapGuard = isPrayerTimeBootstrapPending
-    ? (
-      <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', gap: 10 }]}>
-        <ActivityIndicator size="small" color={theme.text} />
-        <Text style={[styles.noteText, { color: theme.text, textAlign: 'center' }]}>Gebetszeiten werden geladen…</Text>
-      </View>
-    )
-    : body;
 
   return (
     <SafeAreaView
@@ -9691,7 +9683,7 @@ function AppContent() {
           </Pressable>
         </View>
       ) : null}
-      <Animated.View style={{ flex: 1, transform: [{ scale: themePulseAnim }] }}>{bodyWithBootstrapGuard}</Animated.View>
+      <Animated.View style={{ flex: 1, opacity: isPrayerTimeBootstrapPending ? 0 : 1, transform: [{ scale: themePulseAnim }] }}>{body}</Animated.View>
 
       {!shouldRestrictToPrayerView && !shouldRestrictToQrView && !shouldRestrictToRegistrationView && (!isQrPageVisible && !isQrScanPageVisible || Boolean(currentAccount) || isGuestMode) ? (
         <View style={[styles.tabBar, isTablet && styles.tabBarTablet, isTablet && Platform.OS === 'web' && styles.tabBarTabletWebCompact, { backgroundColor: theme.card, borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, isTablet && Platform.OS === 'web' ? 2 : 4), minHeight: (isTablet && Platform.OS === 'web' ? 44 : 52) + Math.max(insets.bottom, isTablet && Platform.OS === 'web' ? 2 : 4) }]}>
