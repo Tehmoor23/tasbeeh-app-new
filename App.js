@@ -315,11 +315,11 @@ const FIREBASE_CONFIG = {
 // Security note: Firestore Rules should strictly limit allowed writes (e.g. only specific counter increments on allowed collections).
 
 const FIXED_TIMES = {
-  fajr: '05:30',
-  sohar: '13:30',
-  asr: '16:00',
-  maghrib: '18:45',
-  ishaa: '20:00',
+  fajr: '05:20',
+  sohar: '14:00',
+  asr: '17:30',
+  maghrib: '20:50',
+  ishaa: '20:50',
   jumma: '13:15',
 };
 
