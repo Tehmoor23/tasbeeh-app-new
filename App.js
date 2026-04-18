@@ -6955,9 +6955,10 @@ function AppContent() {
   useEffect(() => {
     if (normalizedAppMode !== 'full') return;
     const timeoutSeconds = Math.max(15, Number(String(terminalInactivityTimeoutInput || '').replace(/[^0-9]/g, '')) || 90);
+    const exactlyOneAttendanceWindowActive = prayerWindow.isActive !== programWindow.isActive;
     const shouldRun = Boolean(terminalInactivityEnabledInput)
       && !currentAccount
-      && (prayerWindow.isActive || programWindow.isActive);
+      && exactlyOneAttendanceWindowActive;
     if (!shouldRun) return;
 
     const timer = setInterval(() => {
