@@ -1888,7 +1888,8 @@ function AppContent() {
   const normalizedAnnouncement = useMemo(() => normalizeAnnouncementText(announcementInput), [announcementInput]);
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = normalizedAppMode === 'display' && !currentAccount;
-  const shouldRestrictToQrView = ((normalizedAppMode === 'qr' || isSecretMode) && !currentAccount)
+  const shouldRestrictToQrView = isSecretMode
+    || (normalizedAppMode === 'qr' && !currentAccount)
     || isQrExternMode;
   const shouldRestrictToRegistrationView = normalizedAppMode === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
@@ -2716,6 +2717,7 @@ function AppContent() {
   }, [isSuperAdmin, loadAdminAccounts]);
 
   const handleLogoPress = useCallback(() => {
+    if (isSecretMode) return;
     if (currentAccount) {
       setToast(`Bereits eingeloggt als ${currentAccount.name}`);
       return;
@@ -2729,7 +2731,7 @@ function AppContent() {
       }
       return next;
     });
-  }, [currentAccount]);
+  }, [currentAccount, isSecretMode]);
 
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -3546,6 +3548,11 @@ function AppContent() {
       setQrPageVisible(true);
     }
   }, [isQrScanPageVisible, isSecretMode, shouldRestrictToQrView]);
+
+  useEffect(() => {
+    if (!isSecretMode) return;
+    setAdminLoginVisible(false);
+  }, [isSecretMode]);
 
   useEffect(() => {
     if (isSuperAdmin) loadAdminAccounts();
@@ -9698,7 +9705,7 @@ function AppContent() {
       <Pressable style={styles.logoWrap} onPress={handleLogoPress}>
         <Image source={logoSource} style={styles.logoImage} resizeMode="contain" />
       </Pressable>
-      {currentAccount ? (
+      {currentAccount && !isSecretMode ? (
         <View style={styles.accountSessionCenterWrap}>
           <Text style={[styles.accountSessionCenterName, { color: theme.text }]} numberOfLines={1}>{currentAccount.name}</Text>
           <Pressable onPress={logoutAccount} style={({ pressed }) => [styles.accountSessionCenterLogoutBtn, pressed && styles.buttonPressed]}>
