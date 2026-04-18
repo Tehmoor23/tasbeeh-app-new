@@ -6975,6 +6975,9 @@ function AppContent() {
       setIdSearchQuery('');
       setQrPageVisible(false);
       setQrScanPageVisible(false);
+      setTimeout(() => {
+        terminalScrollRef.current?.scrollTo?.({ y: 0, animated: false });
+      }, 0);
       inactivityLastInteractionRef.current = Date.now();
     }, 1000);
     return () => clearInterval(timer);
