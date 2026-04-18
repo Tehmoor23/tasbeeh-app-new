@@ -459,6 +459,12 @@ const getDailyTotalsForStats = (attendanceData) => {
     }, {}),
   };
 };
+const getUniqueGuestTotalForAttendance = (attendanceData) => {
+  const explicitUniqueGuestTotal = Number(attendanceData?.guestUniqueTotal);
+  if (Number.isFinite(explicitUniqueGuestTotal) && explicitUniqueGuestTotal >= 0) return explicitUniqueGuestTotal;
+  const byPrayer = attendanceData?.byPrayer || {};
+  return Object.values(byPrayer).reduce((sum, prayerNode) => sum + (Number(prayerNode?.guest) || 0), 0);
+};
 
 const buildMajlisRanking = (countsByMajlis = {}) => {
   const allKeys = Array.from(new Set([...Object.keys(MAJLIS_LABELS), ...Object.keys(countsByMajlis || {})])).filter((key) => key !== 'riedberg');
@@ -4783,10 +4789,9 @@ function AppContent() {
       khuddam: new Set(),
       atfal: new Set(),
     };
-    let guestTotal = 0;
+    const guestTotal = getUniqueGuestTotalForAttendance(attendanceData);
 
     Object.values(byPrayer).forEach((prayerNode) => {
-      guestTotal += Number(prayerNode?.guest) || 0;
       const memberDetails = prayerNode?.memberDetails || {};
       STATS_TANZEEM_KEYS.forEach((key) => {
         const majlisMap = memberDetails[key] || {};
@@ -7154,6 +7159,9 @@ function AppContent() {
         paths.push(`byPrayer.${targetKey}.tanzeem.${pathTanzeemKey}.majlis.${locationKey}`);
       }
     });
+    if (modeType === 'prayer' && kind === 'guest') {
+      paths.push('guestUniqueTotal');
+    }
 
     try {
       const programKey = modeType === 'program' ? targetKeys[0] : null;
