@@ -5004,9 +5004,13 @@ function AppContent() {
     const isos = targetRange === 'currentWeek'
       ? statsWeekIsos
       : (targetRange === 'previousWeek' ? statsRollingWeekIsos : [selectedStatsDateISO]);
+    const resolveAttendanceForIso = (iso) => {
+      if (iso === todayISO) return statsAttendance ?? weeklyAttendanceDocs[iso] ?? null;
+      return weeklyAttendanceDocs[iso] ?? null;
+    };
 
     const summary = isos.reduce((acc, iso) => {
-      const oneDay = buildUniqueSummary(weeklyAttendanceDocs[iso]);
+      const oneDay = buildUniqueSummary(resolveAttendanceForIso(iso));
       acc.total += oneDay.total;
       acc.guestTotal += oneDay.guestTotal;
       acc.tanzeemTotals.ansar += oneDay.tanzeemTotals.ansar;
@@ -5016,7 +5020,7 @@ function AppContent() {
     }, { total: 0, guestTotal: 0, tanzeemTotals: { ansar: 0, khuddam: 0, atfal: 0 } });
 
     const dayRows = isos.map((iso) => {
-      const totals = getDailyTotalsForStats(weeklyAttendanceDocs[iso]);
+      const totals = getDailyTotalsForStats(resolveAttendanceForIso(iso));
       const dateObj = parseISO(iso);
       const weekdayShort = dateObj
         ? new Intl.DateTimeFormat('de-DE', { weekday: 'short' }).format(dateObj).replace(/\.$/, '')
@@ -5046,7 +5050,7 @@ function AppContent() {
       ishaa: { total: 0, ansar: 0, khuddam: 0, atfal: 0, guest: 0 },
     };
     isos.forEach((iso) => {
-      const rows = getPrayerCountsForStats(weeklyAttendanceDocs[iso]);
+      const rows = getPrayerCountsForStats(resolveAttendanceForIso(iso));
       rows.forEach((row) => {
         if (!prayerAgg[row.key]) return;
         prayerAgg[row.key].total += Number(row.total) || 0;
@@ -5068,7 +5072,7 @@ function AppContent() {
     const topMajlisRows = (() => {
       const map = {};
       isos.forEach((iso) => {
-        const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
+        const byPrayer = resolveAttendanceForIso(iso)?.byPrayer || {};
         Object.values(byPrayer).forEach((prayerNode) => {
           const tanzeemMap = prayerNode?.tanzeem || {};
           STATS_TANZEEM_KEYS.forEach((key) => {
@@ -5098,7 +5102,7 @@ function AppContent() {
     }, {});
     const prayerLogRows = [];
     isos.forEach((iso) => {
-      const byPrayer = weeklyAttendanceDocs[iso]?.byPrayer || {};
+      const byPrayer = resolveAttendanceForIso(iso)?.byPrayer || {};
       Object.entries(byPrayer).forEach(([prayerKey, prayerNode]) => {
         const memberDetails = prayerNode?.memberDetails || {};
         Object.entries(memberDetails).forEach(([tanzeemKey, majlisMap]) => {
@@ -5142,7 +5146,7 @@ function AppContent() {
       prayerLogRows,
       totalPrayers,
     };
-  }, [selectedStatsDateISO, statsWeekIsos, statsRollingWeekIsos, weeklyAttendanceDocs]);
+  }, [selectedStatsDateISO, statsWeekIsos, statsRollingWeekIsos, statsAttendance, todayISO, weeklyAttendanceDocs]);
 
   const hasStatsExportData = useMemo(() => {
     const current = getStatsExportDataset('currentWeek');
