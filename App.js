@@ -60,6 +60,7 @@ const MOSQUE_OPTIONS = [
   { key: 'hoechst', label: 'Höchst', suffix: 'HO' },
   { key: EXTERNAL_MOSQUE_KEY, label: 'Extern', suffix: 'EXT' },
 ];
+const INTERNAL_SHARED_REGISTRATION_MOSQUE_KEYS = new Set([DEFAULT_MOSQUE_KEY, 'nuur_moschee', 'roedelheim', 'hoechst']);
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
@@ -6760,7 +6761,11 @@ function AppContent() {
         setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
         return;
       }
-      if (String(registration?.mosqueKey || '') !== String(payloadMosqueKey || '')) {
+      const registrationMosqueKey = String(registration?.mosqueKey || '');
+      const currentPayloadMosqueKey = String(payloadMosqueKey || '');
+      const canReuseInternalFrankfurtRegistration = INTERNAL_SHARED_REGISTRATION_MOSQUE_KEYS.has(registrationMosqueKey)
+        && INTERNAL_SHARED_REGISTRATION_MOSQUE_KEYS.has(currentPayloadMosqueKey);
+      if (registrationMosqueKey !== currentPayloadMosqueKey && !canReuseInternalFrankfurtRegistration) {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
         setQrQuickIdSearchVisible(false);
