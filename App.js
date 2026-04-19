@@ -51,7 +51,7 @@ const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `$
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
+const APP_MODE = 'secret'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
 const SECRET_QR_APP_URL = 'https://qr-terminal.web.app'; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
@@ -1330,12 +1330,23 @@ async function findGlobalRegistrationByIdNumber(
   mosqueKey = DEFAULT_MOSQUE_KEY,
   externalScopeKey = '',
 ) {
+  const matches = await listGlobalRegistrationsByIdNumber(collection, idNumber, mosqueKey, externalScopeKey);
+  return matches[0] || null;
+}
+
+async function listGlobalRegistrationsByIdNumber(
+  collection,
+  idNumber,
+  mosqueKey = DEFAULT_MOSQUE_KEY,
+  externalScopeKey = '',
+) {
   if (!hasFirebaseConfig()) throw new Error('Firebase config fehlt');
   const targetIdNumber = String(idNumber || '').trim();
   const targetMosqueKey = getMosqueOptionByKey(mosqueKey).key;
   const targetExternalScopeKey = normalizeExternalScopeKey(externalScopeKey);
-  if (!targetIdNumber) return null;
+  if (!targetIdNumber) return [];
   const docIds = await listGlobalDocIds(collection);
+  const matches = [];
   for (const docId of docIds) {
     const registration = await getGlobalDocData(collection, docId);
     const registrationMosqueKey = getMosqueOptionByKey(registration?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
@@ -1348,13 +1359,13 @@ async function findGlobalRegistrationByIdNumber(
       && registrationMosqueKey === targetMosqueKey
       && externalScopeMatches
     ) {
-      return {
+      matches.push({
         docId,
         registration,
-      };
+      });
     }
   }
-  return null;
+  return matches;
 }
 
 async function setGlobalDocData(collection, id, data) {
@@ -6627,30 +6638,35 @@ function AppContent() {
         setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
         return;
       }
-      const existingIdRegistration = await findGlobalRegistrationByIdNumber(
+      const existingIdRegistrations = await listGlobalRegistrationsByIdNumber(
         QR_REGISTRATION_COLLECTION,
         member.idNumber,
         activeMosqueKey,
         targetExternalScopeKey,
       );
-      const hasRegistrationConflict = existingIdRegistration?.registration?.idNumber && String(existingIdRegistration.docId) !== String(browserDeviceId);
+      const conflictingRegistrations = (existingIdRegistrations || []).filter((entry) => String(entry?.docId || '') !== String(browserDeviceId));
+      const hasRegistrationConflict = conflictingRegistrations.length > 0;
       if (hasRegistrationConflict) {
-        const conflictDocId = String(existingIdRegistration.docId || '');
+        const conflictDocIds = conflictingRegistrations
+          .map((entry) => String(entry?.docId || ''))
+          .filter(Boolean)
+          .sort();
+        const conflictDocIdsKey = conflictDocIds.join('|');
         const isConfirmedTakeover = Boolean(
           qrRegistrationOverrideCandidate
           && String(qrRegistrationOverrideCandidate.idNumber || '') === String(member.idNumber)
-          && String(qrRegistrationOverrideCandidate.docId || '') === conflictDocId,
+          && String(qrRegistrationOverrideCandidate.docIdsKey || '') === conflictDocIdsKey,
         );
         if (!isConfirmedTakeover) {
           setQrRegistrationOverrideCandidate({
             idNumber: String(member.idNumber),
-            docId: conflictDocId,
+            docIdsKey: conflictDocIdsKey,
           });
           setQrStatusTone('neutral');
           setQrStatusMessage('Diese ID ist bereits registriert. Bitte dieselbe ID erneut antippen, um die Registrierung auf diesem Browser zu übernehmen.');
           return;
         }
-        await deleteGlobalDocData(QR_REGISTRATION_COLLECTION, conflictDocId).catch(() => {});
+        await Promise.all(conflictDocIds.map((docId) => deleteGlobalDocData(QR_REGISTRATION_COLLECTION, docId).catch(() => {})));
       }
       setQrRegistrationOverrideCandidate(null);
       const nextRegistration = {
