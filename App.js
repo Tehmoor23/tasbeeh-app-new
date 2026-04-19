@@ -51,7 +51,7 @@ const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `$
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
-const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
+const APP_MODE = 'secret'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
 const SECRET_QR_APP_URL = 'https://qr-terminal.web.app'; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
@@ -60,6 +60,7 @@ const MOSQUE_OPTIONS = [
   { key: 'hoechst', label: 'Höchst', suffix: 'HO' },
   { key: EXTERNAL_MOSQUE_KEY, label: 'Extern', suffix: 'EXT' },
 ];
+const INTERNAL_SHARED_REGISTRATION_MOSQUE_KEYS = new Set([DEFAULT_MOSQUE_KEY, 'nuur_moschee', 'roedelheim', 'hoechst']);
 const APP_LOGO_LIGHT = require('./assets/Icon3.png');
 const APP_LOGO_DARK = require('./assets/Icon5.png');
 const FORCE_TIME = null;
@@ -6760,7 +6761,11 @@ function AppContent() {
         setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
         return;
       }
-      if (String(registration?.mosqueKey || '') !== String(payloadMosqueKey || '')) {
+      const registrationMosqueKey = String(registration?.mosqueKey || '');
+      const currentPayloadMosqueKey = String(payloadMosqueKey || '');
+      const canReuseInternalFrankfurtRegistration = INTERNAL_SHARED_REGISTRATION_MOSQUE_KEYS.has(registrationMosqueKey)
+        && INTERNAL_SHARED_REGISTRATION_MOSQUE_KEYS.has(currentPayloadMosqueKey);
+      if (registrationMosqueKey !== currentPayloadMosqueKey && !canReuseInternalFrankfurtRegistration) {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
         setQrQuickIdSearchVisible(false);
