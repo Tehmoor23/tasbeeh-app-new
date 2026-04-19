@@ -6710,6 +6710,7 @@ function AppContent() {
     const payload = decodeQrPayload(encodedPayload);
     if (!payload || payload.type !== 'prayer_attendance') return;
     const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+    const checkinMosqueLabel = getMosqueOptionByKey(payloadMosqueKey).label || 'Moschee';
     const payloadExternalScopeKey = normalizeExternalScopeKey(payload?.externalScopeKey || '');
     const payloadAttendanceCategory = normalizeQrAttendanceCategory(payload?.attendanceCategory || 'prayer');
     if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY && !payloadExternalScopeKey) {
@@ -6890,8 +6891,8 @@ function AppContent() {
         setQrStatusTone('positive');
         setQrStatusMessage(
           payloadAttendanceCategory === 'program'
-            ? 'Sie wurden bereits für das Programm eingetragen.'
-            : `Sie wurden bereits für das ${activeQrPrayerLabel} Gebet eingetragen.`,
+            ? `Sie wurden bereits für das Programm eingetragen (${checkinMosqueLabel}).`
+            : `Sie wurden bereits für das ${activeQrPrayerLabel} Gebet eingetragen (${checkinMosqueLabel}).`,
         );
       } else if (result?.status === 'counted') {
         setQrLastAttendanceStatus('counted');
@@ -6900,8 +6901,8 @@ function AppContent() {
         setQrStatusTone('positive');
         setQrStatusMessage(
           payloadAttendanceCategory === 'program'
-            ? 'Erfolgreiche automatische Eintragung für das Programm.'
-            : `Erfolgreiche automatische Eintragung für ${activeQrPrayerLabel}.`,
+            ? `Erfolgreiche automatische Eintragung für das Programm (${checkinMosqueLabel}).`
+            : `Erfolgreiche automatische Eintragung für ${activeQrPrayerLabel} (${checkinMosqueLabel}).`,
         );
       } else {
         setQrLastAttendanceStatus('error');
