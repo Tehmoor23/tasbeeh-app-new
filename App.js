@@ -1679,6 +1679,8 @@ function AppContent() {
   const [qrRegistrationMajlis, setQrRegistrationMajlis] = useState('');
   const [qrRegistrationSearchQuery, setQrRegistrationSearchQuery] = useState('');
   const [qrRegistrationFlowSearchQuery, setQrRegistrationFlowSearchQuery] = useState('');
+  const [qrRegistrationOverrideCandidate, setQrRegistrationOverrideCandidate] = useState(null);
+  const [qrPendingScanAfterRegistrationPayload, setQrPendingScanAfterRegistrationPayload] = useState('');
   const [qrScanExternalScopeKey, setQrScanExternalScopeKey] = useState('');
   const [isQrQuickIdSearchVisible, setQrQuickIdSearchVisible] = useState(false);
   const [qrSubmitting, setQrSubmitting] = useState(false);
@@ -6630,11 +6632,26 @@ function AppContent() {
         activeMosqueKey,
         targetExternalScopeKey,
       );
-      if (existingIdRegistration?.registration?.idNumber && String(existingIdRegistration.docId) !== String(browserDeviceId)) {
-        setQrStatusTone('negative');
-        setQrStatusMessage('Diese ID ist in dieser Moschee bereits auf einem anderen Gerät/Browser registriert.');
-        return;
+      const hasRegistrationConflict = existingIdRegistration?.registration?.idNumber && String(existingIdRegistration.docId) !== String(browserDeviceId);
+      if (hasRegistrationConflict) {
+        const conflictDocId = String(existingIdRegistration.docId || '');
+        const isConfirmedTakeover = Boolean(
+          qrRegistrationOverrideCandidate
+          && String(qrRegistrationOverrideCandidate.idNumber || '') === String(member.idNumber)
+          && String(qrRegistrationOverrideCandidate.docId || '') === conflictDocId,
+        );
+        if (!isConfirmedTakeover) {
+          setQrRegistrationOverrideCandidate({
+            idNumber: String(member.idNumber),
+            docId: conflictDocId,
+          });
+          setQrStatusTone('neutral');
+          setQrStatusMessage('Diese ID ist bereits registriert. Bitte dieselbe ID erneut antippen, um die Registrierung auf diesem Browser zu übernehmen.');
+          return;
+        }
+        await deleteGlobalDocData(QR_REGISTRATION_COLLECTION, conflictDocId).catch(() => {});
       }
+      setQrRegistrationOverrideCandidate(null);
       const nextRegistration = {
         browserDeviceId,
         idNumber: String(member.idNumber),
@@ -6665,6 +6682,11 @@ function AppContent() {
       setQrStatusTone('positive');
       setQrStatusMessage('Erfolgreiche Registrierung. Bitte Browserdaten nicht löschen und möglichst immer denselben Browser verwenden.');
       setQrRegistrationSearchQuery('');
+      setQrRegistrationFlowSearchQuery('');
+      if (qrPendingScanAfterRegistrationPayload) {
+        setPendingQrPayload(qrPendingScanAfterRegistrationPayload);
+        setQrPendingScanAfterRegistrationPayload('');
+      }
     } catch (error) {
       console.error('QR registration failed', error);
       setQrStatusTone('negative');
@@ -6672,7 +6694,7 @@ function AppContent() {
     } finally {
       setQrSubmitting(false);
     }
-  }, [activeMosqueKey, currentAccount?.externalMosqueName, currentAccount?.name, ensureQrBrowserDeviceId, guestActivation?.mosqueName, guestActivation?.scopeKey, persistQrRegistration, qrBrowserDeviceId, qrScanExternalScopeKey, resolveQrPrayerContext]);
+  }, [activeMosqueKey, currentAccount?.externalMosqueName, currentAccount?.name, ensureQrBrowserDeviceId, guestActivation?.mosqueName, guestActivation?.scopeKey, persistQrRegistration, qrBrowserDeviceId, qrPendingScanAfterRegistrationPayload, qrRegistrationOverrideCandidate, qrScanExternalScopeKey, resolveQrPrayerContext]);
 
   const handleQrScanFlow = useCallback(async (encodedPayload) => {
     if (!isWebRuntime || !encodedPayload) return;
@@ -6732,6 +6754,8 @@ function AppContent() {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
         setQrQuickIdSearchVisible(false);
+        setQrRegistrationOverrideCandidate(null);
+        setQrPendingScanAfterRegistrationPayload(encodedPayload);
         setQrStatusTone('neutral');
         setQrStatusMessage('Dieser Browser ist noch nicht registriert. Bitte jetzt einmalig registrieren.');
         return;
@@ -6740,6 +6764,8 @@ function AppContent() {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
         setQrQuickIdSearchVisible(false);
+        setQrRegistrationOverrideCandidate(null);
+        setQrPendingScanAfterRegistrationPayload(encodedPayload);
         setQrStatusTone('neutral');
         setQrStatusMessage('Für diese Moschee ist eine separate Registrierung erforderlich. Bitte jetzt einmalig registrieren.');
         return;
@@ -6750,6 +6776,8 @@ function AppContent() {
           setQrFlowMode('register');
           setQrRegistrationMode('tanzeem');
           setQrQuickIdSearchVisible(false);
+          setQrRegistrationOverrideCandidate(null);
+          setQrPendingScanAfterRegistrationPayload(encodedPayload);
           setQrStatusTone('neutral');
           setQrStatusMessage('Für diese Amarat ist eine separate Registrierung erforderlich. Bitte jetzt einmalig registrieren.');
           return;
@@ -6766,10 +6794,13 @@ function AppContent() {
         setQrFlowMode('register');
         setQrRegistrationMode('tanzeem');
         setQrQuickIdSearchVisible(false);
+        setQrRegistrationOverrideCandidate(null);
+        setQrPendingScanAfterRegistrationPayload(encodedPayload);
         setQrStatusTone('negative');
         setQrStatusMessage('Die gespeicherte Registrierung wurde in der Mitgliederliste nicht gefunden. Bitte erneut registrieren.');
         return;
       }
+      setQrPendingScanAfterRegistrationPayload('');
       const scopeFromMember = normalizeExternalScopeKey(member?.amarat || '');
       if (scopeFromMember) {
         resolvedGuestScopeForScan = scopeFromMember;
