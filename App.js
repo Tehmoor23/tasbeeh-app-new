@@ -7494,6 +7494,8 @@ function AppContent() {
       && pendingRegistrationMember
       && pendingRegistrationVoterFlag !== 1,
     );
+    const footerTextColor = isDarkMode ? 'rgba(156, 163, 175, 0.86)' : 'rgba(107, 114, 128, 0.88)';
+    const footerDividerColor = isDarkMode ? 'rgba(75, 85, 99, 0.42)' : 'rgba(209, 213, 219, 0.95)';
 
     return (
       <ScrollView ref={terminalScrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={contentContainerStyle} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
@@ -7968,6 +7970,12 @@ function AppContent() {
           <Pressable onPress={() => setPrivacyModalVisible(true)} style={withPressEffect(styles.privacyNoticeLinkWrap)}>
             <Text style={[styles.privacyNoticeLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Datenschutzerklärung anzeigen</Text>
           </Pressable>
+        </View>
+
+        <View style={styles.attendanceFooterWrap}>
+          <Text style={[styles.attendanceFooterText, { color: footerTextColor }]}>Local Amarat Frankfurt</Text>
+          <View style={[styles.attendanceFooterDivider, { backgroundColor: footerDividerColor }]} />
+          <Text style={[styles.attendanceFooterText, { color: footerTextColor }]}>© 2026 Tehmoor Bhatti · All rights reserved.</Text>
         </View>
       </ScrollView>
     );
@@ -10560,6 +10568,9 @@ const styles = StyleSheet.create({
   privacyNoticeText: { textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '400' },
   privacyNoticeLinkWrap: { marginTop: 8, paddingVertical: 2, paddingHorizontal: 4 },
   privacyNoticeLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
+  attendanceFooterWrap: { marginTop: 34, marginBottom: 10, alignItems: 'center', alignSelf: 'stretch' },
+  attendanceFooterText: { textAlign: 'center', fontSize: 11, lineHeight: 16, fontWeight: '400', letterSpacing: 0.2 },
+  attendanceFooterDivider: { width: '72%', maxWidth: 320, height: StyleSheet.hairlineWidth, marginVertical: 8 },
   quickSearchLinkWrap: { marginTop: 6, alignSelf: 'center' },
   quickSearchLinkText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textDecorationLine: 'underline' },
   quickSearchPanel: { marginTop: -2, borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
