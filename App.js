@@ -1566,12 +1566,18 @@ const buildQrScanUrl = ({
   const payload = createQrPayload({ mosqueKey, cycleStart, attendanceCategory, externalScopeKey });
   const encodedPayload = encodeQrPayload(payload);
   if (!encodedPayload) return '';
-  if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
   const preferredScanBaseUrl = String(scanBaseUrl || '').trim();
   let url;
   try {
-    url = preferredScanBaseUrl ? new URL(preferredScanBaseUrl) : new URL(window.location.href);
+    if (preferredScanBaseUrl) {
+      url = new URL(preferredScanBaseUrl);
+    } else if (isWebRuntime && typeof window !== 'undefined') {
+      url = new URL(window.location.href);
+    } else {
+      return encodedPayload;
+    }
   } catch {
+    if (!isWebRuntime || typeof window === 'undefined') return encodedPayload;
     url = new URL(window.location.href);
   }
   url.searchParams.set(QR_SCAN_PARAM, encodedPayload);
