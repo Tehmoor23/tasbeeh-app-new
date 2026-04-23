@@ -6822,7 +6822,10 @@ function AppContent() {
           return;
         }
       }
-      const scopedMembersDirectory = isGuestMode
+      const shouldUseExternalScopedMembersDirectory = payloadMosqueKey === EXTERNAL_MOSQUE_KEY
+        || isGuestMode
+        || Boolean(resolvedGuestScopeForScan);
+      const scopedMembersDirectory = shouldUseExternalScopedMembersDirectory
         ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
           const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
           return !entryScope || !resolvedGuestScopeForScan || entryScope === resolvedGuestScopeForScan;
