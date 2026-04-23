@@ -1702,6 +1702,7 @@ function AppContent() {
   const [qrRegistrationOverrideCandidate, setQrRegistrationOverrideCandidate] = useState(null);
   const [qrPendingScanAfterRegistrationPayload, setQrPendingScanAfterRegistrationPayload] = useState('');
   const [qrScanExternalScopeKey, setQrScanExternalScopeKey] = useState('');
+  const [qrScanMosqueKey, setQrScanMosqueKey] = useState('');
   const [isQrQuickIdSearchVisible, setQrQuickIdSearchVisible] = useState(false);
   const [qrSubmitting, setQrSubmitting] = useState(false);
   const [qrAttendanceCategory, setQrAttendanceCategory] = useState('prayer');
@@ -1814,6 +1815,7 @@ function AppContent() {
   );
   const shouldUseExternalQrDirectory = isGuestMode
     || activeMosqueKey === EXTERNAL_MOSQUE_KEY
+    || qrScanMosqueKey === EXTERNAL_MOSQUE_KEY
     || Boolean(qrGuestAmaratScopeKey);
   const qrMembersDirectory = shouldUseExternalQrDirectory
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
@@ -6740,6 +6742,7 @@ function AppContent() {
     const payload = decodeQrPayload(encodedPayload);
     if (!payload || payload.type !== 'prayer_attendance') return;
     const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+    setQrScanMosqueKey(payloadMosqueKey);
     const checkinMosqueLabel = getMosqueOptionByKey(payloadMosqueKey).label || 'Moschee';
     const payloadExternalScopeKey = normalizeExternalScopeKey(payload?.externalScopeKey || '');
     const payloadAttendanceCategory = normalizeQrAttendanceCategory(payload?.attendanceCategory || 'prayer');
