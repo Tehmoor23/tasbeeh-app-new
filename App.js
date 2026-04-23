@@ -1920,8 +1920,7 @@ function AppContent() {
   const announcementSegments = useMemo(() => parseAnnouncementSegments(normalizedAnnouncement), [normalizedAnnouncement]);
   const shouldRestrictToPrayerView = normalizedAppMode === 'display' && !currentAccount;
   const shouldRestrictToQrView = isSecretMode
-    || (normalizedAppMode === 'qr' && !currentAccount)
-    || isQrExternMode;
+    || (normalizedAppMode === 'qr' && !currentAccount);
   const shouldRestrictToRegistrationView = normalizedAppMode === 'registration' && !currentAccount;
   const isExternalGuestSession = isGuestMode && Boolean(currentAccount?.isExternalGuest);
   const isGuestActivated = Boolean(guestActivation?.scopeKey);
@@ -7059,9 +7058,9 @@ function AppContent() {
       setTerminalInactivityScopeInput(preferredConfig?.scope === 'device' ? 'device' : 'global');
       inactivityLastInteractionRef.current = Date.now();
     };
-    if (normalizedAppMode !== 'full') return;
+    if (normalizedAppMode !== 'full' && !isGuestMode) return;
     loadTerminalInactivityConfig();
-  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, normalizedAppMode]);
+  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode, normalizedAppMode]);
 
   const saveTerminalInactivityConfig = useCallback(async () => {
     const timeoutSeconds = Math.max(15, Number(String(terminalInactivityTimeoutInput || '').replace(/[^0-9]/g, '')) || 90);
@@ -7092,7 +7091,7 @@ function AppContent() {
   }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, terminalInactivityEnabledInput, terminalInactivityScopeInput, terminalInactivityTimeoutInput]);
 
   useEffect(() => {
-    if (normalizedAppMode !== 'full') return;
+    if (normalizedAppMode !== 'full' && !isGuestMode) return;
     const timeoutSeconds = Math.max(15, Number(String(terminalInactivityTimeoutInput || '').replace(/[^0-9]/g, '')) || 90);
     const exactlyOneAttendanceWindowActive = prayerWindow.isActive !== programWindow.isActive;
     const shouldRun = Boolean(terminalInactivityEnabledInput)
@@ -7118,7 +7117,7 @@ function AppContent() {
       inactivityLastInteractionRef.current = Date.now();
     }, 1000);
     return () => clearInterval(timer);
-  }, [currentAccount, normalizedAppMode, prayerWindow.isActive, programWindow.isActive, scrollTerminalToTop, terminalInactivityEnabledInput, terminalInactivityTimeoutInput]);
+  }, [currentAccount, isGuestMode, normalizedAppMode, prayerWindow.isActive, programWindow.isActive, scrollTerminalToTop, terminalInactivityEnabledInput, terminalInactivityTimeoutInput]);
 
   const handleTabPress = useCallback((tabKey) => {
     recordTerminalInteraction();
@@ -9090,7 +9089,7 @@ function AppContent() {
       </View>
       ) : null}
 
-      {normalizedAppMode === 'full' ? (
+      {(normalizedAppMode === 'full' || isGuestMode) ? (
         <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
           <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Kiosk Inactivity Reset</Text>
           <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Automatischer Rücksprung zur Anwesenheit bei Inaktivität.</Text>
