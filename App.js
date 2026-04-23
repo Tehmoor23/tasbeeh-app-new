@@ -4168,17 +4168,21 @@ function AppContent() {
   const qrLiveTimesToday = qrRuntimeContext.timesToday;
   const qrLiveProgramWindow = useMemo(() => {
     const runtimeISO = qrRuntimeContext.iso;
-    const config = (programConfigByDate || {})[runtimeISO] || null;
+    const fallbackISO = toISO(qrLiveNow);
+    const configByDate = programConfigByDate || {};
+    const config = configByDate[runtimeISO] || configByDate[fallbackISO] || null;
     if (!config || !isValidTime(config.startTime) || !String(config.name || '').trim()) {
-      return { isConfigured: false, isActive: false, label: null };
+      return { isConfigured: false, isActive: false, label: null, sourceISO: runtimeISO || fallbackISO || '' };
     }
     const startMinutes = Number(config.startTime.slice(0, 2)) * 60 + Number(config.startTime.slice(3));
     const nowMinutes = qrLiveNow.getHours() * 60 + qrLiveNow.getMinutes();
+    const sourceISO = configByDate[runtimeISO] ? runtimeISO : fallbackISO;
     return {
       isConfigured: true,
       isActive: nowMinutes >= (startMinutes - 30),
       label: String(config.name || '').trim(),
       startTime: String(config.startTime || ''),
+      sourceISO: sourceISO || runtimeISO || fallbackISO || '',
     };
   }, [programConfigByDate, qrLiveNow, qrRuntimeContext.iso]);
   const resolveQrPrayerContext = useCallback(() => ({
@@ -4197,8 +4201,8 @@ function AppContent() {
         && qrLastAttendanceStatus === 'duplicate',
       );
       if (isAlreadyHandled) return 'Sie wurden bereits für das Programm eingetragen.';
-      if (!qrLiveProgramWindow.isConfigured) return 'Aktuell ist kein Programm hinterlegt.';
-      if (!qrLiveProgramWindow.isActive) return `Programm ist noch nicht aktiv. Start: ${qrLiveProgramWindow.startTime || '—'}.`;
+      if (!qrLiveProgramWindow.isConfigured) return 'Aktuell ist kein Programm aktiv. Sobald ein Programm geplant ist, erscheint es hier.';
+      if (!qrLiveProgramWindow.isActive) return `${qrLiveProgramWindow.label || 'Programm'} ist geplant. Start: ${qrLiveProgramWindow.startTime || '—'}.`;
       return 'Bitte den QR-Code noch einmal scannen, um sich für das Programm einzutragen.';
     }
     if (qrLastAttendanceStatus === 'registered') {
@@ -4235,7 +4239,12 @@ function AppContent() {
   useEffect(() => {
     if (!['counted', 'duplicate'].includes(qrLastAttendanceStatus)) return;
     if (qrAttendanceCategory === 'program') {
-      const sameProgramDay = qrLastAttendanceDateISO === toISO(qrLiveNow) && qrLastAttendancePrayerKey === 'program';
+      const programDateCandidates = [
+        qrRuntimeContext.iso,
+        toISO(qrLiveNow),
+        qrLiveProgramWindow?.sourceISO || '',
+      ].filter(Boolean);
+      const sameProgramDay = qrLastAttendancePrayerKey === 'program' && programDateCandidates.includes(qrLastAttendanceDateISO);
       if (!sameProgramDay && qrStatusMessage) {
         setQrStatusMessage('');
         setQrStatusTone('neutral');
@@ -4254,7 +4263,7 @@ function AppContent() {
       setQrStatusMessage('');
       setQrStatusTone('neutral');
     }
-  }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrStatusMessage]);
+  }, [qrAttendanceCategory, qrLastAttendanceDateISO, qrLastAttendancePrayerKey, qrLastAttendanceStatus, qrLiveNow, qrLivePrayerWindow, qrLiveProgramWindow?.sourceISO, qrRuntimeContext.iso, qrStatusMessage]);
   const guestAmaratScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
   const membersDirectory = isGuestMode
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
