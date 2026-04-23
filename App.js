@@ -2637,6 +2637,19 @@ function AppContent() {
     () => MOSQUE_OPTIONS.filter((option) => option.key !== EXTERNAL_MOSQUE_KEY),
     [],
   );
+  const externalResetScopeOptions = useMemo(() => {
+    const fromConfig = (externalScopeOptions || [])
+      .map((option) => ({
+        key: normalizeExternalScopeKey(option?.scopeKey || option?.mosqueName || ''),
+        label: String(option?.mosqueName || formatExternalScopeLabel(option?.scopeKey || '') || '').trim(),
+      }))
+      .filter((option) => option.key);
+    const fallbackKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+    const fallbackLabel = String(guestActivation?.mosqueName || formatExternalScopeLabel(fallbackKey || '') || '').trim();
+    if (!fallbackKey) return fromConfig;
+    if (fromConfig.some((option) => option.key === fallbackKey)) return fromConfig;
+    return [...fromConfig, { key: fallbackKey, label: fallbackLabel || formatExternalScopeLabel(fallbackKey) }];
+  }, [externalScopeOptions, guestActivation?.mosqueName, guestActivation?.scopeKey]);
 
   const toggleDbResetMosqueSelection = useCallback((categoryKey, mosqueKey) => {
     setDbResetSelectionByCategory((prev) => {
@@ -2652,10 +2665,9 @@ function AppContent() {
   }, []);
 
   const runInternalDbReset = useCallback((category) => {
-    if (isGuestMode) return;
     const selectedMosqueKeys = Array.isArray(dbResetSelectionByCategory?.[category.key]) ? dbResetSelectionByCategory[category.key] : [];
     if (!selectedMosqueKeys.length) {
-      setToast('Bitte mindestens eine Moschee auswählen');
+      setToast(isGuestMode ? 'Bitte mindestens eine Local Amarat auswählen' : 'Bitte mindestens eine Moschee auswählen');
       return;
     }
 
@@ -2665,7 +2677,7 @@ function AppContent() {
         let deletedCount = 0;
         let failureCount = 0;
 
-        if (category.key === 'qr') {
+        if (category.key === 'qr' && !isGuestMode) {
           const registrationIds = await listGlobalDocIds(QR_REGISTRATION_COLLECTION).catch(() => []);
           const registrationRows = await Promise.all(
             registrationIds.map((id) => getGlobalDocData(QR_REGISTRATION_COLLECTION, id).catch(() => null)),
@@ -2682,16 +2694,54 @@ function AppContent() {
               failureCount += 1;
             }
           }));
-        } else {
-          const collectionResults = await Promise.all(
-            selectedMosqueKeys.flatMap((mosqueKey) => (
-              category.collections.map((collection) => deleteAllDocsInCollectionForMosque(collection, mosqueKey))
-            )),
+        } else if (category.key === 'qr' && isGuestMode) {
+          const selectedScopeKeys = selectedMosqueKeys.map((key) => normalizeExternalScopeKey(key)).filter(Boolean);
+          const registrationIds = await listGlobalDocIds(QR_REGISTRATION_COLLECTION).catch(() => []);
+          const registrationRows = await Promise.all(
+            registrationIds.map((id) => getGlobalDocData(QR_REGISTRATION_COLLECTION, id).catch(() => null)),
           );
-          collectionResults.forEach((result) => {
-            deletedCount += Number(result?.deleted) || 0;
-            failureCount += Array.isArray(result?.failed) ? result.failed.length : 0;
+          const deleteTargets = registrationIds.filter((id, index) => {
+            const row = registrationRows[index] || null;
+            const mosqueKey = getMosqueOptionByKey(row?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
+            const scopeKey = normalizeExternalScopeKey(row?.externalScopeKey || '');
+            return mosqueKey === EXTERNAL_MOSQUE_KEY && selectedScopeKeys.includes(scopeKey);
           });
+          await Promise.all(deleteTargets.map(async (id) => {
+            try {
+              await deleteGlobalDocData(QR_REGISTRATION_COLLECTION, id);
+              deletedCount += 1;
+            } catch (error) {
+              failureCount += 1;
+            }
+          }));
+        } else {
+          if (isGuestMode) {
+            const restoreScope = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+            for (const scopeKeyRaw of selectedMosqueKeys) {
+              const scopeKey = normalizeExternalScopeKey(scopeKeyRaw);
+              if (!scopeKey) continue;
+              setActiveMosqueScope(EXTERNAL_MOSQUE_KEY, scopeKey);
+              // eslint-disable-next-line no-await-in-loop
+              const collectionResults = await Promise.all(
+                category.collections.map((collection) => deleteAllDocsInCollectionForMosque(collection, EXTERNAL_MOSQUE_KEY)),
+              );
+              collectionResults.forEach((result) => {
+                deletedCount += Number(result?.deleted) || 0;
+                failureCount += Array.isArray(result?.failed) ? result.failed.length : 0;
+              });
+            }
+            setActiveMosqueScope(activeMosqueKey, restoreScope);
+          } else {
+            const collectionResults = await Promise.all(
+              selectedMosqueKeys.flatMap((mosqueKey) => (
+                category.collections.map((collection) => deleteAllDocsInCollectionForMosque(collection, mosqueKey))
+              )),
+            );
+            collectionResults.forEach((result) => {
+              deletedCount += Number(result?.deleted) || 0;
+              failureCount += Array.isArray(result?.failed) ? result.failed.length : 0;
+            });
+          }
         }
 
         setToast(
@@ -2707,11 +2757,14 @@ function AppContent() {
       }
     };
 
-    const selectedLabels = internalMosqueOptions
+    const sourceOptions = isGuestMode ? externalResetScopeOptions : internalMosqueOptions;
+    const selectedLabels = sourceOptions
       .filter((option) => selectedMosqueKeys.includes(option.key))
       .map((option) => option.label)
       .join(', ');
-    const confirmText = `${category.label} für folgende Moscheen löschen: ${selectedLabels}?`;
+    const confirmText = isGuestMode
+      ? `${category.label} für folgende Local Amarat löschen: ${selectedLabels}?`
+      : `${category.label} für folgende Moscheen löschen: ${selectedLabels}?`;
     const canUseAlert = Platform.OS !== 'web';
     if (canUseAlert) {
       Alert.alert(
@@ -2728,7 +2781,7 @@ function AppContent() {
       ? globalThis.confirm(confirmText)
       : true;
     if (confirmed) performReset();
-  }, [dbResetSelectionByCategory, internalMosqueOptions, isGuestMode]);
+  }, [activeMosqueKey, dbResetSelectionByCategory, externalResetScopeOptions, guestActivation?.mosqueName, guestActivation?.scopeKey, internalMosqueOptions, isGuestMode]);
 
   const updateManagedPermissions = useCallback(async (account, nextPermissions) => {
     if (!isSuperAdmin || !account || account.isSuperAdmin || account?.isExternalGuest) return;
@@ -9512,18 +9565,22 @@ function AppContent() {
         </View>
       ) : null}
 
-      {!isGuestMode ? (
-        <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
-          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>DB-Reset (Intern)</Text>
-          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>Löscht Einträge der gewählten Kategorie(n) pro ausgewählter Moschee.</Text>
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+          <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>{isGuestMode ? 'DB-Reset (Extern)' : 'DB-Reset (Intern)'}</Text>
+          <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>
+            {isGuestMode
+              ? 'Löscht Einträge der gewählten Kategorie(n) pro ausgewählter Local Amarat.'
+              : 'Löscht Einträge der gewählten Kategorie(n) pro ausgewählter Moschee.'}
+          </Text>
           {INTERNAL_RESET_CATEGORIES.map((category) => {
             const selected = Array.isArray(dbResetSelectionByCategory?.[category.key]) ? dbResetSelectionByCategory[category.key] : [];
             const isLoading = Boolean(dbResetLoadingByCategory?.[category.key]);
+            const resetOptions = isGuestMode ? externalResetScopeOptions : internalMosqueOptions;
             return (
               <View key={category.key} style={[styles.statsCard, { backgroundColor: theme.bg, borderColor: theme.border }]}>
                 <Text style={[styles.statsCardTitle, { color: theme.text }]}>{category.label}</Text>
                 <View style={styles.statsToggleRow}>
-                  {internalMosqueOptions.map((mosque) => {
+                  {resetOptions.map((mosque) => {
                     const isActive = selected.includes(mosque.key);
                     return (
                       <Pressable
@@ -9536,6 +9593,9 @@ function AppContent() {
                     );
                   })}
                 </View>
+                {isGuestMode && resetOptions.length === 0 ? (
+                  <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine Local Amarat verfügbar.</Text>
+                ) : null}
                 <Pressable
                   style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: '#B91C1C', opacity: isLoading ? 0.7 : 1 }], pressed && styles.buttonPressed]}
                   onPress={() => runInternalDbReset(category)}
@@ -9550,7 +9610,6 @@ function AppContent() {
           })}
           <Text style={[styles.noteText, { color: theme.muted }]}>Hinweis: Es werden Einträge gelöscht, Collections bleiben bestehen.</Text>
         </View>
-      ) : null}
 
       <View style={styles.appMetaWrap}>
         <Text style={[styles.appMetaVersion, { color: theme.muted }]}>Version 1.1.0</Text>
