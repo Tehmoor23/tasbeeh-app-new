@@ -1139,7 +1139,7 @@ const formatExternalScopeLabel = (value) => {
       .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join(' ');
   }
-  return raw;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
 };
 
 const buildExternalAccountWritePayload = (account, overrides = {}) => {
@@ -1835,6 +1835,15 @@ function AppContent() {
     const fallbackAmarat = String(configuredScopeName || guestActivation?.mosqueName || formatExternalScopeLabel(qrCurrentRegistrationMember?.amarat || '')).trim();
     return fallbackAmarat || rawMajlis || '—';
   }, [externalScopeOptions, guestActivation?.mosqueName, qrCurrentRegistrationMember?.amarat, qrCurrentRegistrationMember?.majlis]);
+  const qrRegistrationSelectionLabel = useMemo(() => {
+    const rawMajlis = String(qrRegistrationMajlis || '').trim();
+    if (rawMajlis && rawMajlis !== '-') return rawMajlis;
+    if (shouldUseExternalQrDirectory) {
+      const scopeLabel = formatExternalScopeLabel(qrGuestAmaratScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      return scopeLabel || 'Jamaat';
+    }
+    return rawMajlis || '—';
+  }, [guestActivation?.mosqueName, guestActivation?.scopeKey, qrGuestAmaratScopeKey, qrRegistrationMajlis, shouldUseExternalQrDirectory]);
   const qrRegistrationMajlisChoices = useMemo(() => (
     qrMembersDirectory
       .filter((entry) => entry.tanzeem === qrRegistrationTanzeem)
@@ -6640,20 +6649,6 @@ function AppContent() {
         )
         : '';
       const existingRegistration = await getGlobalDocData(QR_REGISTRATION_COLLECTION, browserDeviceId);
-      const existingExternalScopeKey = normalizeExternalScopeKey(existingRegistration?.externalScopeKey || '');
-      const isExistingScopeDifferent = activeMosqueKey === EXTERNAL_MOSQUE_KEY
-        && existingExternalScopeKey
-        && targetExternalScopeKey
-        && existingExternalScopeKey !== targetExternalScopeKey;
-      if (
-        existingRegistration?.idNumber
-        && String(existingRegistration.idNumber) !== String(member.idNumber)
-        && !isExistingScopeDifferent
-      ) {
-        setQrStatusTone('negative');
-        setQrStatusMessage('Browser/Gerät bereits für eine andere ID registriert.');
-        return;
-      }
       const existingIdRegistrations = await listGlobalRegistrationsByIdNumber(
         QR_REGISTRATION_COLLECTION,
         member.idNumber,
@@ -6743,8 +6738,12 @@ function AppContent() {
     if (!payload || payload.type !== 'prayer_attendance') return;
     const payloadMosqueKey = getMosqueOptionByKey(payload?.mosqueKey || DEFAULT_MOSQUE_KEY).key;
     setQrScanMosqueKey(payloadMosqueKey);
-    const checkinMosqueLabel = getMosqueOptionByKey(payloadMosqueKey).label || 'Moschee';
+    let checkinMosqueLabel = getMosqueOptionByKey(payloadMosqueKey).label || 'Moschee';
     const payloadExternalScopeKey = normalizeExternalScopeKey(payload?.externalScopeKey || '');
+    if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY) {
+      const externalLabel = formatExternalScopeLabel(payloadExternalScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      if (externalLabel) checkinMosqueLabel = externalLabel;
+    }
     const payloadAttendanceCategory = normalizeQrAttendanceCategory(payload?.attendanceCategory || 'prayer');
     if (payloadMosqueKey === EXTERNAL_MOSQUE_KEY && !payloadExternalScopeKey) {
       setQrStatusTone('negative');
@@ -9733,7 +9732,7 @@ function AppContent() {
               <>
                 <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
                 <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
-                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{qrRegistrationMajlis} · {TANZEEM_LABELS[qrRegistrationTanzeem] || ''}</Text>
+                <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{qrRegistrationSelectionLabel} · {TANZEEM_LABELS[qrRegistrationTanzeem] || ''}</Text>
                 <TextInput
                   value={qrRegistrationFlowSearchQuery}
                   onChangeText={(value) => setQrRegistrationFlowSearchQuery(String(value || '').replace(/[^0-9]/g, ''))}
