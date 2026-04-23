@@ -2638,18 +2638,22 @@ function AppContent() {
     [],
   );
   const externalResetScopeOptions = useMemo(() => {
-    const fromConfig = (externalScopeOptions || [])
-      .map((option) => ({
-        key: normalizeExternalScopeKey(option?.scopeKey || option?.mosqueName || ''),
-        label: String(option?.mosqueName || formatExternalScopeLabel(option?.scopeKey || '') || '').trim(),
-      }))
-      .filter((option) => option.key);
-    const fallbackKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
-    const fallbackLabel = String(guestActivation?.mosqueName || formatExternalScopeLabel(fallbackKey || '') || '').trim();
-    if (!fallbackKey) return fromConfig;
-    if (fromConfig.some((option) => option.key === fallbackKey)) return fromConfig;
-    return [...fromConfig, { key: fallbackKey, label: fallbackLabel || formatExternalScopeLabel(fallbackKey) }];
-  }, [externalScopeOptions, guestActivation?.mosqueName, guestActivation?.scopeKey]);
+    const scopeKey = normalizeExternalScopeKey(
+      guestActivation?.scopeKey
+      || guestActivation?.mosqueName
+      || currentAccount?.externalMosqueName
+      || currentAccount?.name
+      || '',
+    );
+    if (!scopeKey) return [];
+    const scopeLabel = String(
+      guestActivation?.mosqueName
+      || currentAccount?.externalMosqueName
+      || formatExternalScopeLabel(scopeKey)
+      || '',
+    ).trim();
+    return [{ key: scopeKey, label: scopeLabel || formatExternalScopeLabel(scopeKey) }];
+  }, [currentAccount?.externalMosqueName, currentAccount?.name, guestActivation?.mosqueName, guestActivation?.scopeKey]);
 
   const toggleDbResetMosqueSelection = useCallback((categoryKey, mosqueKey) => {
     setDbResetSelectionByCategory((prev) => {
@@ -2665,7 +2669,10 @@ function AppContent() {
   }, []);
 
   const runInternalDbReset = useCallback((category) => {
-    const selectedMosqueKeys = Array.isArray(dbResetSelectionByCategory?.[category.key]) ? dbResetSelectionByCategory[category.key] : [];
+    const sourceOptions = isGuestMode ? externalResetScopeOptions : internalMosqueOptions;
+    const allowedKeys = new Set(sourceOptions.map((option) => option.key));
+    const selectedMosqueKeysRaw = Array.isArray(dbResetSelectionByCategory?.[category.key]) ? dbResetSelectionByCategory[category.key] : [];
+    const selectedMosqueKeys = selectedMosqueKeysRaw.filter((key) => allowedKeys.has(key));
     if (!selectedMosqueKeys.length) {
       setToast(isGuestMode ? 'Bitte mindestens eine Local Amarat auswählen' : 'Bitte mindestens eine Moschee auswählen');
       return;
@@ -2757,7 +2764,6 @@ function AppContent() {
       }
     };
 
-    const sourceOptions = isGuestMode ? externalResetScopeOptions : internalMosqueOptions;
     const selectedLabels = sourceOptions
       .filter((option) => selectedMosqueKeys.includes(option.key))
       .map((option) => option.label)
