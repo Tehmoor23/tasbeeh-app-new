@@ -1812,7 +1812,10 @@ function AppContent() {
   const qrGuestAmaratScopeKey = normalizeExternalScopeKey(
     qrScanExternalScopeKey || guestActivation?.scopeKey || guestActivation?.mosqueName || '',
   );
-  const qrMembersDirectory = isGuestMode
+  const shouldUseExternalQrDirectory = isGuestMode
+    || activeMosqueKey === EXTERNAL_MOSQUE_KEY
+    || Boolean(qrGuestAmaratScopeKey);
+  const qrMembersDirectory = shouldUseExternalQrDirectory
     ? EXTERNAL_MEMBER_DIRECTORY_DATA.filter((entry) => {
       const entryScope = normalizeExternalScopeKey(entry?.amarat || '');
       return !entryScope || !qrGuestAmaratScopeKey || entryScope === qrGuestAmaratScopeKey;
@@ -1851,10 +1854,10 @@ function AppContent() {
     qrMembersDirectory
       .filter((entry) => (
         entry.tanzeem === qrRegistrationTanzeem
-        && (isGuestMode && !shouldUseQrMajlisSelection ? true : entry.majlis === qrRegistrationMajlis)
+        && (shouldUseExternalQrDirectory && !shouldUseQrMajlisSelection ? true : entry.majlis === qrRegistrationMajlis)
       ))
       .sort((a, b) => String(a.idNumber).localeCompare(String(b.idNumber), 'de'))
-  ), [isGuestMode, qrMembersDirectory, qrRegistrationMajlis, qrRegistrationTanzeem, shouldUseQrMajlisSelection]);
+  ), [qrMembersDirectory, qrRegistrationMajlis, qrRegistrationTanzeem, shouldUseExternalQrDirectory, shouldUseQrMajlisSelection]);
   const qrRegistrationTanzeemOptions = useMemo(
     () => (qrAttendanceCategory === 'program' ? PROGRAM_TANZEEM_OPTIONS : TANZEEM_OPTIONS),
     [qrAttendanceCategory],
