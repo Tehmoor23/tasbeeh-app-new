@@ -36,6 +36,7 @@ const STORAGE_KEYS = {
   qrRegistration: '@tasbeeh_qr_registration',
   qrActivePage: '@tasbeeh_qr_active_page',
   guestActivation: '@tasbeeh_guest_activation',
+  guestExternUnlocked: '@tasbeeh_guest_extern_unlocked',
   guestExternalConfig: '@tasbeeh_guest_external_config',
   terminalInactivityConfig: '@tasbeeh_terminal_inactivity_config',
 };
@@ -1721,6 +1722,8 @@ function AppContent() {
   const [authLoading, setAuthLoading] = useState(false);
   const [currentAccount, setCurrentAccount] = useState(null);
   const [guestActivation, setGuestActivation] = useState(null);
+  const [guestExternUnlocked, setGuestExternUnlocked] = useState(false);
+  const [guestSessionBootstrapDone, setGuestSessionBootstrapDone] = useState(false);
   const [externalScopeOptions, setExternalScopeOptions] = useState([]);
   const [externalScopeLoading, setExternalScopeLoading] = useState(false);
   const [isExternalScopeModalVisible, setExternalScopeModalVisible] = useState(false);
@@ -2218,6 +2221,8 @@ function AppContent() {
         };
         setGuestActivation(activationPayload);
         await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
+        await AsyncStorage.setItem(STORAGE_KEYS.guestExternUnlocked, '1').catch(() => {});
+        setGuestExternUnlocked(true);
         setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
       }
       localSessionActiveRef.current = true;
@@ -2257,6 +2262,8 @@ function AppContent() {
         };
         setGuestActivation(activationPayload);
         await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
+        await AsyncStorage.setItem(STORAGE_KEYS.guestExternUnlocked, '1').catch(() => {});
+        setGuestExternUnlocked(true);
         setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
       }
       setAdminLoginVisible(false);
@@ -2290,6 +2297,7 @@ function AppContent() {
     }
     setCurrentAccount(null);
     setPasswordChangeInput('');
+    setAdminLoginVisible(false);
     if (activeTab === 'settings') setActiveTab('gebetsplan');
     setToast('Abgemeldet');
   }, [activeTab]);
@@ -3599,6 +3607,8 @@ function AppContent() {
           };
           setGuestActivation(activationPayload);
           await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
+          await AsyncStorage.setItem(STORAGE_KEYS.guestExternUnlocked, '1').catch(() => {});
+          setGuestExternUnlocked(true);
           setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
         }
       } catch (error) {
@@ -3618,10 +3628,11 @@ function AppContent() {
   useEffect(() => {
     if (isQrExternMode) return;
     if (!isGuestMode) return;
-    if (!currentAccount && !guestActivation?.scopeKey) {
+    if (!guestSessionBootstrapDone) return;
+    if (!currentAccount && !guestActivation?.scopeKey && !guestExternUnlocked) {
       setAdminLoginVisible(true);
     }
-  }, [currentAccount, guestActivation?.scopeKey, isGuestMode, isQrExternMode]);
+  }, [currentAccount, guestActivation?.scopeKey, guestExternUnlocked, guestSessionBootstrapDone, isGuestMode, isQrExternMode]);
 
   useEffect(() => {
     if (normalizedAppMode !== 'registration') return;
@@ -3678,6 +3689,9 @@ function AppContent() {
       try {
         let loadedGuestScopeKey = '';
         if (isGuestMode) {
+          const guestUnlockedRaw = await AsyncStorage.getItem(STORAGE_KEYS.guestExternUnlocked);
+          const isGuestUnlocked = guestUnlockedRaw === '1';
+          setGuestExternUnlocked(isGuestUnlocked);
           const activationRaw = await AsyncStorage.getItem(STORAGE_KEYS.guestActivation);
           if (activationRaw) {
             const parsed = JSON.parse(activationRaw);
@@ -3702,6 +3716,8 @@ function AppContent() {
         if (resolved) setIsDarkMode(resolved === '1'); else setIsDarkMode(false);
       } catch (e) {
         console.warn('Failed to load local settings:', e);
+      } finally {
+        setGuestSessionBootstrapDone(true);
       }
     };
     loadLocal();
