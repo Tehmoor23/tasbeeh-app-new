@@ -3108,7 +3108,7 @@ function AppContent() {
     return `${hours}h ${String(minutes).padStart(2, '0')}m`;
   };
 
-  const resolvePrayerWindow = (referenceNow, referenceTimesToday, referenceTimesTomorrow) => {
+  const resolvePrayerWindow = useCallback((referenceNow, referenceTimesToday, referenceTimesTomorrow) => {
     const nowMinutes = referenceNow.getHours() * 60 + referenceNow.getMinutes();
     const sequence = [
       { key: 'fajr', label: getDisplayPrayerLabel('fajr', referenceTimesToday), time: referenceTimesToday.fajr },
@@ -3161,7 +3161,7 @@ function AppContent() {
       nextPrayerTime,
       minutesUntilNextWindow,
     };
-  };
+  }, [prayerWindowAfterMinutes, prayerWindowBeforeMinutes]);
 
   const getRuntimePrayerContext = useCallback((overrideConfig, availablePrayerDates = []) => {
     const runtimeNow = applyForcedTestDate(getBerlinNow());
@@ -4190,7 +4190,10 @@ function AppContent() {
     setToast('Anmeldung deaktiviert');
   };
 
-  const prayerWindow = useMemo(() => resolvePrayerWindow(now, timesToday, timesTomorrow), [now, timesToday, timesTomorrow]);
+  const prayerWindow = useMemo(
+    () => resolvePrayerWindow(now, timesToday, timesTomorrow),
+    [now, resolvePrayerWindow, timesToday, timesTomorrow],
+  );
   const qrRuntimeContext = useMemo(() => getRuntimePrayerContext(prayerOverride, availableDates), [availableDates, prayerOverride, qrCountdownSeconds]);
   const qrLiveNow = qrRuntimeContext.now;
   const qrLivePrayerWindow = qrRuntimeContext.prayerWindow;
