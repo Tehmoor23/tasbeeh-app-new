@@ -3701,28 +3701,33 @@ function AppContent() {
     const loadLocal = async () => {
       try {
         let loadedGuestScopeKey = '';
+        let guestActivationParsed = null;
+        const [mosqueRaw, fallbackDarkRaw, guestUnlockedRaw, activationRaw] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.activeMosque).catch(() => null),
+          AsyncStorage.getItem(STORAGE_KEYS.darkMode).catch(() => null),
+          isGuestMode ? AsyncStorage.getItem(STORAGE_KEYS.guestExternUnlocked).catch(() => null) : Promise.resolve(null),
+          isGuestMode ? AsyncStorage.getItem(STORAGE_KEYS.guestActivation).catch(() => null) : Promise.resolve(null),
+        ]);
         if (isGuestMode) {
-          const guestUnlockedRaw = await AsyncStorage.getItem(STORAGE_KEYS.guestExternUnlocked);
           const isGuestUnlocked = guestUnlockedRaw === '1';
           setGuestExternUnlocked(isGuestUnlocked);
-          const activationRaw = await AsyncStorage.getItem(STORAGE_KEYS.guestActivation);
           if (activationRaw) {
             const parsed = JSON.parse(activationRaw);
             if (parsed?.scopeKey) {
               loadedGuestScopeKey = String(parsed.scopeKey);
-              setGuestActivation(parsed);
-              setExternalMosqueNameInput(String(parsed?.mosqueName || ''));
-              setActiveMosqueKey(EXTERNAL_MOSQUE_KEY);
+              guestActivationParsed = parsed;
             }
           }
         }
-        const mosqueRaw = await AsyncStorage.getItem(STORAGE_KEYS.activeMosque);
+        if (guestActivationParsed) {
+          setGuestActivation(guestActivationParsed);
+          setExternalMosqueNameInput(String(guestActivationParsed?.mosqueName || ''));
+        }
         const initialMosqueKey = isGuestMode
           ? (loadedGuestScopeKey ? EXTERNAL_MOSQUE_KEY : DEFAULT_MOSQUE_KEY)
           : ((mosqueRaw && MOSQUE_OPTIONS.some((item) => item.key === mosqueRaw)) ? mosqueRaw : DEFAULT_MOSQUE_KEY);
         setActiveMosqueKey(initialMosqueKey);
-        const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(initialMosqueKey));
-        const fallbackDarkRaw = await AsyncStorage.getItem(STORAGE_KEYS.darkMode);
+        const darkRaw = await AsyncStorage.getItem(getDarkModeStorageKey(initialMosqueKey)).catch(() => null);
         const resolved = (darkRaw === '1' || darkRaw === '0')
           ? darkRaw
           : ((fallbackDarkRaw === '1' || fallbackDarkRaw === '0') ? fallbackDarkRaw : null);
@@ -7178,8 +7183,10 @@ function AppContent() {
       if (cancelled) return;
       const beforeMinutes = Math.max(0, Math.min(180, Number(config?.beforeMinutes) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
       const afterMinutes = Math.max(0, Math.min(240, Number(config?.afterMinutes) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
-      setPrayerWindowBeforeInput(String(beforeMinutes));
-      setPrayerWindowAfterInput(String(afterMinutes));
+      const beforeValue = String(beforeMinutes);
+      const afterValue = String(afterMinutes);
+      setPrayerWindowBeforeInput((prev) => (prev === beforeValue ? prev : beforeValue));
+      setPrayerWindowAfterInput((prev) => (prev === afterValue ? prev : afterValue));
     };
     const loadPrayerWindowConfig = async () => {
       const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
