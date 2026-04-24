@@ -346,6 +346,8 @@ const REGISTRATION_DAILY_COLLECTION = 'attendance_registration_daily';
 const REGISTRATION_CONFIG_COLLECTION = 'registration_configs';
 const TERMINAL_INACTIVITY_CONFIG_COLLECTION = 'terminal_inactivity_configs';
 const TERMINAL_INACTIVITY_CONFIG_DOC_ID = 'default';
+const PRAYER_WINDOW_CONFIG_COLLECTION = 'prayer_window_configs';
+const PRAYER_WINDOW_CONFIG_DOC_ID = 'default';
 const EXTERNAL_SCOPE_PURGE_BASE_COLLECTIONS = [
   PRAYER_OVERRIDE_COLLECTION,
   ANNOUNCEMENT_COLLECTION,
@@ -7170,11 +7172,15 @@ function AppContent() {
   useEffect(() => {
     const loadPrayerWindowConfig = async () => {
       const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
-      const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey);
-      const raw = await AsyncStorage.getItem(localStorageKey).catch(() => null);
+      const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey); // legacy fallback
+      const [remoteConfig, raw] = await Promise.all([
+        getDocData(PRAYER_WINDOW_CONFIG_COLLECTION, PRAYER_WINDOW_CONFIG_DOC_ID).catch(() => null),
+        AsyncStorage.getItem(localStorageKey).catch(() => null),
+      ]);
       const parsed = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
-      const beforeMinutes = Math.max(0, Math.min(180, Number(parsed?.beforeMinutes) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
-      const afterMinutes = Math.max(0, Math.min(240, Number(parsed?.afterMinutes) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
+      const preferredConfig = remoteConfig || parsed || null;
+      const beforeMinutes = Math.max(0, Math.min(180, Number(preferredConfig?.beforeMinutes) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
+      const afterMinutes = Math.max(0, Math.min(240, Number(preferredConfig?.afterMinutes) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
       setPrayerWindowBeforeInput(String(beforeMinutes));
       setPrayerWindowAfterInput(String(afterMinutes));
     };
@@ -7190,13 +7196,14 @@ function AppContent() {
       updatedAt: new Date().toISOString(),
     };
     const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
-    const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey);
+    const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey); // legacy mirror
     try {
       setPrayerWindowSaving(true);
-      await AsyncStorage.setItem(localStorageKey, JSON.stringify(payload));
+      await setDocData(PRAYER_WINDOW_CONFIG_COLLECTION, PRAYER_WINDOW_CONFIG_DOC_ID, payload);
+      await AsyncStorage.setItem(localStorageKey, JSON.stringify(payload)).catch(() => {});
       setPrayerWindowBeforeInput(String(beforeMinutes));
       setPrayerWindowAfterInput(String(afterMinutes));
-      setToast('Gebetszeitfenster gespeichert ✓');
+      setToast('Gebetszeitfenster global gespeichert ✓');
     } catch (error) {
       console.error('savePrayerWindowConfig failed', error);
       setToast('Gebetszeitfenster konnte nicht gespeichert werden');
@@ -9285,7 +9292,7 @@ function AppContent() {
       <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
         <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeitfenster</Text>
         <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>
-          {`Gültig für ${activeMosque.label}${isGuestMode ? ` (${guestActivation?.mosqueName || formatExternalScopeLabel(guestActivation?.scopeKey || '') || 'Extern'})` : ''}`}
+          {`Global gültig für ${activeMosque.label}${isGuestMode ? ` (${guestActivation?.mosqueName || formatExternalScopeLabel(guestActivation?.scopeKey || '') || 'Extern'})` : ''}`}
         </Text>
         <View style={styles.mergeInputWrap}>
           <TextInput
