@@ -7170,22 +7170,50 @@ function AppContent() {
   }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode, normalizedAppMode]);
 
   useEffect(() => {
-    const loadPrayerWindowConfig = async () => {
-      const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
-      const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey); // legacy fallback
-      const [remoteConfig, raw] = await Promise.all([
-        getDocData(PRAYER_WINDOW_CONFIG_COLLECTION, PRAYER_WINDOW_CONFIG_DOC_ID).catch(() => null),
-        AsyncStorage.getItem(localStorageKey).catch(() => null),
-      ]);
-      const parsed = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
-      const preferredConfig = remoteConfig || parsed || null;
-      const beforeMinutes = Math.max(0, Math.min(180, Number(preferredConfig?.beforeMinutes) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
-      const afterMinutes = Math.max(0, Math.min(240, Number(preferredConfig?.afterMinutes) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
+    let cancelled = false;
+    const applyPrayerWindowConfig = (config) => {
+      if (cancelled) return;
+      const beforeMinutes = Math.max(0, Math.min(180, Number(config?.beforeMinutes) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
+      const afterMinutes = Math.max(0, Math.min(240, Number(config?.afterMinutes) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
       setPrayerWindowBeforeInput(String(beforeMinutes));
       setPrayerWindowAfterInput(String(afterMinutes));
     };
-    loadPrayerWindowConfig();
-  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey]);
+    const loadPrayerWindowConfig = async () => {
+      const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey); // legacy fallback
+      const raw = await AsyncStorage.getItem(localStorageKey).catch(() => null);
+      const parsed = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+      applyPrayerWindowConfig(parsed);
+    };
+
+    if (!firebaseRuntime || !hasFirebaseConfig()) {
+      loadPrayerWindowConfig();
+      return () => { cancelled = true; };
+    }
+
+    const prayerWindowRef = firebaseRuntime.doc(
+      firebaseRuntime.db,
+      resolveScopedCollection(PRAYER_WINDOW_CONFIG_COLLECTION),
+      PRAYER_WINDOW_CONFIG_DOC_ID,
+    );
+    const unsubscribe = firebaseRuntime.onSnapshot(
+      prayerWindowRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          applyPrayerWindowConfig(snapshot.data() || null);
+          return;
+        }
+        loadPrayerWindowConfig();
+      },
+      () => {
+        loadPrayerWindowConfig();
+      },
+    );
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [activeExternalScopeDependency, activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey]);
 
   const savePrayerWindowConfig = useCallback(async () => {
     const beforeMinutes = Math.max(0, Math.min(180, Number(String(prayerWindowBeforeInput || '').replace(/[^0-9]/g, '')) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
@@ -7200,7 +7228,7 @@ function AppContent() {
     try {
       setPrayerWindowSaving(true);
       await setDocData(PRAYER_WINDOW_CONFIG_COLLECTION, PRAYER_WINDOW_CONFIG_DOC_ID, payload);
-      await AsyncStorage.setItem(localStorageKey, JSON.stringify(payload)).catch(() => {});
+      AsyncStorage.setItem(localStorageKey, JSON.stringify(payload)).catch(() => {});
       setPrayerWindowBeforeInput(String(beforeMinutes));
       setPrayerWindowAfterInput(String(afterMinutes));
       setToast('Gebetszeitfenster global gespeichert ✓');
