@@ -39,6 +39,7 @@ const STORAGE_KEYS = {
   guestExternUnlocked: '@tasbeeh_guest_extern_unlocked',
   guestExternalConfig: '@tasbeeh_guest_external_config',
   terminalInactivityConfig: '@tasbeeh_terminal_inactivity_config',
+  prayerWindowConfig: '@tasbeeh_prayer_window_config',
 };
 
 const QR_REGISTRATION_COLLECTION = 'attendance_qr_device_registrations';
@@ -49,9 +50,12 @@ const QR_COUNTDOWN_SECONDS = Math.floor(QR_REFRESH_INTERVAL_MS / 1000);
 const getDarkModeStorageKey = (mosqueKey) => `${STORAGE_KEYS.darkMode}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getAnnouncementStorageKey = (mosqueKey) => `${STORAGE_KEYS.announcementText}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}`;
 const getTerminalInactivityStorageKey = (mosqueKey, externalScopeKey = '') => `${STORAGE_KEYS.terminalInactivityConfig}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}:${normalizeExternalScopeKey(externalScopeKey || 'default') || 'default'}`;
+const getPrayerWindowConfigStorageKey = (mosqueKey, externalScopeKey = '') => `${STORAGE_KEYS.prayerWindowConfig}:${String(mosqueKey || DEFAULT_MOSQUE_KEY)}:${normalizeExternalScopeKey(externalScopeKey || 'default') || 'default'}`;
 
 const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
+const DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES = 30;
+const DEFAULT_PRAYER_WINDOW_AFTER_MINUTES = 60;
 const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
 const SECRET_QR_APP_URL = 'https://qr-terminal.web.app'; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
@@ -1781,6 +1785,9 @@ function AppContent() {
   const [terminalInactivityTimeoutInput, setTerminalInactivityTimeoutInput] = useState('90');
   const [terminalInactivityScopeInput, setTerminalInactivityScopeInput] = useState('global');
   const [terminalInactivitySaving, setTerminalInactivitySaving] = useState(false);
+  const [prayerWindowBeforeInput, setPrayerWindowBeforeInput] = useState(String(DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
+  const [prayerWindowAfterInput, setPrayerWindowAfterInput] = useState(String(DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
+  const [prayerWindowSaving, setPrayerWindowSaving] = useState(false);
   const inactivityLastInteractionRef = useRef(Date.now());
   const [idSearchQuery, setIdSearchQuery] = useState('');
   const [isIdSearchFocused, setIsIdSearchFocused] = useState(false);
@@ -3052,6 +3059,10 @@ function AppContent() {
   const maghribIshaaMergedToday = isValidTime(timesToday.maghrib) && timesToday.maghrib === timesToday.ishaa;
   const hasSoharAsrOverrideToday = isValidTime(prayerOverride.soharAsrTime);
   const hasMaghribIshaaOverrideToday = isValidTime(prayerOverride.maghribIshaaTime);
+  const prayerWindowBeforeMinutes = Math.max(0, Math.min(180, Number(String(prayerWindowBeforeInput || '').replace(/[^0-9]/g, '')) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
+  const prayerWindowAfterMinutes = Math.max(0, Math.min(240, Number(String(prayerWindowAfterInput || '').replace(/[^0-9]/g, '')) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
+  const prayerWindowInfoText = `Anwesenheit kann nur im aktiven Gebet erfasst werden (${prayerWindowBeforeMinutes} Minuten davor bzw. ${prayerWindowAfterMinutes} Minuten danach).`;
+  const prayerWindowInfoTextUrdu = `حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (${prayerWindowBeforeMinutes} منٹ پہلے اور ${prayerWindowAfterMinutes} منٹ بعد تک)۔`;
 
   const prayerRows = useMemo(() => [
     { id: 'fajr', label: 'Fajr (الفجر)', time: timesToday.fajr, activeKeys: ['fajr'] },
@@ -3081,10 +3092,10 @@ function AppContent() {
     ];
     const active = sequence.find((item) => {
       const mins = isValidTime(item.time) ? (Number(item.time.slice(0, 2)) * 60 + Number(item.time.slice(3))) : null;
-      return mins !== null && nowMinutes >= mins - 30 && nowMinutes <= mins + 60;
+      return mins !== null && nowMinutes >= mins - prayerWindowBeforeMinutes && nowMinutes <= mins + prayerWindowAfterMinutes;
     });
     return active?.key || null;
-  }, [now, timesToday, programConfigToday, programWindow.isActive]);
+  }, [now, prayerWindowAfterMinutes, prayerWindowBeforeMinutes, timesToday]);
 
   const getMinutes = (time) => (isValidTime(time) ? Number(time.slice(0, 2)) * 60 + Number(time.slice(3)) : null);
   const formatMinutes = (mins) => `${pad(Math.floor((((mins % 1440) + 1440) % 1440) / 60))}:${pad((((mins % 1440) + 1440) % 1440) % 60)}`;
@@ -3107,8 +3118,8 @@ function AppContent() {
     const active = sequence.find((item) => {
       const base = getMinutes(item.time);
       if (base === null) return false;
-      const start = base - 30;
-      const end = base + 60;
+      const start = base - prayerWindowBeforeMinutes;
+      const end = base + prayerWindowAfterMinutes;
       return nowMinutes >= start && nowMinutes <= end;
     });
     const nextKeyToday = getNextPrayer(referenceNow, referenceTimesToday);
@@ -3122,8 +3133,8 @@ function AppContent() {
       ? `${nextToday?.label || '—'} - ${nextPrayerTime}`
       : `${getDisplayPrayerLabel('fajr', referenceTimesTomorrow)} - ${nextPrayerTime}`;
     const nextWindowStartMinutes = todayHasUpcomingPrayer
-      ? ((getMinutes(nextPrayerTime) ?? 0) - 30)
-      : (((getMinutes(nextPrayerTime) ?? 0) - 30) + 1440);
+      ? ((getMinutes(nextPrayerTime) ?? 0) - prayerWindowBeforeMinutes)
+      : (((getMinutes(nextPrayerTime) ?? 0) - prayerWindowBeforeMinutes) + 1440);
     const minutesUntilNextWindow = Math.max(0, nextWindowStartMinutes - nowMinutes);
     if (active) {
       const base = getMinutes(active.time);
@@ -3132,7 +3143,7 @@ function AppContent() {
         prayerKey: active.key,
         prayerLabel: active.label,
         prayerTime: active.time,
-        windowLabel: `${formatMinutes(base - 30)} – ${formatMinutes(base + 60)}`,
+        windowLabel: `${formatMinutes(base - prayerWindowBeforeMinutes)} – ${formatMinutes(base + prayerWindowAfterMinutes)}`,
         nextLabel,
         nextPrayerTime,
         minutesUntilNextWindow,
@@ -3509,8 +3520,8 @@ function AppContent() {
     sequence.forEach((time) => {
       const base = getMinutes(time);
       if (base === null) return;
-      const startTs = atMinutesOfDay(now, base - 30).getTime();
-      const endTs = atMinutesOfDay(now, base + 61).getTime();
+      const startTs = atMinutesOfDay(now, base - prayerWindowBeforeMinutes).getTime();
+      const endTs = atMinutesOfDay(now, base + prayerWindowAfterMinutes + 1).getTime();
       if (startTs > nowTs) candidates.push(startTs);
       if (endTs > nowTs) candidates.push(endTs);
     });
@@ -3536,7 +3547,7 @@ function AppContent() {
     const timer = setTimeout(() => setRefreshTick((v) => v + 1), delay);
 
     return () => clearTimeout(timer);
-  }, [now, timesToday, programConfigToday, programWindow.isActive]);
+  }, [now, prayerWindowAfterMinutes, prayerWindowBeforeMinutes, programConfigToday, programWindow.isActive, timesToday]);
 
 
   useEffect(() => {
@@ -7156,6 +7167,44 @@ function AppContent() {
     loadTerminalInactivityConfig();
   }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, isGuestMode, normalizedAppMode]);
 
+  useEffect(() => {
+    const loadPrayerWindowConfig = async () => {
+      const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+      const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey);
+      const raw = await AsyncStorage.getItem(localStorageKey).catch(() => null);
+      const parsed = raw ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : null;
+      const beforeMinutes = Math.max(0, Math.min(180, Number(parsed?.beforeMinutes) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
+      const afterMinutes = Math.max(0, Math.min(240, Number(parsed?.afterMinutes) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
+      setPrayerWindowBeforeInput(String(beforeMinutes));
+      setPrayerWindowAfterInput(String(afterMinutes));
+    };
+    loadPrayerWindowConfig();
+  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey]);
+
+  const savePrayerWindowConfig = useCallback(async () => {
+    const beforeMinutes = Math.max(0, Math.min(180, Number(String(prayerWindowBeforeInput || '').replace(/[^0-9]/g, '')) || DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES));
+    const afterMinutes = Math.max(0, Math.min(240, Number(String(prayerWindowAfterInput || '').replace(/[^0-9]/g, '')) || DEFAULT_PRAYER_WINDOW_AFTER_MINUTES));
+    const payload = {
+      beforeMinutes,
+      afterMinutes,
+      updatedAt: new Date().toISOString(),
+    };
+    const externalScopeKey = normalizeExternalScopeKey(guestActivation?.scopeKey || guestActivation?.mosqueName || '');
+    const localStorageKey = getPrayerWindowConfigStorageKey(activeMosqueKey, externalScopeKey);
+    try {
+      setPrayerWindowSaving(true);
+      await AsyncStorage.setItem(localStorageKey, JSON.stringify(payload));
+      setPrayerWindowBeforeInput(String(beforeMinutes));
+      setPrayerWindowAfterInput(String(afterMinutes));
+      setToast('Gebetszeitfenster gespeichert ✓');
+    } catch (error) {
+      console.error('savePrayerWindowConfig failed', error);
+      setToast('Gebetszeitfenster konnte nicht gespeichert werden');
+    } finally {
+      setPrayerWindowSaving(false);
+    }
+  }, [activeMosqueKey, guestActivation?.mosqueName, guestActivation?.scopeKey, prayerWindowAfterInput, prayerWindowBeforeInput]);
+
   const saveTerminalInactivityConfig = useCallback(async () => {
     const timeoutSeconds = Math.max(15, Number(String(terminalInactivityTimeoutInput || '').replace(/[^0-9]/g, '')) || 90);
     const payload = {
@@ -8017,7 +8066,7 @@ function AppContent() {
               {isPrayerMode
                 ? (guestRequiresConfig
                   ? 'Bitte zuerst die Local Amarat in den Einstellungen speichern.'
-                  : 'Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).')
+                  : prayerWindowInfoText)
                 : (isProgramMode
                   ? (guestRequiresConfig
                     ? 'Bitte zuerst die Local Amarat in den Einstellungen speichern.'
@@ -9233,6 +9282,43 @@ function AppContent() {
         </View>
       ) : null}
 
+      <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
+        <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Gebetszeitfenster</Text>
+        <Text style={[styles.settingsHeroMeta, { color: theme.muted }]}>
+          {`Gültig für ${activeMosque.label}${isGuestMode ? ` (${guestActivation?.mosqueName || formatExternalScopeLabel(guestActivation?.scopeKey || '') || 'Extern'})` : ''}`}
+        </Text>
+        <View style={styles.mergeInputWrap}>
+          <TextInput
+            value={prayerWindowBeforeInput}
+            onChangeText={(value) => setPrayerWindowBeforeInput(String(value || '').replace(/[^0-9]/g, ''))}
+            placeholder="Minuten vor Gebet (z. B. 30)"
+            placeholderTextColor={theme.muted}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            autoCapitalize="none"
+            style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+          />
+          <TextInput
+            value={prayerWindowAfterInput}
+            onChangeText={(value) => setPrayerWindowAfterInput(String(value || '').replace(/[^0-9]/g, ''))}
+            placeholder="Minuten nach Gebet (z. B. 60)"
+            placeholderTextColor={theme.muted}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            autoCapitalize="none"
+            style={[styles.mergeInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+          />
+        </View>
+        <Text style={[styles.noteText, { color: theme.muted }]}>{prayerWindowInfoText}</Text>
+        <Pressable
+          style={({ pressed }) => [[styles.saveBtn, styles.settingsSaveBtn, { backgroundColor: theme.button, opacity: prayerWindowSaving ? 0.7 : 1 }], pressed && styles.buttonPressed]}
+          disabled={prayerWindowSaving}
+          onPress={savePrayerWindowConfig}
+        >
+          <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>{prayerWindowSaving ? 'Speichert…' : 'Speichern'}</Text>
+        </Pressable>
+      </View>
+
       {isGuestMode ? (
         <View style={[styles.settingsHeroCard, { backgroundColor: theme.card }]}>
           <Text style={[styles.settingsHeroTitle, { color: theme.text }]}>Local Amarat / Moschee</Text>
@@ -9708,8 +9794,8 @@ function AppContent() {
             <View style={[styles.noPrayerCountdownChip, { borderColor: theme.border, backgroundColor: isDarkMode ? '#1F2937' : '#FEF3C7' }]}>
               <Text style={[styles.noPrayerCountdownText, { color: theme.text }]}>QR-Code verfügbar in {formatMinutesUntil(prayerWindow.minutesUntilNextWindow)}</Text>
             </View>
-            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 18 }]}>Anwesenheit kann nur im aktiven Gebet erfasst werden (30 Minuten davor bzw. 60 Minuten danach).</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>حاضری صرف فعال نماز کے وقت میں درج کی جا سکتی ہے (30 منٹ پہلے اور 60 منٹ بعد تک)۔</Text>
+            <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginTop: 18 }]}>{prayerWindowInfoText}</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>{prayerWindowInfoTextUrdu}</Text>
           </>
         )}
       </View>
