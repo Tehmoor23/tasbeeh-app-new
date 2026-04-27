@@ -1164,6 +1164,7 @@ const buildExternalAccountWritePayload = (account, overrides = {}) => {
     isExternalGuest: true,
     externalMultipleMajalis: account?.externalMultipleMajalis !== false,
     externalShowNames: Boolean(account?.externalShowNames),
+    externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
     externalMosqueName: String(account?.externalMosqueName || ''),
     accountCollection: ADMIN_EXTERNAL_ACCOUNTS_COLLECTION,
     isSuperAdmin: Boolean(account?.isSuperAdmin),
@@ -1438,7 +1439,7 @@ async function deleteAllDocsInCollectionForMosque(collection, mosqueKey) {
   return { total: ids.length, deleted, failed };
 }
 
-async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanzeemKey, locationName, locationKey, member) {
+async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanzeemKey, locationName, locationKey, member, options = {}) {
   const existing = (await getDocData('attendance_daily', dateISO)) || {};
   const nextByPrayer = { ...(existing.byPrayer || {}) };
 
@@ -1448,7 +1449,8 @@ async function appendMemberDetailsToDailyAttendance(dateISO, targetPrayers, tanz
     const tanzeemNode = { ...(memberDetails[tanzeemKey] || {}) };
     const majlisEntries = Array.isArray(tanzeemNode[locationKey]) ? [...tanzeemNode[locationKey]] : [];
 
-    const alreadyExists = majlisEntries.some((entry) => String(entry?.idNumber || '') === String(member?.idNumber || ''));
+    const allowDuplicate = Boolean(options?.allowDuplicate);
+    const alreadyExists = !allowDuplicate && majlisEntries.some((entry) => String(entry?.idNumber || '') === String(member?.idNumber || ''));
     if (!alreadyExists) {
       majlisEntries.push({
         idNumber: String(member?.idNumber || ''),
@@ -1745,6 +1747,7 @@ function AppContent() {
   const [adminManageMosqueKeys, setAdminManageMosqueKeys] = useState([DEFAULT_MOSQUE_KEY]);
   const [adminManageExternalMultiMajlis, setAdminManageExternalMultiMajlis] = useState(true);
   const [adminManageExternalShowNames, setAdminManageExternalShowNames] = useState(false);
+  const [adminManageExternalPrayerAnonymized, setAdminManageExternalPrayerAnonymized] = useState(false);
   const [adminManagePermissions, setAdminManagePermissions] = useState({ ...DEFAULT_ACCOUNT_PERMISSIONS });
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
@@ -2032,6 +2035,7 @@ function AppContent() {
             mosqueName: mosqueName || scopeKey,
             multipleMajalis: doc?.multipleMajalis !== false,
             showNames: Boolean(doc?.showNames),
+            prayerAnonymized: Boolean(doc?.prayerAnonymized),
           });
         }
       });
@@ -2060,6 +2064,7 @@ function AppContent() {
       mosqueName: String(option?.mosqueName || '').trim(),
       multipleMajalis: option?.multipleMajalis !== false,
       showNames: Boolean(option?.showNames),
+      prayerAnonymized: Boolean(option?.prayerAnonymized),
     };
     if (!payload.scopeKey) return;
     setGuestActivation(payload);
@@ -2227,6 +2232,7 @@ function AppContent() {
           mosqueName: String(existing.externalMosqueName || '').trim(),
           multipleMajalis: existing.externalMultipleMajalis !== false,
           showNames: Boolean(existing.externalShowNames),
+          prayerAnonymized: Boolean(existing.externalPrayerAnonymized),
         };
         setGuestActivation(activationPayload);
         await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
@@ -2268,6 +2274,7 @@ function AppContent() {
           mosqueName: String(account.externalMosqueName || '').trim(),
           multipleMajalis: account.externalMultipleMajalis !== false,
           showNames: Boolean(account.externalShowNames),
+          prayerAnonymized: Boolean(account.externalPrayerAnonymized),
         };
         setGuestActivation(activationPayload);
         await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
@@ -2418,6 +2425,7 @@ function AppContent() {
         isExternalGuest: isExternalAccount,
         externalMultipleMajalis: isExternalAccount ? Boolean(adminManageExternalMultiMajlis) : null,
         externalShowNames: isExternalAccount ? Boolean(adminManageExternalShowNames) : null,
+        externalPrayerAnonymized: isExternalAccount ? Boolean(adminManageExternalPrayerAnonymized) : null,
         externalMosqueName: isExternalAccount ? '' : null,
         isSuperAdmin: false,
         active: true,
@@ -2429,6 +2437,7 @@ function AppContent() {
       setAdminManageMosqueKeys([DEFAULT_MOSQUE_KEY]);
       setAdminManageExternalMultiMajlis(true);
       setAdminManageExternalShowNames(false);
+      setAdminManageExternalPrayerAnonymized(false);
       setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
       setToast(localOnly ? 'Account erstellt ✓ (lokal)' : 'Account erstellt ✓');
       await loadAdminAccounts();
@@ -2446,7 +2455,7 @@ function AppContent() {
       }
       setAdminAccountsLoading(false);
     }
-  }, [adminManageExternalMultiMajlis, adminManageExternalShowNames, adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
+  }, [adminManageExternalMultiMajlis, adminManageExternalPrayerAnonymized, adminManageExternalShowNames, adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
 
   const deleteQrRegistrationsForExternalScope = useCallback(async (scopeKey) => {
     const normalizedScopeKey = normalizeExternalScopeKey(scopeKey || '');
@@ -2829,6 +2838,7 @@ function AppContent() {
       await setGlobalDocData(ADMIN_EXTERNAL_ACCOUNTS_COLLECTION, docId, buildExternalAccountWritePayload(account, {
         externalMultipleMajalis: Boolean(nextOptions?.externalMultipleMajalis),
         externalShowNames: Boolean(nextOptions?.externalShowNames),
+        externalPrayerAnonymized: Boolean(nextOptions?.externalPrayerAnonymized),
       }));
       await loadAdminAccounts();
       setToast('Extern-Optionen aktualisiert ✓');
@@ -3617,6 +3627,7 @@ function AppContent() {
             mosqueName: String(account.externalMosqueName || '').trim(),
             multipleMajalis: account.externalMultipleMajalis !== false,
             showNames: Boolean(account.externalShowNames),
+            prayerAnonymized: Boolean(account.externalPrayerAnonymized),
           };
           setGuestActivation(activationPayload);
           await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
@@ -4311,6 +4322,7 @@ function AppContent() {
   const membersLoading = false;
   const showMemberNamesInGrid = isGuestMode ? Boolean(guestActivation?.showNames) : SHOW_MEMBER_NAMES_IN_ID_GRID;
   const shouldIncludeGuestNameInExports = isGuestMode && Boolean(guestActivation?.showNames);
+  const isGuestPrayerAnonymized = isGuestMode && Boolean(guestActivation?.prayerAnonymized);
   const guestMajlisFallbackLabel = String(guestActivation?.mosqueName || activeMosque.label || '').trim();
   const formatGuestAmaratLabel = useCallback((value) => String(value || '')
     .trim()
@@ -5368,9 +5380,13 @@ function AppContent() {
       XLSX.utils.book_append_sheet(workbook, topSheet, `Gebete nach ${locationHeaderLabel}`);
     }
     if (dataset.prayerLogRows.length) {
-      const protocolHeader = shouldIncludeGuestNameInExports
+      const includeIdInPrayerProtocol = !isGuestPrayerAnonymized;
+      const includeNameInPrayerProtocol = includeIdInPrayerProtocol && shouldIncludeGuestNameInExports;
+      const protocolHeader = includeNameInPrayerProtocol
         ? ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Name', 'Tanzeem', locationHeaderLabel]
-        : ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', locationHeaderLabel];
+        : (includeIdInPrayerProtocol
+          ? ['Datum', 'Zeitstempel', 'Gebetszeit', 'ID', 'Tanzeem', locationHeaderLabel]
+          : ['Datum', 'Zeitstempel', 'Gebetszeit', 'Tanzeem', locationHeaderLabel]);
       const protocolRows = [
         protocolHeader,
         ...dataset.prayerLogRows.map((row) => {
@@ -5379,9 +5395,9 @@ function AppContent() {
             formatIsoWithWeekday(row.dateISO),
             formatGermanDateTime(row.timestamp),
             STATS_PRAYER_SEQUENCE.find((item) => item.key === row.prayerKey)?.label || row.prayerKey,
-            row.idNumber || '—',
           ];
-          if (shouldIncludeGuestNameInExports) values.push(metadata?.name || '—');
+          if (includeIdInPrayerProtocol) values.push(row.idNumber || '—');
+          if (includeNameInPrayerProtocol) values.push(metadata?.name || '—');
           values.push(
             TANZEEM_LABELS[row.tanzeem] || row.tanzeem || '—',
             resolveExportMajlisLabel(row.majlis, metadata?.amarat),
@@ -5390,9 +5406,11 @@ function AppContent() {
         }),
       ];
       const protocolSheet = XLSX.utils.aoa_to_sheet(protocolRows);
-      protocolSheet['!cols'] = shouldIncludeGuestNameInExports
+      protocolSheet['!cols'] = includeNameInPrayerProtocol
         ? [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 24 }]
-        : [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }];
+        : (includeIdInPrayerProtocol
+          ? [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 24 }]
+          : [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 14 }, { wch: 24 }]);
       XLSX.utils.book_append_sheet(workbook, protocolSheet, 'Gebetsprotokoll');
     }
 
@@ -5453,7 +5471,7 @@ function AppContent() {
       dialogTitle: 'Statistik exportieren',
       UTI: 'org.openxmlformats.spreadsheetml.sheet',
     });
-  }, [activeMosque.label, exportMosqueNameForFile, getStatsExportDataset, hasGuestEntriesWithoutMajlis, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
+  }, [activeMosque.label, exportMosqueNameForFile, getStatsExportDataset, hasGuestEntriesWithoutMajlis, isGuestPrayerAnonymized, memberMetadataById, resolveExportMajlisLabel, shouldIncludeGuestNameInExports]);
 
   const handleExportStats = useCallback(async (rangeMode) => {
     if (!effectivePermissions.canExportData) { setToast('Keine Berechtigung'); return; }
@@ -7324,6 +7342,8 @@ function AppContent() {
       return;
     }
 
+    const isAnonymousPrayerEntry = modeType === 'prayer' && kind === 'anonymous';
+
     if (kind === 'member' && (!selectedMember || !selectedMember.idNumber)) {
       setToast('Bitte erst ID auswählen');
       return { status: 'missing_member' };
@@ -7532,6 +7552,32 @@ function AppContent() {
         }
       }
 
+      if (isAnonymousPrayerEntry) {
+        await appendMemberDetailsToDailyAttendance(
+          runtimeISO,
+          targetKeys,
+          effectiveTanzeem,
+          resolvedLocationName,
+          locationKey,
+          { idNumber: '', name: '' },
+          { allowDuplicate: true },
+        );
+      }
+
+      if (isAnonymousPrayerEntry) {
+        const anonymousEntryId = `${runtimeISO}_${targetKeys[0]}_${effectiveTanzeem}_${locationKey}_anon_${nowTs}_${visitorCounterRef.current + 1}`;
+        await setDocData(MEMBER_DIRECTORY_COLLECTION, anonymousEntryId, {
+          type: 'prayer',
+          date: runtimeISO,
+          prayer: targetKeys[0],
+          tanzeem: effectiveTanzeem,
+          majlis: resolvedLocationName,
+          idNumber: '',
+          isAnonymized: true,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
       if (kind === 'guest' && modeType !== 'registration') {
         const guestEntryId = `${runtimeISO}_${modeType}_guest_${nowTs}_${visitorCounterRef.current + 1}`;
         if (modeType === 'program') {
@@ -7663,6 +7709,7 @@ function AppContent() {
     const isPrayerMode = attendanceMode === 'prayer';
     const isProgramMode = attendanceMode === 'program';
     const isRegistrationMode = attendanceMode === 'registration';
+    const isAnonymizedPrayerModeActive = isPrayerMode && isGuestPrayerAnonymized;
     const modeSubTitle = isPrayerMode
       ? 'Erfassung der Gebetsanwesenheit'
       : (isProgramMode ? 'Erfassung der Programmanwesenheit' : 'Erfassung von Anmeldungen');
@@ -7768,7 +7815,7 @@ function AppContent() {
 
         {hasActiveAttendanceWindow ? (
           <>
-            {isQuickIdSearchVisible ? (
+            {isQuickIdSearchVisible && !isAnonymizedPrayerModeActive ? (
               <>
                 <Pressable onPress={() => { setQuickIdSearchVisible(false); setQuickIdSearchQuery(''); }} style={withPressEffect(styles.quickSearchLinkWrap)}>
                   <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Schließen</Text>
@@ -7819,7 +7866,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {hasActiveAttendanceWindow && !isQuickIdSearchVisible ? (terminalMode === 'tanzeem' ? (
+        {hasActiveAttendanceWindow && (!isQuickIdSearchVisible || isAnonymizedPrayerModeActive) ? (terminalMode === 'tanzeem' ? (
           <>
             <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie die Tanzeem</Text>
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
@@ -7840,9 +7887,11 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>) : null}
+            {!isAnonymizedPrayerModeActive ? (
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
               <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
             </Pressable>
+            ) : null}
           </>
         ) : terminalMode === 'majlis' ? (
           <>
@@ -7870,9 +7919,11 @@ function AppContent() {
               </Pressable>
               <View style={styles.guestButtonSpacer} />
             </View>) : null}
+            {!isAnonymizedPrayerModeActive ? (
             <Pressable onPress={() => setQuickIdSearchVisible((prev) => !prev)} style={withPressEffect(styles.quickSearchLinkWrap)}>
               <Text style={[styles.quickSearchLinkText, { color: isDarkMode ? 'rgba(209, 213, 219, 0.84)' : 'rgba(55, 65, 81, 0.84)' }]}>Hier direkt ID-Nummer suchen</Text>
             </Pressable>
+            ) : null}
           </>
         ) : terminalMode === 'registrationConfirm' ? (
           <>
@@ -8011,15 +8062,23 @@ function AppContent() {
           </>
         ) : (
           <>
-            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>{isAnonymizedPrayerModeActive ? 'Anonymisierte Gebetsanwesenheit' : 'Bitte wählen Sie Ihre ID-Nummer'}</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>{isAnonymizedPrayerModeActive ? 'شناخت کے بغیر نماز حاضری' : 'براہِ کرم اپنی آئی ڈی منتخب کریں'}</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{`${resolveExportMajlisLabel(selectedMajlis)} · ${TANZEEM_LABELS[selectedTanzeem] || ''}`}</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'tanzeem')}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
-            {membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
-            {!membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
-            {memberChoices.length > 0 ? (
+            {isAnonymizedPrayerModeActive ? (
+              <Pressable
+                onPress={() => countAttendance('prayer', 'anonymous', selectedMajlis)}
+                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button, marginTop: 12 }], pressed && styles.buttonPressed]}
+              >
+                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Anwesenheit zählen</Text>
+              </Pressable>
+            ) : null}
+            {!isAnonymizedPrayerModeActive && membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
+            {!isAnonymizedPrayerModeActive && !membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
+            {!isAnonymizedPrayerModeActive && memberChoices.length > 0 ? (
               <>
                 <TextInput
                   value={idSearchQuery}
@@ -8092,7 +8151,7 @@ function AppContent() {
                 )}
              </>
             ) : null}
-            {!isRegistrationMode ? (<View style={styles.guestButtonRow}>
+            {!isAnonymizedPrayerModeActive && !isRegistrationMode ? (<View style={styles.guestButtonRow}>
               <View style={styles.guestButtonSpacer} />
               <Pressable
                 onPress={() => countAttendance(attendanceMode, 'guest')}
@@ -9082,7 +9141,7 @@ function AppContent() {
                     )}
                   </View>
 
-                  {currentAccount ? (
+                  {currentAccount && !isGuestPrayerAnonymized ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Wochen Ranking (Gebete)</Text>
                     <Text style={[styles.statsCardRangeInfo, { color: theme.muted }]}>{formatRangeLabel(statsWeekRankingRange)}</Text>
@@ -9158,7 +9217,7 @@ function AppContent() {
                   </View>
                   ) : null}
 
-                  {effectivePermissions.canViewIdStats ? (
+                  {effectivePermissions.canViewIdStats && !isGuestPrayerAnonymized ? (
                   <View style={[styles.statsCard, { backgroundColor: theme.card, borderColor: theme.border }]}> 
                     <Text style={[styles.statsCardTitle, { color: theme.muted }]}>Detaillierte ID-Übersicht</Text>
                     <Pressable onPress={() => { setSelectedDetailedMember(null); setDetailedMemberLogs([]); setDetailedFlowTanzeem(''); setDetailedFlowMajlis(''); setDetailedIdSearchQuery(''); setDetailedIdOverviewVisible(true); }} style={[styles.statsDetailOpenBtn, { borderColor: theme.border, backgroundColor: theme.bg }]}>
@@ -9205,6 +9264,7 @@ function AppContent() {
                   scopeKey,
                   multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
                   showNames: Boolean(currentAccount?.externalShowNames),
+                  prayerAnonymized: Boolean(currentAccount?.externalPrayerAnonymized),
                 };
                 try {
                   setExternalConfigSaving(true);
@@ -9383,6 +9443,7 @@ function AppContent() {
                 scopeKey,
                 multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
                 showNames: Boolean(currentAccount?.externalShowNames),
+                prayerAnonymized: Boolean(currentAccount?.externalPrayerAnonymized),
               };
               try {
                 setExternalConfigSaving(true);
@@ -9637,6 +9698,7 @@ function AppContent() {
             <>
               <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Mehrere Majlis</Text><Switch value={adminManageExternalMultiMajlis} onValueChange={setAdminManageExternalMultiMajlis} /></View>
               <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Namen anzeigen</Text><Switch value={adminManageExternalShowNames} onValueChange={setAdminManageExternalShowNames} /></View>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Anonymisiert</Text><Switch value={adminManageExternalPrayerAnonymized} onValueChange={setAdminManageExternalPrayerAnonymized} /></View>
             </>
           ) : null}
           {!adminManageMosqueKeys.includes(EXTERNAL_MOSQUE_KEY) ? (
@@ -9685,6 +9747,7 @@ function AppContent() {
                       onPress={() => updateManagedExternalOptions(account, {
                         externalMultipleMajalis: !(account?.externalMultipleMajalis !== false),
                         externalShowNames: Boolean(account?.externalShowNames),
+                        externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
                       })}
                       style={[styles.statsToggleBtn, { borderColor: (account?.externalMultipleMajalis !== false) ? theme.button : theme.border, backgroundColor: (account?.externalMultipleMajalis !== false) ? theme.button : theme.bg }]}
                     >
@@ -9694,10 +9757,21 @@ function AppContent() {
                       onPress={() => updateManagedExternalOptions(account, {
                         externalMultipleMajalis: account?.externalMultipleMajalis !== false,
                         externalShowNames: !Boolean(account?.externalShowNames),
+                        externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
                       })}
                       style={[styles.statsToggleBtn, { borderColor: Boolean(account?.externalShowNames) ? theme.button : theme.border, backgroundColor: Boolean(account?.externalShowNames) ? theme.button : theme.bg }]}
                     >
                       <Text style={[styles.statsToggleBtnText, { color: Boolean(account?.externalShowNames) ? theme.buttonText : theme.text }]}>Namen anzeigen</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => updateManagedExternalOptions(account, {
+                        externalMultipleMajalis: account?.externalMultipleMajalis !== false,
+                        externalShowNames: Boolean(account?.externalShowNames),
+                        externalPrayerAnonymized: !Boolean(account?.externalPrayerAnonymized),
+                      })}
+                      style={[styles.statsToggleBtn, { borderColor: Boolean(account?.externalPrayerAnonymized) ? theme.button : theme.border, backgroundColor: Boolean(account?.externalPrayerAnonymized) ? theme.button : theme.bg }]}
+                    >
+                      <Text style={[styles.statsToggleBtnText, { color: Boolean(account?.externalPrayerAnonymized) ? theme.buttonText : theme.text }]}>Anonymisiert</Text>
                     </Pressable>
                   </View>
                 ) : null}
