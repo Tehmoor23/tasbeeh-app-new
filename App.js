@@ -56,7 +56,7 @@ const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
 const DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES = 30;
 const DEFAULT_PRAYER_WINDOW_AFTER_MINUTES = 60;
-const APP_MODE = 'extern'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
 const SECRET_QR_APP_URL = 'https://qr-terminal.web.app'; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
@@ -7411,7 +7411,8 @@ function AppContent() {
     }
 
     const resolvedMemberTanzeem = kind === 'member' ? String(selectedMember?.tanzeem || '').toLowerCase() : '';
-    const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : selectedTanzeem;
+    const forcedTanzeem = String(options?.forcedTanzeem || '').toLowerCase();
+    const effectiveTanzeem = kind === 'member' ? (resolvedMemberTanzeem || selectedTanzeem) : (forcedTanzeem || selectedTanzeem);
     const resolvedLocationName = String(locationName || selectedMember?.majlis || selectedMajlis || 'Gast').trim();
     const pathTanzeemKey = toLocationKey(effectiveTanzeem || '');
     const locationKey = toLocationKey(resolvedLocationName || 'gast') || 'ohne_majlis';
@@ -7872,7 +7873,24 @@ function AppContent() {
             <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم تنظیم منتخب کریں</Text>
             <View style={styles.tanzeemRow}>
               {(isPrayerMode ? TANZEEM_OPTIONS : (isProgramMode ? PROGRAM_TANZEEM_OPTIONS : registrationWindow.includeTanzeems)).map((tanzeem) => (
-                <Pressable key={tanzeem} style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => { setSelectedTanzeem(tanzeem); setSelectedMajlis(hasMultipleMajalisInGuest ? '' : '-'); setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'idSelection'); }}>
+                <Pressable
+                  key={tanzeem}
+                  style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button }], pressed && styles.buttonPressed]}
+                  onPress={async () => {
+                    const nextMajlis = hasMultipleMajalisInGuest ? '' : '-';
+                    setSelectedTanzeem(tanzeem);
+                    setSelectedMajlis(nextMajlis);
+                    if (isAnonymizedPrayerModeActive) {
+                      if (hasMultipleMajalisInGuest) {
+                        setTerminalMode('majlis');
+                        return;
+                      }
+                      await countAttendance('prayer', 'anonymous', nextMajlis, null, { forcedTanzeem: tanzeem });
+                      return;
+                    }
+                    setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'idSelection');
+                  }}
+                >
                   <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>{TANZEEM_LABELS[tanzeem]}</Text>
                 </Pressable>
               ))}
@@ -7904,7 +7922,18 @@ function AppContent() {
             {!membersLoading && majlisChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>{`Keine ${hasGuestEntriesWithoutMajlis ? 'Jamaat' : 'Majlis'}-Daten für diese Tanzeem gefunden.`}</Text> : null}
             <View style={styles.gridWrap}>
               {majlisChoices.map((loc) => (
-                <Pressable key={loc} style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]} onPress={() => { setSelectedMajlis(loc); setTerminalMode('idSelection'); }}>
+                <Pressable
+                  key={loc}
+                  style={({ pressed }) => [[styles.gridItem, isTablet && styles.gridItemTablet, { backgroundColor: theme.card, borderColor: theme.border }], pressed && styles.buttonPressed]}
+                  onPress={async () => {
+                    setSelectedMajlis(loc);
+                    if (isAnonymizedPrayerModeActive) {
+                      await countAttendance('prayer', 'anonymous', loc, null, { forcedTanzeem: selectedTanzeem });
+                      return;
+                    }
+                    setTerminalMode('idSelection');
+                  }}
+                >
                   <Text style={[styles.gridText, isTablet && styles.gridTextTablet, { color: theme.text }]}>{loc}</Text>
                 </Pressable>
               ))}
@@ -8062,20 +8091,12 @@ function AppContent() {
           </>
         ) : (
           <>
-            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>{isAnonymizedPrayerModeActive ? 'Anonymisierte Gebetsanwesenheit' : 'Bitte wählen Sie Ihre ID-Nummer'}</Text>
-            <Text style={[styles.urduText, { color: theme.muted }]}>{isAnonymizedPrayerModeActive ? 'شناخت کے بغیر نماز حاضری' : 'براہِ کرم اپنی آئی ڈی منتخب کریں'}</Text>
+            <Text style={[styles.sectionTitle, isTablet && styles.sectionTitleTablet, { color: theme.text, textAlign: 'center' }]}>Bitte wählen Sie Ihre ID-Nummer</Text>
+            <Text style={[styles.urduText, { color: theme.muted }]}>براہِ کرم اپنی آئی ڈی منتخب کریں</Text>
             <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center', marginBottom: 4 }]}>{`${resolveExportMajlisLabel(selectedMajlis)} · ${TANZEEM_LABELS[selectedTanzeem] || ''}`}</Text>
             <Pressable style={({ pressed }) => [[styles.saveBtn, { backgroundColor: theme.button }], pressed && styles.buttonPressed]} onPress={() => setTerminalMode(hasMultipleMajalisInGuest ? 'majlis' : 'tanzeem')}>
               <Text style={[styles.saveBtnText, isTablet && styles.saveBtnTextTablet, { color: theme.buttonText }]}>Zurück</Text>
             </Pressable>
-            {isAnonymizedPrayerModeActive ? (
-              <Pressable
-                onPress={() => countAttendance('prayer', 'anonymous', selectedMajlis)}
-                style={({ pressed }) => [[styles.tanzeemBtn, isTablet && styles.tanzeemBtnTablet, { backgroundColor: theme.button, marginTop: 12 }], pressed && styles.buttonPressed]}
-              >
-                <Text style={[styles.presetBtnText, isTablet && styles.presetBtnTextTablet, { color: theme.buttonText }]}>Anwesenheit zählen</Text>
-              </Pressable>
-            ) : null}
             {!isAnonymizedPrayerModeActive && membersLoading ? <ActivityIndicator size="small" color={theme.text} /> : null}
             {!isAnonymizedPrayerModeActive && !membersLoading && memberChoices.length === 0 ? <Text style={[styles.noteText, { color: theme.muted, textAlign: 'center' }]}>Keine ID-Nummern verfügbar.</Text> : null}
             {!isAnonymizedPrayerModeActive && memberChoices.length > 0 ? (
@@ -8184,7 +8205,7 @@ function AppContent() {
           </>
         ) : null}
 
-        {(hasActiveAttendanceWindow && (isPrayerMode || isProgramMode)) ? (
+        {(hasActiveAttendanceWindow && (isProgramMode || (isPrayerMode && !isAnonymizedPrayerModeActive))) ? (
           <View style={[styles.terminalInlineQrCard, { borderColor: theme.border, backgroundColor: theme.bg }]}>
             <Text style={[styles.terminalInlineQrTitle, { color: theme.text }]}>
               {isProgramMode ? 'QR Programmanwesenheit' : 'QR Gebetsanwesenheit'}
