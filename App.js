@@ -1165,6 +1165,7 @@ const buildExternalAccountWritePayload = (account, overrides = {}) => {
     externalMultipleMajalis: account?.externalMultipleMajalis !== false,
     externalShowNames: Boolean(account?.externalShowNames),
     externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
+    externalStatsPublic: Boolean(account?.externalStatsPublic),
     externalMosqueName: String(account?.externalMosqueName || ''),
     accountCollection: ADMIN_EXTERNAL_ACCOUNTS_COLLECTION,
     isSuperAdmin: Boolean(account?.isSuperAdmin),
@@ -1748,6 +1749,7 @@ function AppContent() {
   const [adminManageExternalMultiMajlis, setAdminManageExternalMultiMajlis] = useState(true);
   const [adminManageExternalShowNames, setAdminManageExternalShowNames] = useState(false);
   const [adminManageExternalPrayerAnonymized, setAdminManageExternalPrayerAnonymized] = useState(false);
+  const [adminManageExternalStatsPublic, setAdminManageExternalStatsPublic] = useState(false);
   const [adminManagePermissions, setAdminManagePermissions] = useState({ ...DEFAULT_ACCOUNT_PERMISSIONS });
   const [adminAccounts, setAdminAccounts] = useState([]);
   const [adminAccountsLoading, setAdminAccountsLoading] = useState(false);
@@ -2008,9 +2010,9 @@ function AppContent() {
 
   const visibleTabs = useMemo(() => TAB_ITEMS.filter((tab) => {
     if (tab.key === 'settings') return effectivePermissions.canEditSettings;
-    if (isGuestMode && tab.key === 'stats') return Boolean(currentAccount);
+    if (isGuestMode && tab.key === 'stats') return Boolean(currentAccount) || Boolean(guestActivation?.statsPublic);
     return true;
-  }), [currentAccount, effectivePermissions.canEditSettings, isGuestMode]);
+  }), [currentAccount, effectivePermissions.canEditSettings, guestActivation?.statsPublic, isGuestMode]);
 
   useEffect(() => {
     if (!externScopeHeaderTapCount) return undefined;
@@ -2036,6 +2038,7 @@ function AppContent() {
             multipleMajalis: doc?.multipleMajalis !== false,
             showNames: Boolean(doc?.showNames),
             prayerAnonymized: Boolean(doc?.prayerAnonymized),
+            statsPublic: Boolean(doc?.statsPublic),
           });
         }
       });
@@ -2065,6 +2068,7 @@ function AppContent() {
       multipleMajalis: option?.multipleMajalis !== false,
       showNames: Boolean(option?.showNames),
       prayerAnonymized: Boolean(option?.prayerAnonymized),
+      statsPublic: Boolean(option?.statsPublic),
     };
     if (!payload.scopeKey) return;
     setGuestActivation(payload);
@@ -2233,6 +2237,7 @@ function AppContent() {
           multipleMajalis: existing.externalMultipleMajalis !== false,
           showNames: Boolean(existing.externalShowNames),
           prayerAnonymized: Boolean(existing.externalPrayerAnonymized),
+          statsPublic: Boolean(existing.externalStatsPublic),
         };
         setGuestActivation(activationPayload);
         await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
@@ -2275,6 +2280,7 @@ function AppContent() {
           multipleMajalis: account.externalMultipleMajalis !== false,
           showNames: Boolean(account.externalShowNames),
           prayerAnonymized: Boolean(account.externalPrayerAnonymized),
+          statsPublic: Boolean(account.externalStatsPublic),
         };
         setGuestActivation(activationPayload);
         await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
@@ -2426,6 +2432,7 @@ function AppContent() {
         externalMultipleMajalis: isExternalAccount ? Boolean(adminManageExternalMultiMajlis) : null,
         externalShowNames: isExternalAccount ? Boolean(adminManageExternalShowNames) : null,
         externalPrayerAnonymized: isExternalAccount ? Boolean(adminManageExternalPrayerAnonymized) : null,
+        externalStatsPublic: isExternalAccount ? Boolean(adminManageExternalStatsPublic) : null,
         externalMosqueName: isExternalAccount ? '' : null,
         isSuperAdmin: false,
         active: true,
@@ -2438,6 +2445,7 @@ function AppContent() {
       setAdminManageExternalMultiMajlis(true);
       setAdminManageExternalShowNames(false);
       setAdminManageExternalPrayerAnonymized(false);
+      setAdminManageExternalStatsPublic(false);
       setAdminManagePermissions({ ...DEFAULT_ACCOUNT_PERMISSIONS });
       setToast(localOnly ? 'Account erstellt ✓ (lokal)' : 'Account erstellt ✓');
       await loadAdminAccounts();
@@ -2455,7 +2463,7 @@ function AppContent() {
       }
       setAdminAccountsLoading(false);
     }
-  }, [adminManageExternalMultiMajlis, adminManageExternalPrayerAnonymized, adminManageExternalShowNames, adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
+  }, [adminManageExternalMultiMajlis, adminManageExternalPrayerAnonymized, adminManageExternalShowNames, adminManageExternalStatsPublic, adminManageMosqueKeys, adminManageName, adminManagePassword, adminManagePermissions, currentAccount?.name, firebaseRuntime?.authApi, getSecondaryAuth, isSuperAdmin, loadAdminAccounts]);
 
   const deleteQrRegistrationsForExternalScope = useCallback(async (scopeKey) => {
     const normalizedScopeKey = normalizeExternalScopeKey(scopeKey || '');
@@ -2839,6 +2847,7 @@ function AppContent() {
         externalMultipleMajalis: Boolean(nextOptions?.externalMultipleMajalis),
         externalShowNames: Boolean(nextOptions?.externalShowNames),
         externalPrayerAnonymized: Boolean(nextOptions?.externalPrayerAnonymized),
+        externalStatsPublic: Boolean(nextOptions?.externalStatsPublic),
       }));
       await loadAdminAccounts();
       setToast('Extern-Optionen aktualisiert ✓');
@@ -3628,6 +3637,7 @@ function AppContent() {
             multipleMajalis: account.externalMultipleMajalis !== false,
             showNames: Boolean(account.externalShowNames),
             prayerAnonymized: Boolean(account.externalPrayerAnonymized),
+            statsPublic: Boolean(account.externalStatsPublic),
           };
           setGuestActivation(activationPayload);
           await AsyncStorage.setItem(STORAGE_KEYS.guestActivation, JSON.stringify(activationPayload)).catch(() => {});
@@ -9294,6 +9304,7 @@ function AppContent() {
                   multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
                   showNames: Boolean(currentAccount?.externalShowNames),
                   prayerAnonymized: Boolean(currentAccount?.externalPrayerAnonymized),
+                  statsPublic: Boolean(currentAccount?.externalStatsPublic),
                 };
                 try {
                   setExternalConfigSaving(true);
@@ -9473,6 +9484,7 @@ function AppContent() {
                 multipleMajalis: currentAccount?.externalMultipleMajalis !== false,
                 showNames: Boolean(currentAccount?.externalShowNames),
                 prayerAnonymized: Boolean(currentAccount?.externalPrayerAnonymized),
+                statsPublic: Boolean(currentAccount?.externalStatsPublic),
               };
               try {
                 setExternalConfigSaving(true);
@@ -9728,6 +9740,7 @@ function AppContent() {
               <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Mehrere Majlis</Text><Switch value={adminManageExternalMultiMajlis} onValueChange={setAdminManageExternalMultiMajlis} /></View>
               <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Namen anzeigen</Text><Switch value={adminManageExternalShowNames} onValueChange={setAdminManageExternalShowNames} /></View>
               <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Anonymisiert</Text><Switch value={adminManageExternalPrayerAnonymized} onValueChange={setAdminManageExternalPrayerAnonymized} /></View>
+              <View style={styles.mergeSwitchWrap}><Text style={[styles.mergeSwitchLabel, { color: theme.text }]}>Stats öffentlich anzeigen</Text><Switch value={adminManageExternalStatsPublic} onValueChange={setAdminManageExternalStatsPublic} /></View>
             </>
           ) : null}
           {!adminManageMosqueKeys.includes(EXTERNAL_MOSQUE_KEY) ? (
@@ -9777,6 +9790,7 @@ function AppContent() {
                         externalMultipleMajalis: !(account?.externalMultipleMajalis !== false),
                         externalShowNames: Boolean(account?.externalShowNames),
                         externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
+                        externalStatsPublic: Boolean(account?.externalStatsPublic),
                       })}
                       style={[styles.statsToggleBtn, { borderColor: (account?.externalMultipleMajalis !== false) ? theme.button : theme.border, backgroundColor: (account?.externalMultipleMajalis !== false) ? theme.button : theme.bg }]}
                     >
@@ -9787,6 +9801,7 @@ function AppContent() {
                         externalMultipleMajalis: account?.externalMultipleMajalis !== false,
                         externalShowNames: !Boolean(account?.externalShowNames),
                         externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
+                        externalStatsPublic: Boolean(account?.externalStatsPublic),
                       })}
                       style={[styles.statsToggleBtn, { borderColor: Boolean(account?.externalShowNames) ? theme.button : theme.border, backgroundColor: Boolean(account?.externalShowNames) ? theme.button : theme.bg }]}
                     >
@@ -9797,10 +9812,22 @@ function AppContent() {
                         externalMultipleMajalis: account?.externalMultipleMajalis !== false,
                         externalShowNames: Boolean(account?.externalShowNames),
                         externalPrayerAnonymized: !Boolean(account?.externalPrayerAnonymized),
+                        externalStatsPublic: Boolean(account?.externalStatsPublic),
                       })}
                       style={[styles.statsToggleBtn, { borderColor: Boolean(account?.externalPrayerAnonymized) ? theme.button : theme.border, backgroundColor: Boolean(account?.externalPrayerAnonymized) ? theme.button : theme.bg }]}
                     >
                       <Text style={[styles.statsToggleBtnText, { color: Boolean(account?.externalPrayerAnonymized) ? theme.buttonText : theme.text }]}>Anonymisiert</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => updateManagedExternalOptions(account, {
+                        externalMultipleMajalis: account?.externalMultipleMajalis !== false,
+                        externalShowNames: Boolean(account?.externalShowNames),
+                        externalPrayerAnonymized: Boolean(account?.externalPrayerAnonymized),
+                        externalStatsPublic: !Boolean(account?.externalStatsPublic),
+                      })}
+                      style={[styles.statsToggleBtn, { borderColor: Boolean(account?.externalStatsPublic) ? theme.button : theme.border, backgroundColor: Boolean(account?.externalStatsPublic) ? theme.button : theme.bg }]}
+                    >
+                      <Text style={[styles.statsToggleBtnText, { color: Boolean(account?.externalStatsPublic) ? theme.buttonText : theme.text }]}>Stats öffentlich</Text>
                     </Pressable>
                   </View>
                 ) : null}
