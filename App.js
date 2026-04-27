@@ -4971,6 +4971,11 @@ function AppContent() {
       khuddam: new Set(),
       atfal: new Set(),
     };
+    const anonymizedCounters = {
+      ansar: 0,
+      khuddam: 0,
+      atfal: 0,
+    };
     const guestTotal = getUniqueGuestTotalForAttendance(attendanceData);
 
     Object.values(byPrayer).forEach((prayerNode) => {
@@ -4981,7 +4986,10 @@ function AppContent() {
           if (!Array.isArray(entries)) return;
           entries.forEach((entry) => {
             const id = String(entry?.idNumber || '').trim();
-            if (!id) return;
+            if (!id) {
+              anonymizedCounters[key] += 1;
+              return;
+            }
             tanzeemSets[key].add(id);
           });
         });
@@ -4989,9 +4997,9 @@ function AppContent() {
     });
 
     const tanzeemTotals = {
-      ansar: tanzeemSets.ansar.size,
-      khuddam: tanzeemSets.khuddam.size,
-      atfal: tanzeemSets.atfal.size,
+      ansar: tanzeemSets.ansar.size + anonymizedCounters.ansar,
+      khuddam: tanzeemSets.khuddam.size + anonymizedCounters.khuddam,
+      atfal: tanzeemSets.atfal.size + anonymizedCounters.atfal,
     };
     const membersTotal = tanzeemTotals.ansar + tanzeemTotals.khuddam + tanzeemTotals.atfal;
     return {
