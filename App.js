@@ -56,7 +56,7 @@ const DEFAULT_MOSQUE_KEY = 'baitus_sabuh';
 const EXTERNAL_MOSQUE_KEY = 'external_guest';
 const DEFAULT_PRAYER_WINDOW_BEFORE_MINUTES = 30;
 const DEFAULT_PRAYER_WINDOW_AFTER_MINUTES = 60;
-const APP_MODE = 'registration'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
+const APP_MODE = 'full'; // 'full', 'extern' (legacy: 'guest'), 'display', 'qr', 'qr_extern', 'secret' oder 'registration'
 const SECRET_QR_APP_URL = 'https://qr-terminal.web.app'; // Optional: eigener geheimer Scan-Host, z. B. https://scan.example.com
 const MOSQUE_OPTIONS = [
   { key: DEFAULT_MOSQUE_KEY, label: 'Bait-Us-Sabuh', suffix: '' },
