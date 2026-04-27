@@ -3655,6 +3655,13 @@ function AppContent() {
   }, [currentAccount, normalizedAppMode, registrationWindow.canAccess, registrationWindow.loginEnabled]);
 
   useEffect(() => {
+    if (normalizedAppMode !== 'registration') return;
+    if (!registrationWindow.canAccess || !registrationWindow.loginEnabled) return;
+    if (currentAccount) return;
+    setAdminLoginVisible(true);
+  }, [currentAccount, normalizedAppMode, registrationWindow.canAccess, registrationWindow.loginEnabled]);
+
+  useEffect(() => {
     if (shouldRestrictToPrayerView && activeTab !== 'gebetsplan') {
       setActiveTab('gebetsplan');
     }
